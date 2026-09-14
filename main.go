@@ -17,6 +17,13 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// appIcon is handed to the OS at startup so the dock, Cmd-Tab switcher and About
+// box show the ClawHQ mark even when the bundle's own icon lookup does not apply,
+// such as a bare `bin/ClawHQ` run or a dev build.
+//
+//go:embed build/appicon.png
+var appIcon []byte
+
 // version is the running release, kept in a file rather than injected with
 // -ldflags because the Wails taskfiles hardcode their link flags. CI asserts that
 // this matches the tag being built, so the updater can never mistake which
@@ -32,6 +39,7 @@ func init() {
 	application.RegisterEvent[gateway.Status]("gateway:status")
 	application.RegisterEvent[node.Status]("node:status")
 	application.RegisterEvent[node.Notification]("node:notify")
+	application.RegisterEvent[node.ExecRequest]("node:exec-request")
 }
 
 // identityDir is where the Ed25519 device identity and device token live. It is
@@ -101,19 +109,46 @@ func main() {
 		},
 	)
 
-	// Load the shared-folder list up front so the settings panel reflects what is
-	// configured even while the node role is switched off.
-	nodeHost.SetSharedFolders(cfgStore.Read().Node.SharedFolders)
-	nodeHost.SetDesktopControl(cfgStore.Read().Node.DesktopControl)
+	// Load the node settings up front so the settings panel reflects what is
+	// configured even while the role is still connecting.
+	startCfg := cfgStore.Read()
+	nodeHost.SetSharedFolders(startCfg.Node.SharedFolders)
+	nodeHost.SetDesktopControl(startCfg.Node.DesktopControl)
+	nodeHost.SetExecPolicy(startCfg.Node.Exec.Mode, startCfg.Node.Exec.Allow)
+
+	// The autopilot starts, pairs and approves the node role whenever the operator
+	// connection is up, so nothing below has to think about it.
+	auto := newNodeAutopilot(conn, nodeHost, cfgStore)
+	nodeHost.SetHooks(node.Hooks{
+		OnPending:   auto.approvePairing,
+		OnConnected: auto.verifySurface,
+		// A command waiting on the user: the UI shows it as a banner.
+		OnExecRequest: func(req node.ExecRequest) {
+			if app != nil {
+				app.Event.Emit("node:exec-request", req)
+			}
+		},
+		OnAllowAlways: func(commandText string) {
+			if cfg, err := cfgStore.AllowExecCommand(commandText); err == nil {
+				nodeHost.SetExecPolicy(cfg.Node.Exec.Mode, cfg.Node.Exec.Allow)
+			}
+		},
+		OnExecModeChanged: func(mode string) {
+			if cfg, err := cfgStore.UpdateNode(func(n *store.NodeConfig) { n.Exec.Mode = mode }); err == nil {
+				nodeHost.SetExecPolicy(cfg.Node.Exec.Mode, cfg.Node.Exec.Allow)
+			}
+		},
+	})
 
 	app = application.New(application.Options{
 		Name:        "ClawHQ",
 		Description: "Desktop command center for your OpenClaw agent org",
+		Icon:        appIcon,
 		Services: []application.Service{
 			application.NewService(&GatewayService{conn: conn, store: cfgStore}),
 			application.NewService(&ConfigService{store: cfgStore}),
 			application.NewService(&DaemonService{}),
-			application.NewService(&NodeService{host: nodeHost, store: cfgStore, conn: conn}),
+			application.NewService(&NodeService{host: nodeHost, store: cfgStore, conn: conn, auto: auto}),
 			application.NewService(updateSvc),
 		},
 		Assets: application.AssetOptions{
@@ -148,18 +183,10 @@ func main() {
 		if !ok || !conn.HasStoredPairing(profile.ID) {
 			return
 		}
+		// The autopilot brings the node role up once this lands.
 		if _, err := conn.Connect(context.Background(), profile.ID, profile.URL, gateway.Credential{}); err != nil {
 			// The UI surfaces this through connection status; nothing to do here.
 			log.Printf("auto-connect failed: %v", err)
-			return
-		}
-
-		// Bring the node role back up too, if the user left it on.
-		if cfg.Node.Enabled {
-			nodeHost.SetSharedFolders(cfg.Node.SharedFolders)
-			if _, err := nodeHost.Start(context.Background(), profile.ID, profile.URL, ""); err != nil {
-				log.Printf("node auto-start failed: %v", err)
-			}
 		}
 	}()
 

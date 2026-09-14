@@ -5,6 +5,7 @@ import { AgentSettingsDialog } from './components/AgentSettingsDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { DesktopView } from './components/DesktopView'
 import { Onboarding } from './components/Onboarding'
+import { ApprovalBanners } from './components/ApprovalBanners'
 import { api } from './api'
 import { useFleet } from './state/useFleet'
 import type { NodeNotification } from './types'
@@ -94,6 +95,8 @@ function App(): React.JSX.Element {
         onSettings={() => selectedAgentId && setAgentSettingsId(selectedAgentId)}
       />
       )}
+
+      <ApprovalBanners connected={connected} />
 
       {notice && (
         <div className="notice" role="status">

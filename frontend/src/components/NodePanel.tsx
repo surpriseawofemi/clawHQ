@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import type { NodeStatus } from '../types'
+import type { ExecMode, NodeStatus } from '../types'
 
 /**
  * The node role: this machine exposed to agents running on the gateway.
  *
- * It is off by default and scoped to an explicit folder list, because turning it on is
- * the moment agents elsewhere gain reach into this computer.
+ * Pairing is automatic. ClawHQ requests the pairing as a node and approves it as an
+ * operator, so the only decisions left here are what agents may reach: which folders,
+ * whether they may drive the desktop, and how commands are handled.
  */
 export function NodePanel(): React.JSX.Element {
   const [status, setStatus] = useState<NodeStatus | null>(null)
-  const [token, setToken] = useState('')
   const [folder, setFolder] = useState('')
+  const [allowEntry, setAllowEntry] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -36,6 +37,8 @@ export function NodePanel(): React.JSX.Element {
   }
 
   const folders = status?.sharedFolders ?? []
+  const allow = status?.execAllow ?? []
+  const mode: ExecMode = status?.execMode ?? 'ask'
 
   const addFolder = (): Promise<void> =>
     run('add', async () => {
@@ -47,19 +50,61 @@ export function NodePanel(): React.JSX.Element {
   const removeFolder = (path: string): Promise<void> =>
     run(`rm-${path}`, () => api.node.setSharedFolders(folders.filter((f) => f !== path)))
 
+  const setMode = (next: ExecMode): Promise<void> =>
+    run('mode', () => api.node.setExecPolicy(next, allow))
+
+  const addAllow = (): Promise<void> =>
+    run('allow-add', async () => {
+      const entry = allowEntry.trim()
+      setAllowEntry('')
+      if (!entry || allow.includes(entry)) return status as NodeStatus
+      return await api.node.setExecPolicy(mode, [...allow, entry])
+    })
+
+  const removeAllow = (entry: string): Promise<void> =>
+    run(`allow-rm-${entry}`, () => api.node.setExecPolicy(mode, allow.filter((a) => a !== entry)))
+
+  const statusLine = ((): { dot: string; text: string } => {
+    if (!status?.enabled) return { dot: 'dot-off', text: 'off' }
+    if (status.connected) return { dot: 'dot-ok', text: 'connected as a node' }
+    switch (status.pairing) {
+      case 'awaiting-approval':
+        return { dot: 'dot-warn', text: 'pairing, approving automatically…' }
+      case 'reconnecting':
+        return { dot: 'dot-warn', text: 'reconnecting…' }
+      case 'connecting':
+        return { dot: 'dot-warn', text: 'connecting…' }
+      default:
+        return { dot: 'dot-off', text: 'on, waiting for the gateway connection' }
+    }
+  })()
+
   return (
     <section className="panel">
       <h3>This machine as a node</h3>
       <p className="field-hint">
-        Lets agents on the gateway browse the folders you list below, even when the
-        gateway runs on another computer. Off by default.
+        Lets agents on the gateway reach this computer, even when the gateway runs
+        somewhere else. ClawHQ pairs and approves the node by itself; what agents may
+        touch is decided below.
       </p>
+
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={status?.enabled ?? false}
+          disabled={busy !== null}
+          onChange={(e) =>
+            run('toggle', () => (e.target.checked ? api.node.enable() : api.node.disable()))
+          }
+        />
+        <span>Expose this machine to agents</span>
+      </label>
 
       <dl className="kv">
         <dt>Status</dt>
         <dd>
-          <i className={`dot ${status?.connected ? 'dot-ok' : 'dot-off'}`} />
-          {status?.connected ? 'connected as a node' : status?.enabled ? 'enabled, offline' : 'off'}
+          <i className={`dot ${statusLine.dot}`} />
+          {statusLine.text}
         </dd>
         {status?.deviceId && (
           <>
@@ -71,6 +116,12 @@ export function NodePanel(): React.JSX.Element {
           <>
             <dt>Last call</dt>
             <dd className="mono">{status.lastInvoke}</dd>
+          </>
+        )}
+        {status?.error && (
+          <>
+            <dt>Note</dt>
+            <dd className="error-text">{status.error}</dd>
           </>
         )}
       </dl>
@@ -108,6 +159,64 @@ export function NodePanel(): React.JSX.Element {
       </div>
 
       <div className="field">
+        <span>Commands agents may run here</span>
+        <p className="field-hint">
+          An agent using its exec tool with this machine as the host goes through this
+          policy. Asking shows a banner with allow, always and deny.
+        </p>
+        <div className="tabs tabs-inline">
+          {(
+            [
+              ['ask', 'Ask me'],
+              ['allow', 'Run without asking'],
+              ['off', 'Off']
+            ] as [ExecMode, string][]
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              className={`tab${mode === value ? ' is-active' : ''}`}
+              disabled={busy !== null}
+              onClick={() => setMode(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {mode !== 'off' && (
+          <>
+            <p className="field-hint">
+              Always allowed: an exact command, a program name such as <code>git</code>, or a
+              prefix ending in <code>*</code>. &ldquo;Always&rdquo; on a banner adds to this list.
+            </p>
+            <div className="dept-editor">
+              {allow.map((entry) => (
+                <div key={entry} className="dept-edit-row">
+                  <input className="mono" value={entry} readOnly />
+                  <button className="icon-btn" title="Remove" onClick={() => removeAllow(entry)}>
+                    🗑
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="dept-edit-row">
+              <input
+                className="mono"
+                placeholder="git *"
+                value={allowEntry}
+                onChange={(e) => setAllowEntry(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void addAllow()
+                }}
+              />
+              <button className="btn" disabled={!allowEntry.trim() || busy !== null} onClick={addAllow}>
+                Allow
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="field">
         <label className="check-row">
           <input
             type="checkbox"
@@ -118,60 +227,27 @@ export function NodePanel(): React.JSX.Element {
           <span>Allow desktop control</span>
         </label>
         <p className="field-hint">
-          Lets ClawHQ on another machine — and agents, through <code>computer.act</code> —
-          move the mouse and type on this computer. Off by default. Windows only for now.
+          Lets ClawHQ on another machine, and agents through <code>computer.act</code>, move
+          the mouse and type on this computer. Off by default. On macOS the first use asks
+          for Accessibility and Screen Recording permission.
         </p>
       </div>
 
       {status?.enabled && (
         <div className="field">
           <p className="field-hint">
-            If this node was paired before desktop control and notifications existed, the
-            gateway still holds the old command list. Re-pairing raises a fresh approval with
-            the current one.
+            The gateway records the command list at pairing time. ClawHQ re-pairs by itself
+            when that list changes; this forces it.
           </p>
           <button
             className="btn"
             disabled={busy !== null}
             onClick={() => run('repair', () => api.node.rePair())}
           >
-            {busy === 'repair' ? 'Forgetting pairing…' : 'Re-pair with new command list'}
+            {busy === 'repair' ? 'Re-pairing…' : 'Re-pair now'}
           </button>
         </div>
       )}
-
-      {!status?.enabled && (
-        <label className="field">
-          <span>Gateway token (first time only)</span>
-          <input
-            className="mono"
-            type="password"
-            value={token}
-            placeholder="needed once to pair the node role"
-            onChange={(e) => setToken(e.target.value)}
-          />
-        </label>
-      )}
-
-      <div className="btn-row">
-        {status?.enabled ? (
-          <button
-            className="btn btn-danger"
-            disabled={busy !== null}
-            onClick={() => run('disable', () => api.node.disable())}
-          >
-            {busy === 'disable' ? 'Stopping…' : 'Turn off node role'}
-          </button>
-        ) : (
-          <button
-            className="btn btn-primary"
-            disabled={busy !== null}
-            onClick={() => run('enable', () => api.node.enable(token.trim()))}
-          >
-            {busy === 'enable' ? 'Connecting…' : 'Turn on node role'}
-          </button>
-        )}
-      </div>
 
       {error && <p className="error-text">{error}</p>}
     </section>

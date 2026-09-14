@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build *)",
+      "Bash(go vet *)",
+      "Bash(go test *)",
+      "Bash(go run *)",
+      "Bash(go mod tidy)",
+      "Bash(gofmt *)",
+      "Bash(wails3 *)",
+      "Bash(npm run build)",
+      "Bash(npm run build:dev)",
+      "Bash(npm install)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

@@ -78,6 +78,12 @@ code,
   -webkit-app-region: drag;
 }
 
+/* The traffic lights sit in the top-left of the frameless window, over the
+   sidebar header; push the brand clear of them. */
+html.is-mac .sidebar-head {
+  padding-left: 80px;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -999,6 +1005,56 @@ code,
 
 .notice-icon {
   font-size: 16px;
+}
+
+/* ---- commands waiting for approval ---- */
+.approvals {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(720px, calc(100vw - 32px));
+  z-index: 41;
+}
+
+.approval {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12.5px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.approval .notice-text {
+  flex: 1;
+}
+
+.approval-cmd {
+  display: block;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 72px;
+  overflow: auto;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.dot-warn {
+  background: var(--warn);
 }
 
 .notice-text {

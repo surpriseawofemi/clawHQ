@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- The ClawHQ pincer, glyph only. The tile behind it comes from icon.json so macOS
+       can render the light/dark/tinted variants itself. Keep in sync with logo.svg. -->
+  <g fill="#ffffff" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round"
+     transform="translate(-6 34)">
+    <ellipse cx="352" cy="556" rx="168" ry="152" transform="rotate(-20 352 556)"/>
+    <path d="M 372 470 C 512 374 656 300 768 294 C 812 292 826 348 798 388"
+          fill="none" stroke-width="116"/>
+    <path d="M 392 648 C 528 712 668 696 764 606"
+          fill="none" stroke-width="104"/>
+  </g>
+</svg>

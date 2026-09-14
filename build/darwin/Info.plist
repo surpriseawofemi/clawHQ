@@ -17,8 +17,11 @@
             <string>0.1.0</string>
         <key>CFBundleIconFile</key>
             <string>icons</string>
-        <key>CFBundleIconName</key>
-            <string>appicon</string>
+        <!-- CFBundleIconName is intentionally absent: macOS 26 prefers a compiled
+             Assets.car over CFBundleIconFile, and building one needs full Xcode
+             (actool). Regenerate build/darwin/Assets.car from build/appicon.icon
+             with `wails3 task common:generate:icons` and add
+             <key>CFBundleIconName</key><string>appicon</string> back to use it. -->
         <key>LSMinimumSystemVersion</key>
             <string>12.0.0</string>
         <key>NSHighResolutionCapable</key>

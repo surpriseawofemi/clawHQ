@@ -47,6 +47,10 @@ const (
 // approval on the gateway, by design.
 var commands = []string{
 	CmdSystemWhich,
+	CmdSystemRunPrepare,
+	CmdSystemRun,
+	CmdExecApprovalsGet,
+	CmdExecApprovalsSet,
 	CmdFsListDir,
 	CmdScreenSnapshot,
 	CmdComputerAct,
@@ -56,7 +60,12 @@ var commands = []string{
 	CmdAgentAssign,
 }
 
-// Caps ClawHQ claims. "file" covers directory browsing, "system" covers binary lookup.
+// CustomCommands are the verbs that are not in any gateway's default node allowlist.
+// The operator side adds them to the gateway config so the descriptors register.
+var CustomCommands = []string{CmdDepartmentsList, CmdDepartmentCreate, CmdAgentAssign, CmdFsListDir, CmdComputerAct}
+
+// Caps ClawHQ claims. "file" covers directory browsing, "system" covers binary lookup
+// and shell commands.
 var Caps = []string{"file", "system", "screen", "computer", "notify"}
 
 // DepartmentStore is the slice of ClawHQ's config the node is allowed to touch.
@@ -75,18 +84,38 @@ type Status struct {
 	SharedFolders []string `json:"sharedFolders"`
 	Commands      []string `json:"commands"`
 	// DesktopControl is whether computer.act invokes are honoured on this machine.
-	DesktopControl bool   `json:"desktopControl"`
-	Error          string `json:"error"`
+	DesktopControl bool `json:"desktopControl"`
+	// Pairing is what the node is doing right now: "" (idle), "connecting",
+	// "awaiting-approval", "reconnecting" or "connected".
+	Pairing string `json:"pairing"`
+	Error   string `json:"error"`
 	// LastInvoke is a short human-readable trace of the most recent request, which is
 	// the difference between "it silently does nothing" and a debuggable feature.
 	LastInvoke string `json:"lastInvoke"`
+	// Exec policy, mirrored so the settings panel has one source of truth.
+	ExecMode  string   `json:"execMode"`
+	ExecAllow []string `json:"execAllow"`
+	// PendingExec are commands waiting for the user to allow or deny them.
+	PendingExec []ExecRequest `json:"pendingExec"`
 }
+
+// Pairing states reported in Status.Pairing.
+const (
+	PairingIdle         = ""
+	PairingConnecting   = "connecting"
+	PairingAwaiting     = "awaiting-approval"
+	PairingReconnecting = "reconnecting"
+	PairingConnected    = "connected"
+)
 
 // Host is ClawHQ's node-role connection.
 type Host struct {
 	mu     sync.RWMutex
 	client *ocgateway.Client
 	status Status
+	// generation is bumped by every Start and Stop, so a watcher for an old client
+	// can tell a deliberate stop from a dropped connection.
+	generation uint64
 
 	identityRoot  string
 	sharedFolders []string
@@ -95,12 +124,38 @@ type Host struct {
 	desktopControl bool
 	lastFrame      frameGeometry
 
+	exec        execGate
+	pendingExec map[string]ExecRequest
+
 	emitStatus func(Status)
 	// onNotify receives system.notify requests so the app can surface them.
 	onNotify func(Notification)
 	// logUnknown records invokes we do not implement yet, so the command surface can
 	// be extended against real traffic instead of guesswork.
 	logUnknown func(command string, params string)
+
+	// Hooks below are optional and set by the app; see Hooks.
+	onPending         func(gatewayID, deviceID string)
+	onConnected       func(gatewayID, deviceID string)
+	onExecRequest     func(ExecRequest)
+	onAllowAlways     func(commandText string)
+	onExecModeChanged func(mode string)
+}
+
+// Hooks let the app react to the node's life cycle without the node package knowing
+// about the operator connection or the config store.
+type Hooks struct {
+	// OnPending fires when the gateway holds this node's pairing for approval; the
+	// operator side approves it.
+	OnPending func(gatewayID, deviceID string)
+	// OnConnected fires after each successful connect.
+	OnConnected func(gatewayID, deviceID string)
+	// OnExecRequest fires when a command needs the user's decision.
+	OnExecRequest func(ExecRequest)
+	// OnAllowAlways fires when the user picked "always" for a command.
+	OnAllowAlways func(commandText string)
+	// OnExecModeChanged fires when the gateway pushes a new exec policy.
+	OnExecModeChanged func(mode string)
 }
 
 func New(identityRoot string, st DepartmentStore, emitStatus func(Status), onNotify func(Notification), logUnknown func(string, string)) *Host {
@@ -110,8 +165,20 @@ func New(identityRoot string, st DepartmentStore, emitStatus func(Status), onNot
 		emitStatus:   emitStatus,
 		onNotify:     onNotify,
 		logUnknown:   logUnknown,
-		status:       Status{Commands: commands},
+		status:       Status{Commands: commands, ExecMode: store.ExecAsk, ExecAllow: []string{}, PendingExec: []ExecRequest{}},
+		exec:         execGate{mode: store.ExecAsk},
 	}
+}
+
+// SetHooks installs the app's callbacks. Call before Start.
+func (h *Host) SetHooks(hooks Hooks) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.onPending = hooks.OnPending
+	h.onConnected = hooks.OnConnected
+	h.onExecRequest = hooks.OnExecRequest
+	h.onAllowAlways = hooks.OnAllowAlways
+	h.onExecModeChanged = hooks.OnExecModeChanged
 }
 
 func (h *Host) Status() Status {
@@ -162,14 +229,58 @@ func (h *Host) identityStore(gatewayID string) (*identity.Store, error) {
 	return identity.NewStore(filepath.Join(h.identityRoot, gatewayID+"-node"))
 }
 
-// Start connects the node role. Pass the gateway's shared token on first pairing;
-// afterwards the stored device token is enough.
+// surfaceFile records the command list a pairing was approved with, so a changed
+// surface can be detected and re-paired without the user noticing.
+const surfaceFile = "surface.json"
+
+// surfaceChanged reports whether the stored pairing was made with a different
+// command list than the one compiled in.
+func surfaceChanged(dir string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, surfaceFile))
+	if err != nil {
+		return false // never recorded: nothing to compare against
+	}
+	var saved struct {
+		Commands []string `json:"commands"`
+	}
+	if err := json.Unmarshal(data, &saved); err != nil {
+		return true
+	}
+	return strings.Join(saved.Commands, ",") != strings.Join(commands, ",")
+}
+
+func saveSurface(dir string) {
+	data, _ := json.Marshal(map[string]any{"commands": commands})
+	_ = os.WriteFile(filepath.Join(dir, surfaceFile), data, 0o600)
+}
+
+// Start connects the node role.
+//
+// No credential is needed: a node that presents only its device identity is parked
+// by the gateway as a pending pairing, which the operator side of ClawHQ approves.
+// The shared token is still accepted for gateways configured to demand one. After
+// the first pairing the stored device token is used. A pairing made with an older
+// command list is dropped first, so the gateway re-records the current surface.
 func (h *Host) Start(ctx context.Context, gatewayID, url, token string) (Status, error) {
+	return h.start(ctx, gatewayID, url, token, PairingConnecting)
+}
+
+func (h *Host) start(ctx context.Context, gatewayID, url, token, phase string) (Status, error) {
 	h.Stop()
+	h.mu.Lock()
+	h.generation++
+	gen := h.generation
+	h.mu.Unlock()
 
 	store, err := h.identityStore(gatewayID)
 	if err != nil {
 		return h.Status(), fmt.Errorf("node identity store: %w", err)
+	}
+	dir := filepath.Join(h.identityRoot, gatewayIDOrDefault(gatewayID)+"-node")
+	if strings.TrimSpace(store.LoadDeviceToken()) != "" && surfaceChanged(dir) {
+		// The gateway serves a node's command surface from its approved pairing
+		// record, and nothing can rewrite that in place. Pair afresh.
+		_ = store.Reset()
 	}
 	id, err := store.LoadOrGenerate()
 	if err != nil {
@@ -180,6 +291,7 @@ func (h *Host) Start(ctx context.Context, gatewayID, url, token string) (Status,
 		s.Enabled = true
 		s.GatewayID = gatewayID
 		s.DeviceID = id.DeviceID
+		s.Pairing = phase
 		s.Error = ""
 	})
 
@@ -203,25 +315,35 @@ func (h *Host) Start(ctx context.Context, gatewayID, url, token string) (Status,
 		ocgateway.WithOnInvoke(h.handleInvoke),
 		ocgateway.WithOnEvent(h.handleEvent),
 	}
-	if strings.TrimSpace(token) != "" {
+	deviceToken := strings.TrimSpace(store.LoadDeviceToken())
+	switch {
+	case strings.TrimSpace(token) != "":
 		opts = append(opts, ocgateway.WithToken(token))
-	} else {
-		deviceToken := strings.TrimSpace(store.LoadDeviceToken())
-		if deviceToken == "" {
-			err := fmt.Errorf("node role is not paired yet — supply the gateway token once")
-			h.setStatus(func(s *Status) { s.Error = err.Error() })
-			return h.Status(), err
-		}
+	case deviceToken != "":
 		opts = append(opts, ocgateway.WithDeviceToken(deviceToken))
+	default:
+		// First contact: identity only. The gateway answers NOT_PAIRED and queues a
+		// pairing request for an operator, which is what OnPending is for.
 	}
 
 	client := ocgateway.NewClient(opts...)
 	if err := client.Connect(ctx, url); err != nil {
-		h.setStatus(func(s *Status) { s.Connected = false; s.Error = err.Error() })
-		if isAwaitingApproval(err) {
-			// Node pairing always needs an operator to approve it, so retry quietly
-			// until they do rather than making the user come back and toggle this.
-			h.waitForApproval(gatewayID, url, token)
+		if h.Status().Enabled && h.currentGeneration() == gen {
+			if isAwaitingApproval(err) {
+				h.setStatus(func(s *Status) {
+					s.Connected = false
+					s.Pairing = PairingAwaiting
+					s.Error = ""
+				})
+				if h.onPending != nil {
+					go h.onPending(gatewayID, id.DeviceID)
+				}
+			} else {
+				h.setStatus(func(s *Status) { s.Connected = false; s.Error = err.Error() })
+			}
+			// Retry quietly until the gateway lets us in or the role is switched off,
+			// whether that is an approval landing or a tunnel coming back.
+			h.retryLater(gen, gatewayID, url, token)
 		}
 		return h.Status(), err
 	}
@@ -229,18 +351,82 @@ func (h *Host) Start(ctx context.Context, gatewayID, url, token string) (Status,
 	if hello := client.Hello(); hello != nil && hello.Auth != nil && hello.Auth.DeviceToken != "" {
 		_ = store.SaveDeviceToken(hello.Auth.DeviceToken)
 	}
+	saveSurface(dir)
 
 	h.mu.Lock()
 	h.client = client
 	h.mu.Unlock()
 
-	h.setStatus(func(s *Status) { s.Connected = true; s.Error = "" })
+	h.setStatus(func(s *Status) { s.Connected = true; s.Pairing = PairingConnected; s.Error = "" })
 
 	// Custom verbs reach agents as published tool descriptors, not as advertised
 	// commands, so announce them once the session is live.
 	h.publishPluginTools(ctx)
 
+	go h.watch(client, gen, gatewayID, url, token)
+	if h.onConnected != nil {
+		go h.onConnected(gatewayID, id.DeviceID)
+	}
 	return h.Status(), nil
+}
+
+func gatewayIDOrDefault(id string) string {
+	if id == "" {
+		return "default"
+	}
+	return id
+}
+
+func (h *Host) currentGeneration() uint64 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.generation
+}
+
+// watch reconnects when the gateway drops the connection. A deliberate Stop bumps
+// the generation first, so the watcher for that client simply exits.
+func (h *Host) watch(client *ocgateway.Client, gen uint64, gatewayID, url, token string) {
+	<-client.Done()
+	if h.currentGeneration() != gen || !h.Status().Enabled {
+		return
+	}
+	h.setStatus(func(s *Status) {
+		s.Connected = false
+		s.Pairing = PairingReconnecting
+		s.Error = "connection to the gateway dropped, reconnecting"
+	})
+	h.retryLater(gen, gatewayID, url, token)
+}
+
+// retryLater re-runs start with backoff until it connects, the role is switched
+// off, or a newer Start supersedes it.
+func (h *Host) retryLater(gen uint64, gatewayID, url, token string) {
+	go func() {
+		delay := 3 * time.Second
+		for {
+			time.Sleep(delay)
+			if h.currentGeneration() != gen || !h.Status().Enabled {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			// Keep the phase the UI is already showing; bouncing through
+			// "connecting" every few seconds reads as flapping.
+			phase := h.Status().Pairing
+			if phase == PairingIdle || phase == PairingConnected {
+				phase = PairingConnecting
+			}
+			next, _ := h.start(ctx, gatewayID, url, token, phase)
+			cancel()
+			if next.Connected {
+				return
+			}
+			// start bumped the generation; follow it so this loop stays the owner.
+			gen = h.currentGeneration()
+			if delay < 30*time.Second {
+				delay *= 2
+			}
+		}
+	}()
 }
 
 // Commands reports the surface this node advertises.
@@ -263,36 +449,17 @@ func isAwaitingApproval(err error) bool {
 	return false
 }
 
-// waitForApproval retries the node connection until an operator approves this device.
-func (h *Host) waitForApproval(gatewayID, url, token string) {
-	go func() {
-		deadline := time.Now().Add(10 * time.Minute)
-		for time.Now().Before(deadline) {
-			time.Sleep(5 * time.Second)
-			status := h.Status()
-			if !status.Enabled || status.Connected {
-				return
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			next, _ := h.Start(ctx, gatewayID, url, token)
-			cancel()
-			if next.Connected {
-				return
-			}
-		}
-	}()
-}
-
 func (h *Host) Stop() {
 	h.mu.Lock()
 	client := h.client
 	h.client = nil
+	h.generation++
 	h.mu.Unlock()
 
 	if client != nil {
 		_ = client.Close()
 	}
-	h.setStatus(func(s *Status) { s.Connected = false })
+	h.setStatus(func(s *Status) { s.Connected = false; s.Pairing = PairingIdle })
 }
 
 // Disable stops the node and marks it off, so it does not restart on next launch.
@@ -340,6 +507,14 @@ func (h *Host) runInvoke(req invokeRequest) {
 	switch req.Command {
 	case CmdSystemWhich:
 		payload = h.systemWhich(params)
+	case CmdSystemRunPrepare:
+		payload, failure = h.systemRunPrepare(params)
+	case CmdSystemRun:
+		payload, failure = h.systemRun(params)
+	case CmdExecApprovalsGet:
+		payload = h.execApprovalsGet()
+	case CmdExecApprovalsSet:
+		payload, failure = h.execApprovalsSet(params)
 	case CmdFsListDir:
 		payload = h.fsListDir(params)
 	case CmdScreenSnapshot:

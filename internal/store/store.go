@@ -36,15 +36,40 @@ type GatewayProfile struct {
 	LastConnectedAtMs int64 `json:"lastConnectedAtMs,omitempty"`
 }
 
+// Exec modes for agent commands run through the node role's system.run.
+const (
+	// ExecOff refuses every command.
+	ExecOff = "off"
+	// ExecAsk runs allowlisted commands and asks the user about the rest.
+	ExecAsk = "ask"
+	// ExecAllow runs everything without asking.
+	ExecAllow = "allow"
+)
+
+// ExecConfig is the policy for commands agents run on this machine.
+type ExecConfig struct {
+	Mode string `json:"mode"`
+	// Allow lists commands that run without a prompt. An entry matches the exact
+	// command text, a prefix when it ends in "*", or the command's first word when
+	// the entry is a bare program name such as "git".
+	Allow []string `json:"allow"`
+}
+
 // NodeConfig controls ClawHQ's node role: whether this machine exposes itself to
-// agents, and which folders they may browse. Off by default — turning it on hands
-// agents on the gateway reach into this computer.
+// agents, which folders they may browse, and what they may run. The role is on by
+// default because ClawHQ pairs and approves it by itself; what it exposes is still
+// gated feature by feature.
 type NodeConfig struct {
 	Enabled       bool     `json:"enabled"`
 	SharedFolders []string `json:"sharedFolders"`
 	// DesktopControl lets computer.act drive this machine's mouse and keyboard.
 	DesktopControl bool `json:"desktopControl,omitempty"`
+	// Exec is the policy for system.run. Defaults to asking.
+	Exec ExecConfig `json:"exec"`
 }
+
+// configVersion is bumped when a saved config needs migrating on read.
+const configVersion = 2
 
 type Config struct {
 	Version int `json:"version"`
@@ -60,7 +85,7 @@ type Config struct {
 
 func defaults() Config {
 	return Config{
-		Version:  1,
+		Version:  configVersion,
 		Gateways: []GatewayProfile{},
 		Departments: []Department{
 			{ID: "executive", Name: "Executive", Emoji: "🏛️", Order: 0},
@@ -69,7 +94,11 @@ func defaults() Config {
 			{ID: "operations", Name: "Operations", Emoji: "⚙️", Order: 3},
 		},
 		Assignments: map[string]string{},
-		Node:        NodeConfig{Enabled: false, SharedFolders: []string{}},
+		Node: NodeConfig{
+			Enabled:       true,
+			SharedFolders: []string{},
+			Exec:          ExecConfig{Mode: ExecAsk, Allow: []string{}},
+		},
 	}
 }
 
@@ -116,6 +145,21 @@ func (s *Store) readLocked() Config {
 	}
 	if cfg.Node.SharedFolders == nil {
 		cfg.Node.SharedFolders = []string{}
+	}
+	if cfg.Node.Exec.Allow == nil {
+		cfg.Node.Exec.Allow = []string{}
+	}
+	switch cfg.Node.Exec.Mode {
+	case ExecOff, ExecAsk, ExecAllow:
+	default:
+		cfg.Node.Exec.Mode = ExecAsk
+	}
+	// Version 1 configs pre-date automatic node pairing, when the role stayed off
+	// until the user pasted a token. Now that ClawHQ pairs itself, turn it on once;
+	// the switch in Settings still turns it off for good.
+	if cfg.Version < 2 {
+		cfg.Node.Enabled = true
+		cfg.Version = configVersion
 	}
 	// Migrate the single-gateway field into the list so existing installs keep their
 	// connection without the user re-entering it.
@@ -278,14 +322,42 @@ func newGatewayID(existing []GatewayProfile) string {
 
 // SetNodeConfig stores the node role settings.
 func (s *Store) SetNodeConfig(node NodeConfig) (Config, error) {
+	return s.UpdateNode(func(n *NodeConfig) { *n = node })
+}
+
+// UpdateNode applies a change to the node settings under the lock, so a caller that
+// touches one field cannot clobber another written at the same time.
+func (s *Store) UpdateNode(mutate func(*NodeConfig)) (Config, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cfg := s.readLocked()
-	if node.SharedFolders == nil {
-		node.SharedFolders = []string{}
+	mutate(&cfg.Node)
+	if cfg.Node.SharedFolders == nil {
+		cfg.Node.SharedFolders = []string{}
 	}
-	cfg.Node = node
+	if cfg.Node.Exec.Allow == nil {
+		cfg.Node.Exec.Allow = []string{}
+	}
+	if cfg.Node.Exec.Mode == "" {
+		cfg.Node.Exec.Mode = ExecAsk
+	}
 	return s.writeLocked(cfg)
+}
+
+// AllowExecCommand adds an entry to the exec allowlist, ignoring duplicates.
+func (s *Store) AllowExecCommand(entry string) (Config, error) {
+	entry = strings.TrimSpace(entry)
+	if entry == "" {
+		return s.Read(), nil
+	}
+	return s.UpdateNode(func(n *NodeConfig) {
+		for _, existing := range n.Exec.Allow {
+			if existing == entry {
+				return
+			}
+		}
+		n.Exec.Allow = append(n.Exec.Allow, entry)
+	})
 }
 
 // AssignAgent files an agent into a department, or removes the assignment when

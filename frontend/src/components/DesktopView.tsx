@@ -45,6 +45,7 @@ export function DesktopView({ node }: Props): React.JSX.Element {
   // "node.invoke: node not connected" — so say what is going on instead of asking.
   const online = node.connected === true
   const canControl = (node.commands ?? []).includes('computer.act')
+  const macTarget = /darwin|mac/i.test(node.platform ?? '')
 
   const [src, setSrc] = useState<string | null>(null)
   const [size, setSize] = useState<{ w: number; h: number } | null>(null)
@@ -197,9 +198,11 @@ export function DesktopView({ node }: Props): React.JSX.Element {
     if (e.metaKey && (e.key === 'q' || e.key === 'w' || e.key === 'h' || e.key === 'm')) return
     e.preventDefault()
 
-    // Cmd on a Mac keyboard means Ctrl on the Windows desktop: cmd+v is paste there.
+    // Cmd on a Mac keyboard means Ctrl on a Windows desktop (cmd+v is paste there)
+    // and stays Cmd on a Mac desktop.
     const mods: string[] = []
-    if (e.ctrlKey || e.metaKey) mods.push('ctrl')
+    if (e.metaKey) mods.push(macTarget ? 'cmd' : 'ctrl')
+    if (e.ctrlKey && !mods.includes('ctrl')) mods.push('ctrl')
     if (e.altKey) mods.push('alt')
     if (e.shiftKey && (e.key.length !== 1 || mods.length > 0)) mods.push('shift')
 

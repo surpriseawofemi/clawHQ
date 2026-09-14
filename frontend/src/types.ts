@@ -105,6 +105,24 @@ export type StreamingReply = {
   phase: string | null
 }
 
+/** What the node role is doing right now. */
+export type NodePairing = '' | 'connecting' | 'awaiting-approval' | 'reconnecting' | 'connected'
+
+/** How agent commands (system.run) are handled on this machine. */
+export type ExecMode = 'off' | 'ask' | 'allow'
+
+/** A command an agent wants to run here, waiting for the user's decision. */
+export type ExecRequest = {
+  id: string
+  command: string
+  argv: string[]
+  cwd: string
+  agentId: string
+  sessionKey: string
+  atMs: number
+  expiresAtMs: number
+}
+
 export type NodeStatus = {
   enabled: boolean
   connected: boolean
@@ -113,8 +131,27 @@ export type NodeStatus = {
   sharedFolders: string[]
   commands: string[]
   desktopControl: boolean
+  pairing: NodePairing
   error: string
   lastInvoke: string
+  execMode: ExecMode
+  execAllow: string[]
+  pendingExec: ExecRequest[]
+}
+
+/** An exec approval the gateway is asking operators to decide, from exec.approval.requested. */
+export type GatewayExecApproval = {
+  id: string
+  request: {
+    command?: string
+    cwd?: string | null
+    host?: string | null
+    nodeId?: string | null
+    agentId?: string | null
+    allowedDecisions?: string[]
+  }
+  createdAtMs?: number
+  expiresAtMs?: number
 }
 
 /** A system.notify an agent sent to this machine through the node role. */

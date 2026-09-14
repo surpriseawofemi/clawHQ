@@ -12,6 +12,8 @@ import type {
   ConnectionStatus,
   DaemonStatus,
   Department,
+  ExecMode,
+  ExecRequest,
   GatewayProfile,
   NodeStatus,
   UpdateStatus,
@@ -78,13 +80,18 @@ export const api = {
   },
   node: {
     status: (): Promise<NodeStatus> => NodeService.Status() as Promise<NodeStatus>,
-    enable: (token: string): Promise<NodeStatus> => NodeService.Enable(token) as Promise<NodeStatus>,
+    /** Switch the role on; pairing and approval happen by themselves. */
+    enable: (): Promise<NodeStatus> => NodeService.Enable() as Promise<NodeStatus>,
     disable: (): Promise<NodeStatus> => NodeService.Disable() as Promise<NodeStatus>,
     setSharedFolders: (folders: string[]): Promise<NodeStatus> =>
       NodeService.SetSharedFolders(folders) as Promise<NodeStatus>,
     setDesktopControl: (on: boolean): Promise<NodeStatus> =>
       NodeService.SetDesktopControl(on) as Promise<NodeStatus>,
-    /** Drop the node identity so the next enable pairs afresh with the current command list. */
+    setExecPolicy: (mode: ExecMode, allow: string[]): Promise<NodeStatus> =>
+      NodeService.SetExecPolicy(mode, allow) as Promise<NodeStatus>,
+    resolveExec: (id: string, decision: 'allow' | 'always' | 'deny'): Promise<NodeStatus> =>
+      NodeService.ResolveExec(id, decision) as Promise<NodeStatus>,
+    /** Drop the node identity and pair again with the current command list. */
     rePair: (): Promise<NodeStatus> => NodeService.RePair() as Promise<NodeStatus>
   },
   update: {
@@ -151,6 +158,13 @@ export const api = {
     return Events.On('node:notify', (raw: any) => {
       const n = eventPayload<NodeNotification>(raw)
       if (n) cb(n)
+    })
+  },
+  /** An agent wants to run a command on this machine and the policy says ask. */
+  onNodeExecRequest: (cb: (req: ExecRequest) => void): (() => void) => {
+    return Events.On('node:exec-request', (raw: any) => {
+      const req = eventPayload<ExecRequest>(raw)
+      if (req) cb(req)
     })
   },
   onNodeStatus: (cb: (status: NodeStatus) => void): (() => void) => {

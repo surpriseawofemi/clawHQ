@@ -242,104 +242,100 @@ type NodeService struct {
 	host  *node.Host
 	store *store.Store
 	conn  *gateway.Conn
+	auto  *nodeAutopilot
 }
 
-// RePair forgets this node's device identity so the next Enable pairs afresh.
+// RePair drops this node's device identity and pairs again right away.
 //
 // The gateway serves a node's command surface from its *approved* pairing record, and
-// neither the node nor an operator can rewrite that in place — `node.pair.request` is
-// refused both ways. Re-pairing is therefore how a changed command list reaches the
-// gateway: it raises a new approval showing the new surface.
+// neither the node nor an operator can rewrite that in place. Re-pairing is how a
+// changed command list reaches the gateway; the autopilot approves the new request.
 func (s *NodeService) RePair() (node.Status, error) {
-	s.host.Disable()
-	if err := s.host.ForgetPairing(); err != nil {
-		return s.host.Status(), err
+	if err := s.auto.rePair(); err != nil {
+		return s.Status(), err
 	}
-	cfg := s.store.Read()
-	if _, err := s.store.SetNodeConfig(store.NodeConfig{
-		Enabled:        false,
-		SharedFolders:  cfg.Node.SharedFolders,
-		DesktopControl: cfg.Node.DesktopControl,
-	}); err != nil {
-		return s.host.Status(), err
-	}
-	return s.host.Status(), nil
+	return s.Status(), nil
 }
 
 // Status reports the live host state, with the persisted "enabled" flag overlaid so a
 // node that is configured on but not yet connected reads as enabled rather than off.
 func (s *NodeService) Status() node.Status {
 	status := s.host.Status()
-	if cfg := s.store.Read(); cfg.Node.Enabled {
-		status.Enabled = true
+	cfg := s.store.Read()
+	status.Enabled = cfg.Node.Enabled
+	if status.ExecMode == "" {
+		status.ExecMode = cfg.Node.Exec.Mode
+		status.ExecAllow = cfg.Node.Exec.Allow
 	}
 	return status
 }
 
-// Enable connects the node role. The gateway token is needed once, to pair; after
-// that the stored device token is enough and token may be empty.
-func (s *NodeService) Enable(ctx context.Context, token string) (node.Status, error) {
-	cfg := s.store.Read()
-	profile, ok := cfg.ActiveGateway()
-	if !ok {
-		return s.host.Status(), fmt.Errorf("connect a gateway before enabling the node role")
+// Enable switches the node role on. Pairing and approval happen by themselves once
+// the operator connection is up, so there is nothing else to supply.
+func (s *NodeService) Enable(ctx context.Context) (node.Status, error) {
+	if _, ok := s.store.Read().ActiveGateway(); !ok {
+		return s.Status(), fmt.Errorf("connect a gateway before enabling the node role")
 	}
-
-	s.host.SetSharedFolders(cfg.Node.SharedFolders)
-	s.host.SetDesktopControl(cfg.Node.DesktopControl)
-	status, err := s.host.Start(ctx, profile.ID, profile.URL, token)
-	if err != nil {
-		return status, err
+	if _, err := s.store.UpdateNode(func(n *store.NodeConfig) { n.Enabled = true }); err != nil {
+		return s.Status(), err
 	}
-	if _, err := s.store.SetNodeConfig(store.NodeConfig{
-		Enabled:        true,
-		SharedFolders:  cfg.Node.SharedFolders,
-		DesktopControl: cfg.Node.DesktopControl,
-	}); err != nil {
-		return status, err
-	}
-	return status, nil
+	go s.auto.ensure()
+	return s.Status(), nil
 }
 
 func (s *NodeService) Disable() (node.Status, error) {
 	s.host.Disable()
-	cfg := s.store.Read()
-	if _, err := s.store.SetNodeConfig(store.NodeConfig{
-		Enabled:        false,
-		SharedFolders:  cfg.Node.SharedFolders,
-		DesktopControl: cfg.Node.DesktopControl,
-	}); err != nil {
-		return s.host.Status(), err
+	if _, err := s.store.UpdateNode(func(n *store.NodeConfig) { n.Enabled = false }); err != nil {
+		return s.Status(), err
 	}
-	return s.host.Status(), nil
+	return s.Status(), nil
 }
 
 // SetSharedFolders replaces the folders agents may browse on this machine.
 func (s *NodeService) SetSharedFolders(folders []string) (node.Status, error) {
-	cfg := s.store.Read()
-	if _, err := s.store.SetNodeConfig(store.NodeConfig{
-		Enabled:        cfg.Node.Enabled,
-		SharedFolders:  folders,
-		DesktopControl: cfg.Node.DesktopControl,
-	}); err != nil {
-		return s.host.Status(), err
+	if _, err := s.store.UpdateNode(func(n *store.NodeConfig) { n.SharedFolders = folders }); err != nil {
+		return s.Status(), err
 	}
 	s.host.SetSharedFolders(folders)
-	return s.host.Status(), nil
+	return s.Status(), nil
 }
 
 // SetDesktopControl decides whether agents (and ClawHQ on another machine) may drive
 // this computer's mouse and keyboard through computer.act. Off by default: it is the
 // single most powerful thing the node role can expose.
 func (s *NodeService) SetDesktopControl(on bool) (node.Status, error) {
-	cfg := s.store.Read()
-	if _, err := s.store.SetNodeConfig(store.NodeConfig{
-		Enabled:        cfg.Node.Enabled,
-		SharedFolders:  cfg.Node.SharedFolders,
-		DesktopControl: on,
-	}); err != nil {
-		return s.host.Status(), err
+	if _, err := s.store.UpdateNode(func(n *store.NodeConfig) { n.DesktopControl = on }); err != nil {
+		return s.Status(), err
 	}
 	s.host.SetDesktopControl(on)
-	return s.host.Status(), nil
+	return s.Status(), nil
+}
+
+// SetExecPolicy sets how agent commands are handled: off, ask, or allow, plus the
+// allowlist that runs without asking.
+func (s *NodeService) SetExecPolicy(mode string, allow []string) (node.Status, error) {
+	switch mode {
+	case store.ExecOff, store.ExecAsk, store.ExecAllow:
+	default:
+		return s.Status(), fmt.Errorf("unknown exec mode %q", mode)
+	}
+	if allow == nil {
+		allow = []string{}
+	}
+	if _, err := s.store.UpdateNode(func(n *store.NodeConfig) {
+		n.Exec.Mode = mode
+		n.Exec.Allow = allow
+	}); err != nil {
+		return s.Status(), err
+	}
+	s.host.SetExecPolicy(mode, allow)
+	return s.Status(), nil
+}
+
+// ResolveExec answers a command waiting for approval: allow, always, or deny.
+func (s *NodeService) ResolveExec(id, decision string) (node.Status, error) {
+	if err := s.host.ResolveExec(id, decision); err != nil {
+		return s.Status(), err
+	}
+	return s.Status(), nil
 }

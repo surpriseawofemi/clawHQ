@@ -80,9 +80,16 @@ type Conn struct {
 
 	// cancelPending stops an in-flight approval wait.
 	cancelPending context.CancelFunc
+	// generation is bumped by every connect and Disconnect, so the watcher for a
+	// dropped client can tell a deliberate disconnect from a lost connection.
+	generation uint64
 
 	emitEvent  func(Event)
 	emitStatus func(Status)
+	// listeners are Go-side event subscribers; the frontend gets emitEvent.
+	listeners []func(Event)
+	// onConnected fires after every successful connect, reconnects included.
+	onConnected func(Status)
 }
 
 func New(identityRoot string, emitEvent func(Event), emitStatus func(Status)) (*Conn, error) {
@@ -92,6 +99,89 @@ func New(identityRoot string, emitEvent func(Event), emitStatus func(Status)) (*
 		emitEvent:    emitEvent,
 		emitStatus:   emitStatus,
 	}, nil
+}
+
+// SetOnConnected installs the callback run after each successful connect.
+func (c *Conn) SetOnConnected(fn func(Status)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onConnected = fn
+}
+
+// AddEventListener subscribes Go code to gateway events, alongside the frontend.
+func (c *Conn) AddEventListener(fn func(Event)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.listeners = append(c.listeners, fn)
+}
+
+func (c *Conn) dispatchEvent(ev Event) {
+	if c.emitEvent != nil {
+		c.emitEvent(ev)
+	}
+	c.mu.RLock()
+	listeners := make([]func(Event), len(c.listeners))
+	copy(listeners, c.listeners)
+	c.mu.RUnlock()
+	for _, fn := range listeners {
+		fn(ev)
+	}
+}
+
+func (c *Conn) currentGeneration() uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.generation
+}
+
+// watch reconnects with the stored device token when the gateway drops the
+// connection. A deliberate Disconnect bumps the generation first, so the watcher
+// for that client exits instead.
+func (c *Conn) watch(client *ocgateway.Client, gen uint64, gatewayID, url string) {
+	<-client.Done()
+	if c.currentGeneration() != gen {
+		return
+	}
+	c.mu.Lock()
+	if c.client == client {
+		c.client = nil
+	}
+	c.mu.Unlock()
+	c.setStatus(func(s *Status) {
+		s.Phase = PhaseConnecting
+		s.Error = "connection to the gateway dropped, reconnecting"
+	})
+
+	delay := 2 * time.Second
+	for {
+		time.Sleep(delay)
+		if c.currentGeneration() != gen {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		status, err := c.connect(ctx, gatewayID, url, Credential{}, true)
+		cancel()
+		if status.Phase == PhaseConnected {
+			return
+		}
+		if err != nil && isPairingRefused(err) {
+			// The device token is dead: reconnecting will never work, so stop and
+			// let the UI show the pairing form.
+			c.setStatus(func(s *Status) { s.Phase = PhaseError; s.Error = err.Error() })
+			return
+		}
+		// connect bumped the generation; follow it so this loop stays the owner.
+		gen = c.currentGeneration()
+		c.setStatus(func(s *Status) {
+			s.Phase = PhaseConnecting
+			if err != nil {
+				s.Error = "reconnecting: " + err.Error()
+			}
+		})
+		if delay < 30*time.Second {
+			delay *= 2
+		}
+	}
 }
 
 func (c *Conn) Status() Status {
@@ -253,9 +343,7 @@ func (c *Conn) connect(ctx context.Context, gatewayID, url string, cred Credenti
 		ocgateway.WithScopes(Scopes...),
 		ocgateway.WithIdentity(id, ""),
 		ocgateway.WithOnEvent(func(ev protocol.Event) {
-			if c.emitEvent != nil {
-				c.emitEvent(Event{Event: string(ev.EventName), Payload: ev.Payload})
-			}
+			c.dispatchEvent(Event{Event: string(ev.EventName), Payload: ev.Payload})
 		}),
 	}
 
@@ -295,6 +383,8 @@ func (c *Conn) connect(ctx context.Context, gatewayID, url string, cred Credenti
 	hello := client.Hello()
 	c.mu.Lock()
 	c.client = client
+	c.generation++
+	gen := c.generation
 	c.mu.Unlock()
 
 	var scopes []string
@@ -336,6 +426,13 @@ func (c *Conn) connect(ctx context.Context, gatewayID, url string, cred Credenti
 		s.Error = ""
 		s.WaitingSinceMs = 0
 	})
+	go c.watch(client, gen, gatewayID, url)
+	c.mu.RLock()
+	onConnected := c.onConnected
+	c.mu.RUnlock()
+	if onConnected != nil {
+		go onConnected(c.Status())
+	}
 	return c.Status(), nil
 }
 
@@ -487,6 +584,7 @@ func (c *Conn) Disconnect() {
 	c.client = nil
 	cancel := c.cancelPending
 	c.cancelPending = nil
+	c.generation++
 	c.mu.Unlock()
 
 	if cancel != nil {

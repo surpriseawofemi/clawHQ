@@ -161,36 +161,78 @@ is what makes "read the code in this folder on my Mac" work when the gateway liv
 another machine — the node dials out, so there are no inbound ports and it behaves the
 same over an SSH tunnel, a Cloudflare tunnel, or a tailnet.
 
-It is **off by default** and scoped to an explicit folder list. Commands advertised:
+It is **on by default** and pairs itself. What it exposes is gated feature by feature:
+folders are an explicit list, desktop control is a switch, and commands go through a
+policy. Commands advertised:
 
 | Command | Does |
 | --- | --- |
 | `fs.listDir` | Lists sub-directories, refusing anything outside the shared folders |
 | `system.which` | Resolves binaries on PATH |
-| `screen.snapshot` | Captures the desktop as a PNG (Windows only so far) |
-| `computer.act` | Mouse, keyboard and scroll in screenshot coordinates (Windows only so far). Refused unless "Allow desktop control" is on in Settings |
+| `system.run.prepare`, `system.run` | Runs a shell command for the gateway's exec tool, subject to the policy below |
+| `system.execApprovals.get`, `.set` | Reports (and accepts) the exec policy in the gateway's own shape |
+| `screen.snapshot` | Captures the desktop as a PNG (Windows and macOS) |
+| `computer.act` | Mouse, keyboard and scroll in screenshot coordinates (Windows and macOS). Refused unless "Allow desktop control" is on in Settings |
 | `system.notify` | Shows a notification on this machine and a banner in ClawHQ — how an agent asks for a human |
+| `clawhq.departments.list`, `clawhq.departments.create`, `clawhq.agents.assign` | The org chart, for agents |
+
+### Pairing is automatic
+
+A node needs no credential to ask for pairing: it presents its device identity, the
+gateway parks it as a pending request, and an operator approves it. ClawHQ is both
+sides of that. As soon as the operator connection is up it starts the node role,
+watches `node.pair.requested` (and polls `node.pair.list` as a fallback), approves its
+own request, and the node's retry loop connects. Nothing to paste, nothing to click.
+
+The gateway records a node's command list at approval time and nothing can rewrite it
+in place, so a changed surface needs a fresh pairing. ClawHQ keeps the list it paired
+with next to the node identity and drops the pairing when the compiled-in list differs;
+after connecting it also compares the gateway's approved list (`node.list`) with its
+own and re-pairs once per launch if commands are missing. **Re-pair now** in Settings
+forces the same thing.
+
+Both roles reconnect on their own with backoff when the gateway drops them. A dead
+device token stops the operator retry and shows the pairing form instead.
+
+### Commands agents run here
+
+The gateway's exec tool with `host=node` calls `system.run.prepare` for a canonical
+plan, applies its own approval policy, then calls `system.run`. ClawHQ's policy sits on
+top, in Settings → node:
+
+- **Ask me** (default): allowlisted commands run; anything else shows a banner with
+  Allow once / Always / Deny. Nobody answering within two minutes means deny.
+- **Run without asking**: everything runs.
+- **Off**: everything is refused.
+
+The allowlist takes an exact command, a bare program name (`git`), or a prefix ending
+in `*` (`npm run *`). When the gateway's own policy already asked an operator and got a
+yes, it sends `approved: true` and ClawHQ does not ask again. Gateway-side approval
+requests (`exec.approval.requested`) show up as the same banners, because ClawHQ holds
+the `operator.admin` scope; they are answered with `exec.approval.resolve`.
+
+Output is capped at 256 KB per stream and commands at ten minutes. The generic
+`node.invoke` RPC refuses `system.run`, so an agent cannot reach it except through the
+exec tool and its approval policy.
 
 ### Seeing and driving a remote desktop
 
 Pick a desktop in the sidebar to watch it. **Take control** sends your clicks, scroll,
 keystrokes and pastes to that machine as `computer.act` actions and pulls a fresh frame
-after each one. Cmd on a Mac keyboard is sent as Ctrl, since the target is Windows. The
-text box at the bottom sends a string verbatim, which is the reliable way to enter a
-password. Every action is a gateway round trip, so expect a beat of latency; this is for
-logging into an account for an agent, not for using the machine all day.
+after each one. Cmd on a Mac keyboard is sent as Ctrl to a Windows desktop and as Cmd to
+a Mac. The text box at the bottom sends a string verbatim, which is the reliable way to
+enter a password. Every action is a gateway round trip, so expect a beat of latency;
+this is for logging into an account for an agent, not for using the machine all day.
+
+On macOS capture uses `screencapture` and input uses CGEvent. The first screenshot
+asks for Screen Recording and the first input action asks for Accessibility; both are
+granted per app in System Settings → Privacy & Security, and Screen Recording usually
+needs an app restart. Screenshots are in Retina pixels and are mapped back to display
+points, so coordinates land where the screenshot shows them.
 
 When an agent needs you it can call `system.notify` on the node role of the machine you
 are sitting at. ClawHQ shows the message as a banner with an **Open desktop** shortcut,
 and macOS gets a Notification Center alert as well.
-
-Adding `computer.act` and `system.notify` changed the advertised command list, so a node
-paired before this needs **Re-pair with new command list** in Settings, followed by a
-fresh approval on the gateway.
-
-Turning it on needs the gateway token once (a node gets its own device identity, so it
-appears separately from the operator in `openclaw devices list`) and an operator has to
-approve the pairing — ClawHQ can do that itself, see below.
 
 ### Node invokes are events, not frames
 
@@ -212,32 +254,31 @@ against this gateway version; it is kept only for older ones.
 A node's commands are served from its **approved pairing record**, and nothing can
 rewrite that in place — `node.pair.request` is refused to a node ("unauthorized role:
 node") *and* to an operator ("unknown method"). The way to change the surface is to
-**re-pair the node**: `NodeService.RePair` drops its device identity so the next enable
-raises a fresh approval showing the new commands.
+re-pair the node, which ClawHQ now does by itself (see "Pairing is automatic").
 
-### Custom commands need tool descriptors, not invoke names
+### Custom commands: the allowlist, not a plugin
 
-ClawHQ's own verbs — `clawhq.departments.create`, `clawhq.agents.assign` — are
-implemented in `internal/node` but are **not reachable yet**. The gateway enforces a
-per-platform command allowlist:
+ClawHQ's own verbs — `clawhq.departments.list`, `clawhq.departments.create`,
+`clawhq.agents.assign` — reach agents as plugin tool descriptors published with
+`node.pluginTools.update`. A descriptor is silently dropped unless its backing command
+is in the gateway's node command allowlist, and the gateway's per-platform defaults do
+not know these names:
 
 ```
 node command not allowed: "clawhq.departments.list"
 is not in the allowlist for platform "windows"
 ```
 
-Publishing them as plugin tool descriptors via `node.pluginTools.update` does not rescue
-them either. A descriptor is accepted and then **silently dropped** — the call returns
-`ok` with `tools: []` and the node's `nodePluginTools` stays empty.
+The allowlist is config, though: `gateway.nodes.commands.allow` (older gateways spell
+it `gateway.nodes.allowCommands`). ClawHQ holds `operator.admin`, so on every connect
+it reads `config.get`, adds any of its advertised commands that are missing with
+`config.patch`, and re-pairs if the approved surface was recorded before that. Both
+spellings are tried. After that the descriptors register and agents get
+`clawhq_departments_list`, `clawhq_department_create` and `clawhq_agent_assign`.
 
-The reason, established by experiment: a descriptor's backing `command` must already be
-in the allowlist. An otherwise identical descriptor backed by `fs.listDir` registered
-fine; the `clawhq.*` ones did not. `gateway.nodes.pluginTools.enabled` defaults to
-true, so the switch is not the problem.
-
-**A node cannot introduce new verbs on its own.** Reaching agents with ClawHQ's own
-commands needs either a gateway-side plugin that registers them, or routing through a
-command that is already allowlisted.
+The org chart stays in this machine's `clawhq.json`, so agents can only reach it while
+ClawHQ is running here. A gateway-side plugin would lift that, but it has to be
+installed on the gateway host's filesystem, which ClawHQ cannot do over the wire.
 
 ### Pending approvals
 
@@ -286,15 +327,15 @@ gateway lock file.
   start/stop cannot, since a stopped gateway has no RPC to answer.
 - **One connection at a time.** Several gateways can be saved and switched between, but
   only the active one is connected; the sidebar shows its agents alone.
-- **Agents cannot manage departments yet.** The handlers and tool descriptors exist, but
-  the gateway drops descriptors whose backing command is not allowlisted, so they never
-  reach an agent (see above).
-- **The node exposes no shell.** `system.run` is deliberately not implemented — the
-  gateway reserves it for the exec tool and its approval policy, and it deserves its own
-  design pass rather than being bolted on.
-- **Desktop control and capture are Windows-only.** `screen.snapshot` and `computer.act`
-  are implemented with plain Win32 calls; macOS needs ScreenCaptureKit and CGEvent
-  through CGO plus Screen Recording and Accessibility grants.
+- **Departments live on one machine.** Agents manage them through this machine's node
+  role, so they are out of reach while ClawHQ is closed here. Moving them to a gateway
+  plugin needs files on the gateway host.
+- **Exec allowlist entries are ClawHQ's own shape.** The gateway's Control UI pushes
+  binary-path patterns through `system.execApprovals.set`; only its security level is
+  mapped onto the mode here, the patterns are not imported.
+- **macOS input assumes a US keyboard layout** for single-character keys, and
+  `screenGeometry` reports the main display only, so secondary displays do not map.
+- **Linux has no capture or input yet.**
 - **Uptime** shows "unknown" when `openclaw daemon status` omits it.
 - Attachments, tool-call rendering, and multi-session-per-agent views are not built yet;
   only each agent's main thread is shown.
