@@ -47,7 +47,7 @@ func (s *GatewayService) RemoveGateway(gatewayID string) (store.Config, error) {
 // Passing an empty token reuses the stored device token, which is the normal path once
 // a gateway has been paired.
 func (s *GatewayService) ConnectWithToken(ctx context.Context, gatewayID, name, url, token string) (gateway.Status, error) {
-	cfg, err := s.store.UpsertGateway(store.GatewayProfile{ID: gatewayID, Name: name, URL: url})
+	cfg, err := s.store.UpsertGateway(s.profileFor(gatewayID, name, url))
 	if err != nil {
 		return s.conn.Status(), err
 	}
@@ -73,7 +73,7 @@ func (s *GatewayService) PairWithSetupCode(ctx context.Context, name, setupCode 
 	if err != nil {
 		return s.conn.Status(), err
 	}
-	cfg, err := s.store.UpsertGateway(store.GatewayProfile{Name: name, URL: sc.URL})
+	cfg, err := s.store.UpsertGateway(s.profileFor("", name, sc.URL))
 	if err != nil {
 		return s.conn.Status(), err
 	}
@@ -91,6 +91,22 @@ func (s *GatewayService) PairWithSetupCode(ctx context.Context, name, setupCode 
 		_, _ = s.store.TouchGateway(profile.ID)
 	}
 	return status, nil
+}
+
+// profileFor picks the profile a connect attempt should run under. With no explicit
+// ID it reuses the saved profile for that URL, so retrying a gateway — a second setup
+// code, the token after a code — keeps the same device identity instead of minting a
+// new device the operator has to approve all over again.
+func (s *GatewayService) profileFor(gatewayID, name, url string) store.GatewayProfile {
+	if gatewayID == "" {
+		if existing, ok := s.store.Read().FindGatewayByURL(url); ok {
+			gatewayID = existing.ID
+			if name == "" {
+				name = existing.Name
+			}
+		}
+	}
+	return store.GatewayProfile{ID: gatewayID, Name: name, URL: url}
 }
 
 // Connect switches to a saved gateway using its stored device token.

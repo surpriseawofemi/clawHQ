@@ -199,7 +199,18 @@ type Credential struct {
 // which is the normal path after the first pairing.
 func (c *Conn) Connect(ctx context.Context, gatewayID, url string, cred Credential) (Status, error) {
 	c.Disconnect()
+	return c.connect(ctx, gatewayID, url, cred, false)
+}
 
+// connect is Connect without the teardown. WaitForApproval calls it directly: going
+// through Connect would run Disconnect, which cancels cancelPending — the retry
+// loop's own context — so the very first retry used to fail with "operation was
+// canceled", flip the phase to error, and the loop exited. From the outside that was
+// "waiting for approval" silently dropping back to the login form five seconds in.
+//
+// retrying keeps the phase at pending instead of bouncing through connecting, which
+// the onboarding screen renders as the form flashing back.
+func (c *Conn) connect(ctx context.Context, gatewayID, url string, cred Credential, retrying bool) (Status, error) {
 	if url == "" {
 		url = DefaultURL
 	}
@@ -213,14 +224,21 @@ func (c *Conn) Connect(ctx context.Context, gatewayID, url string, cred Credenti
 		return c.Status(), fmt.Errorf("device identity: %w", err)
 	}
 
+	waitingSince := c.Status().WaitingSinceMs
 	c.setStatus(func(s *Status) {
-		s.Phase = PhaseConnecting
+		if !retrying {
+			s.Phase = PhaseConnecting
+			s.Error = ""
+			s.WaitingSinceMs = 0
+			waitingSince = 0
+		}
 		s.GatewayID = gatewayID
 		s.URL = url
 		s.DeviceID = id.DeviceID
-		s.Error = ""
-		s.WaitingSinceMs = 0
 	})
+	if waitingSince == 0 {
+		waitingSince = time.Now().UnixMilli()
+	}
 
 	opts := []ocgateway.Option{
 		ocgateway.WithClientInfo(protocol.ClientInfo{
@@ -266,7 +284,7 @@ func (c *Conn) Connect(ctx context.Context, gatewayID, url string, cred Credenti
 			c.setStatus(func(s *Status) {
 				s.Phase = PhasePending
 				s.Error = err.Error()
-				s.WaitingSinceMs = time.Now().UnixMilli()
+				s.WaitingSinceMs = waitingSince
 			})
 			return c.Status(), nil
 		}
@@ -304,7 +322,7 @@ func (c *Conn) Connect(ctx context.Context, gatewayID, url string, cred Credenti
 			s.Phase = PhasePending
 			s.ServerVersion = serverVersion
 			s.Error = "connected, but no scopes were granted yet — this device is awaiting approval"
-			s.WaitingSinceMs = time.Now().UnixMilli()
+			s.WaitingSinceMs = waitingSince
 		})
 		return c.Status(), nil
 	}
@@ -346,9 +364,40 @@ func isAwaitingApproval(err error) bool {
 	return false
 }
 
+// retryInterval is how often WaitForApproval re-tries. A variable so tests can
+// shorten it.
+var retryInterval = 5 * time.Second
+
+// isPairingRefused recognises a refusal that no amount of waiting will fix: the
+// operator rejected the device, or the credential we hold is dead.
+func isPairingRefused(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, needle := range []string{
+		"reject",
+		"revoked",
+		"already used",
+		"expired",
+		"invalid",
+		"unauthorized",
+	} {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
+}
+
 // WaitForApproval retries the connection until the device is approved, the context
 // ends, or the deadline passes. It is what turns "pending" into "connected" without
 // the user having to click connect again after approving.
+//
+// Each retry prefers the device token if the gateway has issued one by now, and
+// otherwise re-presents the original credential. Transient failures (the tunnel
+// blipped, the gateway restarted) keep the phase at pending; only an explicit
+// refusal or the deadline gives up.
 func (c *Conn) WaitForApproval(ctx context.Context, gatewayID, url string, cred Credential) {
 	c.mu.Lock()
 	if c.cancelPending != nil {
@@ -360,7 +409,7 @@ func (c *Conn) WaitForApproval(ctx context.Context, gatewayID, url string, cred 
 
 	go func() {
 		defer cancel()
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(retryInterval)
 		defer ticker.Stop()
 
 		for {
@@ -377,12 +426,39 @@ func (c *Conn) WaitForApproval(ctx context.Context, gatewayID, url string, cred 
 				if c.Status().Phase != PhasePending {
 					return
 				}
+
+				attempt := cred
+				if store, err := c.identityStore(gatewayID); err == nil {
+					if strings.TrimSpace(store.LoadDeviceToken()) != "" {
+						attempt = Credential{}
+					}
+				}
+
 				attemptCtx, attemptCancel := context.WithTimeout(waitCtx, 30*time.Second)
-				status, _ := c.Connect(attemptCtx, gatewayID, url, cred)
+				status, err := c.connect(attemptCtx, gatewayID, url, attempt, true)
 				attemptCancel()
+
 				if status.Phase == PhaseConnected {
 					return
 				}
+				if status.Phase == PhasePending {
+					continue
+				}
+				if err != nil && isPairingRefused(err) {
+					msg := err.Error()
+					if cred.BootstrapToken != "" && attempt.BootstrapToken != "" {
+						msg += " — setup codes are single-use, so once the operator has approved this device connect again with the gateway URL + token, or paste a fresh code"
+					}
+					c.setStatus(func(s *Status) { s.Phase = PhaseError; s.Error = msg })
+					return
+				}
+				// Anything else is transient: stay pending, note what happened.
+				c.setStatus(func(s *Status) {
+					s.Phase = PhasePending
+					if err != nil {
+						s.Error = "still waiting — last attempt: " + err.Error()
+					}
+				})
 			}
 		}
 	}()

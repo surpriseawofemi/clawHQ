@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -161,6 +162,27 @@ func (s *Store) writeLocked(cfg Config) (Config, error) {
 }
 
 // UpsertGateway adds or updates a gateway profile and makes it the active one.
+// FindGatewayByURL returns the saved profile for a gateway URL, ignoring case,
+// surrounding space, and a trailing slash. Device identities are keyed by profile
+// ID, so pairing the same URL twice under two IDs means two devices the operator
+// has to approve — and only the first one ever gets approved.
+func (c Config) FindGatewayByURL(url string) (GatewayProfile, bool) {
+	want := normalizeURL(url)
+	if want == "" {
+		return GatewayProfile{}, false
+	}
+	for _, g := range c.Gateways {
+		if normalizeURL(g.URL) == want {
+			return g, true
+		}
+	}
+	return GatewayProfile{}, false
+}
+
+func normalizeURL(u string) string {
+	return strings.ToLower(strings.TrimRight(strings.TrimSpace(u), "/"))
+}
+
 func (s *Store) UpsertGateway(g GatewayProfile) (Config, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

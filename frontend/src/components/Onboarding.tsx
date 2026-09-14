@@ -58,6 +58,9 @@ export function Onboarding({ status, onConnected }: Props): React.JSX.Element {
             gateway host, or approve it in the Control UI under Devices. ClawHQ connects
             by itself once that happens.
           </p>
+          {status.error?.startsWith('still waiting') && (
+            <p className="onboard-hint">{status.error}</p>
+          )}
           <button className="btn" onClick={() => api.connection.cancelApprovalWait()}>
             Stop waiting
           </button>
@@ -159,6 +162,9 @@ export function Onboarding({ status, onConnected }: Props): React.JSX.Element {
         </details>
 
         {error && <p className="error-text">{error}</p>}
+        {!error && status.phase === 'error' && status.error && (
+          <p className="error-text">{status.error}</p>
+        )}
       </div>
     </div>
   )
