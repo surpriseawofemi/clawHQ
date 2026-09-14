@@ -162,3 +162,12 @@ export function agentLabel(agent: Agent): string {
 export function agentEmoji(agent: Agent): string {
   return agent.identity?.emoji?.trim() || '🤖'
 }
+
+/** Something picked for the composer: a text file, an image, a folder, or a skip. */
+export type Attachment = {
+  path: string
+  name: string
+  kind: 'text' | 'image' | 'folder' | 'unsupported'
+  size: number
+  note?: string
+}

@@ -7,6 +7,7 @@ import {
   UpdateService
 } from '../bindings/github.com/surpriseawofemi/clawhq'
 import type {
+  Attachment,
   ClawHQConfig,
   ConnectionStatus,
   DaemonStatus,
@@ -99,7 +100,20 @@ export const api = {
     sendChat: async (sessionKey: string, message: string): Promise<{ runId: string }> => {
       const raw = await GatewayService.SendChat(sessionKey, message)
       return raw ? JSON.parse(raw) : { runId: '' }
+    },
+    /** Send with files: text is inlined, images travel as attachments, the rest is reported in `skipped`. */
+    sendChatWithFiles: async (
+      sessionKey: string,
+      message: string,
+      paths: string[]
+    ): Promise<{ runId?: string; skipped?: string[] }> => {
+      const raw = await GatewayService.SendChatWithFiles(sessionKey, message, paths)
+      return raw ? JSON.parse(raw) : {}
     }
+  },
+  attachments: {
+    pickFiles: (): Promise<Attachment[]> => GatewayService.PickFiles() as Promise<Attachment[]>,
+    pickFolder: (): Promise<Attachment[]> => GatewayService.PickFolder() as Promise<Attachment[]>
   },
   config: {
     get: (): Promise<ClawHQConfig> => ConfigService.Get() as Promise<ClawHQConfig>,

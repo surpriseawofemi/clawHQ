@@ -548,9 +548,18 @@ func (c *Conn) Request(ctx context.Context, method string, params any) (json.Raw
 // SendChat posts a message into a session. The reply arrives as `chat` stream events,
 // not as a return value.
 func (c *Conn) SendChat(ctx context.Context, sessionKey, message string) (json.RawMessage, error) {
-	return c.Request(ctx, "chat.send", map[string]any{
+	return c.SendChatWith(ctx, sessionKey, message, nil)
+}
+
+// SendChatWith is SendChat plus an attachments array, passed through verbatim.
+func (c *Conn) SendChatWith(ctx context.Context, sessionKey, message string, attachments json.RawMessage) (json.RawMessage, error) {
+	params := map[string]any{
 		"sessionKey":     sessionKey,
 		"message":        message,
 		"idempotencyKey": newIdempotencyKey(),
-	})
+	}
+	if len(attachments) > 0 {
+		params["attachments"] = attachments
+	}
+	return c.Request(ctx, "chat.send", params)
 }

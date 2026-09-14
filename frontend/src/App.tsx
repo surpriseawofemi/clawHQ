@@ -32,6 +32,10 @@ function App(): React.JSX.Element {
     selectedAgent,
     selectedAgentId,
     setSelectedAgentId,
+    selectedKey,
+    agentSessions,
+    selectSession,
+    newSession,
     currentMessages,
     currentStream,
     busy,
@@ -60,6 +64,7 @@ function App(): React.JSX.Element {
         selectedAgentId={selectedAgentId}
         onSelect={(id) => {
           setSelectedNodeId(null)
+          selectSession(null)
           setSelectedAgentId(id)
         }}
         desktops={desktops}
@@ -76,6 +81,10 @@ function App(): React.JSX.Element {
       ) : (
       <ChatView
         agent={selectedAgent}
+        sessionKey={selectedKey}
+        sessions={agentSessions}
+        onSelectSession={selectSession}
+        onNewSession={newSession}
         messages={currentMessages}
         stream={currentStream}
         busy={busy}

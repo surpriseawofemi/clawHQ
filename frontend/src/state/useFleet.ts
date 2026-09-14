@@ -37,6 +37,8 @@ export function useFleet() {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [desktops, setDesktops] = useState<RemoteNode[]>([])
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
+  // A session other than the agent's main thread, chosen from the picker or just created.
+  const [selectedSessionKey, setSelectedSessionKey] = useState<string | null>(null)
   const [messages, setMessages] = useState<Record<string, ChatMessage[]>>({})
   const [streaming, setStreaming] = useState<StreamingReply | null>(null)
   const [busy, setBusy] = useState(false)
@@ -46,7 +48,11 @@ export function useFleet() {
   const subscribed = useRef<Set<string>>(new Set())
 
   const connected = status.phase === 'connected'
-  const selectedKey = selectedAgentId ? mainSessionKey(selectedAgentId) : null
+  const selectedKey = selectedAgentId
+    ? selectedSessionKey && selectedSessionKey.startsWith(`agent:${selectedAgentId}:`)
+      ? selectedSessionKey
+      : mainSessionKey(selectedAgentId)
+    : null
 
   // ---- bootstrap --------------------------------------------------------
   useEffect(() => {
@@ -248,12 +254,18 @@ export function useFleet() {
 
   // ---- actions ----------------------------------------------------------
   const sendMessage = useCallback(
-    async (text: string) => {
-      if (!selectedKey || !text.trim()) return
+    async (text: string, paths: string[] = []) => {
+      if (!selectedKey || (!text.trim() && paths.length === 0)) return
       setBusy(true)
       try {
-        await api().rpc.sendChat(selectedKey, text)
-        setError(null)
+        if (paths.length > 0) {
+          const reply = await api().rpc.sendChatWithFiles(selectedKey, text, paths)
+          if (reply.skipped?.length) setError(`Not sent: ${reply.skipped.join('; ')}`)
+          else setError(null)
+        } else {
+          await api().rpc.sendChat(selectedKey, text)
+          setError(null)
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
       } finally {
@@ -261,6 +273,46 @@ export function useFleet() {
       }
     },
     [selectedKey]
+  )
+
+  // Sessions the picker offers for the selected agent: main first, then the rest by
+  // recency. Cron-driven automation threads are left out; they are not conversations.
+  const agentSessions = useMemo(() => {
+    if (!selectedAgentId) return []
+    const prefix = `agent:${selectedAgentId}:`
+    const list = sessions
+      .filter((s) => s.key.startsWith(prefix) && !s.key.startsWith(`${prefix}cron:`))
+      .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+    const main = mainSessionKey(selectedAgentId)
+    const rest = list.filter((s) => s.key !== main)
+    const mainInfo = list.find((s) => s.key === main) ?? { key: main, agentId: selectedAgentId, isMain: true }
+    return [mainInfo, ...rest]
+  }, [sessions, selectedAgentId])
+
+  const selectSession = useCallback((key: string | null) => {
+    setSelectedSessionKey(key)
+  }, [])
+
+  // A fresh thread with the agent. The gateway picks the key and files it under the
+  // agent's main session as parent.
+  const newSession = useCallback(
+    async (label?: string) => {
+      if (!selectedAgentId || !connected) return
+      try {
+        const created = await api().rpc.request<{ key?: string }>('sessions.create', {
+          agentId: selectedAgentId,
+          label: label?.trim() || `Chat ${new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+        })
+        if (created?.key) {
+          setSelectedSessionKey(created.key)
+          void refreshFleet()
+        }
+        setError(null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [selectedAgentId, connected, refreshFleet]
   )
 
   const abortRun = useCallback(async () => {
@@ -293,6 +345,10 @@ export function useFleet() {
     selectedAgent,
     selectedAgentId,
     setSelectedAgentId,
+    selectedKey,
+    agentSessions,
+    selectSession,
+    newSession,
     currentMessages,
     currentStream,
     busy,
