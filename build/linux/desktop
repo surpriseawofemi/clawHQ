@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=ClawHQ
+Comment=Desktop command center for your OpenClaw agent org
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/clawhq-wails.exe %u
+Terminal=false
+Type=Application
+Icon=clawhq-wails.exe
+Categories=Utility;
+StartupWMClass=clawhq-wails.exe
+
+ 

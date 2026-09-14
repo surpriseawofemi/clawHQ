@@ -1,0 +1,42 @@
+# Normalise line endings.
+#
+# Everything is stored LF in the repo and checked out as-is. Without this, commits
+# made on Windows store CRLF, and the macOS and Linux CI runners then check out files
+# whose endings differ from what a contributor on those platforms would produce —
+# which shows up as whole-file diffs that hide the real change.
+* text=auto eol=lf
+
+# Windows batch files are the exception: the shell requires CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell scripts must stay LF or they fail to execute on macOS and Linux.
+*.sh text eol=lf
+
+# Binary assets: never touch, never diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.syso binary
+
+# Keep GitHub's language bar honest. The vendored gateway client is upstream code
+# carrying local patches, not ours, and lockfiles are generated — counting either as
+# authored Go/JS misrepresents what this project actually is.
+third_party/** linguist-vendored
+frontend/package-lock.json linguist-generated
+go.sum linguist-generated
+
+# Collapse lockfile noise in pull request reviews.
+frontend/package-lock.json -diff
+go.sum -diff

@@ -1,0 +1,1117 @@
+# openclaw-go
+
+> Go client library for OpenClaw, the open gateway for AI agents. Provides typed clients for the Gateway WebSocket protocol (v3), OpenAI-compatible Chat Completions and Responses HTTP APIs, Tools Invoke HTTP API, mDNS/DNS-SD local network discovery, and the Agent Client Protocol (ACP) server. Only one external dependency (gorilla/websocket). Requires Go 1.25+.
+
+Key design points:
+
+- Module path: `github.com/a3tai/openclaw-go`
+- 7 packages: `protocol`, `gateway`, `chatcompletions`, `openresponses`, `toolsinvoke`, `discovery`, `acp`
+- The `protocol` package defines all wire types and serialization -- every other package depends on it
+- The `gateway` package is a WebSocket client with challenge/connect/hello-ok handshake, 96+ typed RPC methods, event and invoke callbacks, and keepalive ticks
+- HTTP clients (`chatcompletions`, `openresponses`, `toolsinvoke`) are standalone and do not require a WebSocket connection
+- All HTTP clients support `Retry-After` header parsing on error responses
+- `chatcompletions` and `openresponses` support both non-streaming and SSE streaming via `Stream`/`Recv` pattern
+- The `acp` package implements a JSON-RPC 2.0 over NDJSON server for IDE-to-agent communication over stdio
+- The `discovery` package uses platform-specific mDNS tooling (dns-sd on macOS, avahi-browse on Linux, stub on Windows)
+- All packages are safe for concurrent use
+- 13 runnable examples in `examples/`
+
+## Docs
+
+### protocol
+
+```
+import "github.com/a3tai/openclaw-go/protocol"
+```
+
+Package `protocol` defines all wire types, constants, and serialization helpers for the OpenClaw Gateway WebSocket protocol (version 3). It contains no networking code -- only data structures and JSON marshal/unmarshal functions.
+
+Every other package in this module depends on `protocol`.
+
+#### Frame Types
+
+The gateway protocol uses typed JSON frames over WebSocket text messages:
+
+| Frame Type | Constant | Direction | Purpose |
+|------------|----------|-----------|---------|
+| `req` | `FrameTypeRequest` | client -> gateway | RPC request |
+| `res` | `FrameTypeResponse` | gateway -> client | RPC response |
+| `event` | `FrameTypeEvent` | bidirectional | One-way notification |
+| `invoke` | `FrameTypeInvoke` | gateway -> node | Invoke a node capability |
+| `invoke-res` | `FrameTypeInvokeResponse` | node -> gateway | Invoke result |
+
+```go
+type Request struct {
+    Type   FrameType       `json:"type"`
+    ID     string          `json:"id"`
+    Method string          `json:"method"`
+    Params json.RawMessage `json:"params,omitempty"`
+}
+
+type Response struct {
+    Type    FrameType       `json:"type"`
+    ID      string          `json:"id"`
+    OK      bool            `json:"ok"`
+    Payload json.RawMessage `json:"payload,omitempty"`
+    Error   *ErrorPayload   `json:"error,omitempty"`
+}
+
+type Event struct {
+    Type         FrameType       `json:"type"`
+    EventName    string          `json:"event"`
+    Payload      json.RawMessage `json:"payload,omitempty"`
+    Seq          *int64          `json:"seq,omitempty"`
+    StateVersion *StateVersion   `json:"stateVersion,omitempty"`
+}
+```
+
+#### Serialization Helpers
+
+```go
+// Serialize frames
+data, err := protocol.MarshalRequest(id, method, params)
+data, err := protocol.MarshalResponse(id, payload)
+data, err := protocol.MarshalErrorResponse(id, errPayload)
+data, err := protocol.MarshalEvent(eventName, payload)
+
+// Deserialize frames
+frame, err := protocol.ParseFrame(data)      // determine type
+req, err   := protocol.UnmarshalRequest(data)
+resp, err  := protocol.UnmarshalResponse(data)
+ev, err    := protocol.UnmarshalEvent(data)
+```
+
+#### Roles and Scopes
+
+```go
+// Roles
+protocol.RoleOperator  // "operator" - UI/CLI clients
+protocol.RoleNode      // "node"     - capability hosts
+
+// Operator scopes
+protocol.ScopeOperatorRead      // "operator.read"
+protocol.ScopeOperatorWrite     // "operator.write"
+protocol.ScopeOperatorAdmin     // "operator.admin"
+protocol.ScopeOperatorApprovals // "operator.approvals"
+protocol.ScopeOperatorPairing   // "operator.pairing"
+```
+
+#### Connect Handshake
+
+The connection lifecycle is: challenge -> connect request -> hello-ok response.
+
+```go
+type ConnectChallenge struct {
+    Nonce string `json:"nonce"`
+    Ts    int64  `json:"ts"`
+}
+
+type ConnectParams struct {
+    MinProtocol int            `json:"minProtocol"`
+    MaxProtocol int            `json:"maxProtocol"`
+    Auth        AuthParams     `json:"auth"`
+    Client      ClientInfo     `json:"client"`
+    Role        Role           `json:"role"`
+    Scopes      []Scope        `json:"scopes,omitempty"`
+    // ... plus Caps, Commands, Permissions, Device, Locale, UserAgent, PathEnv
+}
+
+type HelloOK struct {
+    Protocol int            `json:"protocol"`
+    Server   HelloServer    `json:"server"`
+    Features HelloFeatures  `json:"features"`
+    Snapshot *Snapshot      `json:"snapshot,omitempty"`
+    Policy   HelloPolicy    `json:"policy"`
+}
+```
+
+#### RPC Parameter/Result Types
+
+The package defines typed Go structs for every gateway RPC method. Major categories:
+
+| Category | Example Types |
+|----------|---------------|
+| Chat | `ChatSendParams`, `ChatHistoryParams`, `ChatAbortParams`, `ChatEvent` |
+| Agent | `AgentParams`, `AgentEvent`, `AgentIdentityParams` |
+| Sessions | `SessionsListParams`, `SessionsPatchParams`, `SessionsUsageParams` |
+| Agents CRUD | `AgentsCreateParams`, `AgentsUpdateParams`, `AgentsFilesGetParams` |
+| Config | `ConfigGetParams`, `ConfigSetParams`, `ConfigApplyParams`, `ConfigSchemaResponse` |
+| Nodes | `NodePairRequestParams`, `NodeInvokeParams`, `NodeEventParams` |
+| Device Pairing | `DevicePairApproveParams`, `DeviceTokenRotateParams` |
+| Exec Approvals | `ExecApprovalRequestParams`, `ExecApprovalResolveParams`, `ExecApprovalWaitDecisionParams` |
+| Cron | `CronAddParams`, `CronUpdateParams`, `CronRunParams`, `CronJob` |
+| TTS | `TTSConvertParams`, `TTSSetProviderParams`, `TTSStatusResult` |
+| Channels/Talk | `TalkModeParams`, `TalkConfigParams`, `ChannelsStatusResult` |
+| Skills | `SkillsInstallParams`, `SkillsUpdateParams`, `SkillsBinsResult` |
+| Wizard | `WizardStartParams`, `WizardNextParams`, `WizardStep` |
+| Models | `ModelChoice`, `ModelsListResult` |
+| Logs | `LogsTailParams`, `LogsTailResult` |
+| Push | `PushTestParams`, `PushTestResult` |
+| Health/Presence | `PresenceEntry`, `HealthEvent`, `HeartbeatEvent` |
+
+#### Event Payload Types
+
+```go
+// Real-time events with fully-typed payloads
+PresenceEvent           // client presence changes
+HealthEvent             // system health snapshots
+HeartbeatEvent          // periodic heartbeat with system stats
+TickEvent               // keepalive tick
+ShutdownEvent           // gateway shutdown
+CronEvent               // cron job execution events
+VoicewakeChangedEvent   // voice wake word state changes
+ExecApprovalResolvedEvent // approval decision events
+```
+
+#### Constants
+
+```go
+protocol.ProtocolVersion              // 3
+protocol.MaxPayloadBytes              // 25 MiB
+protocol.MaxBufferedBytes             // 50 MiB
+protocol.DefaultTickIntervalMs        // 30,000
+protocol.DefaultHandshakeTimeoutMs    // 10,000
+protocol.SessionLabelMaxLength        // 64
+
+// Error codes
+protocol.ErrorCodeNotLinked
+protocol.ErrorCodeNotPaired
+protocol.ErrorCodeAgentTimeout
+protocol.ErrorCodeInvalidRequest
+protocol.ErrorCodeUnavailable
+
+// Client IDs
+protocol.ClientIDCLI
+protocol.ClientIDGateway
+protocol.ClientIDMacOS
+// ... and more
+```
+
+### gateway
+
+```
+import "github.com/a3tai/openclaw-go/gateway"
+```
+
+Package `gateway` implements a WebSocket client for the OpenClaw Gateway protocol. It handles the full connection lifecycle including the challenge/connect/hello-ok handshake, background read loop with frame dispatch, keepalive pings, and pending request/response correlation.
+
+#### Creating a Client
+
+```go
+client := gateway.NewClient(
+    gateway.WithToken("my-token"),
+    gateway.WithRole(protocol.RoleOperator),
+    gateway.WithScopes(protocol.ScopeOperatorRead, protocol.ScopeOperatorWrite),
+    gateway.WithOnEvent(func(ev protocol.Event) {
+        fmt.Printf("event: %s\n", ev.EventName)
+    }),
+)
+defer client.Close()
+
+ctx := context.Background()
+if err := client.Connect(ctx, "ws://localhost:18789/ws"); err != nil {
+    log.Fatal(err)
+}
+
+hello := client.Hello()
+fmt.Printf("protocol=%d server=%s\n", hello.Protocol, hello.Server.Version)
+```
+
+#### Configuration Options
+
+| Option | Description |
+|--------|-------------|
+| `WithToken(token)` | Bearer token authentication |
+| `WithPassword(password)` | Password authentication |
+| `WithClientInfo(info)` | Override default client identity |
+| `WithRole(role)` | Connection role: `RoleOperator` or `RoleNode` |
+| `WithScopes(scopes...)` | Operator capability scopes |
+| `WithCaps(caps...)` | Node capability categories |
+| `WithCommands(commands...)` | Node command allowlist |
+| `WithPermissions(perms)` | Node permission toggles |
+| `WithDevice(device)` | Device identity for pairing |
+| `WithLocale(locale)` | Locale string (default: `"en-US"`) |
+| `WithUserAgent(ua)` | User-agent string |
+| `WithTLSConfig(cfg)` | Custom TLS configuration |
+| `WithConnectTimeout(d)` | Handshake timeout (default: 10s) |
+| `WithOnEvent(fn)` | Callback for incoming events |
+| `WithOnInvoke(fn)` | Handler for incoming invocations (node mode) |
+
+#### Core Methods
+
+```go
+// Connection lifecycle
+err := client.Connect(ctx, wsURL)
+err := client.Close()
+<-client.Done()  // closed when client shuts down
+hello := client.Hello()  // server hello-ok payload
+
+// Low-level
+resp, err := client.Send(ctx, method, params)
+err := client.SendEvent(eventName, payload)
+```
+
+#### RPC Methods
+
+The client provides typed convenience methods for all 96+ gateway RPCs. Each method marshals the params, sends the request, waits for the response, and unmarshals the typed result.
+
+##### Chat
+
+```go
+result, err := client.ChatSend(ctx, protocol.ChatSendParams{
+    SessionKey: "main",
+    Message:    "Hello!",
+})
+history, err := client.ChatHistory(ctx, protocol.ChatHistoryParams{SessionKey: "main"})
+err := client.ChatAbort(ctx, protocol.ChatAbortParams{SessionKey: "main"})
+err := client.ChatInject(ctx, protocol.ChatInjectParams{SessionKey: "main", Messages: msgs})
+```
+
+##### Agent
+
+```go
+agent, err := client.Agent(ctx, protocol.AgentParams{})
+identity, err := client.AgentIdentity(ctx, protocol.AgentIdentityParams{})
+result, err := client.AgentWait(ctx, protocol.AgentWaitParams{})
+```
+
+##### Sessions
+
+```go
+sessions, err := client.SessionsList(ctx, protocol.SessionsListParams{})
+preview, err := client.SessionsPreview(ctx, protocol.SessionsPreviewParams{SessionKey: key})
+err := client.SessionsPatch(ctx, protocol.SessionsPatchParams{SessionKey: key, Label: &label})
+usage, err := client.SessionsUsage(ctx, protocol.SessionsUsageParams{SessionKey: key})
+err := client.SessionsReset(ctx, protocol.SessionsResetParams{SessionKey: key})
+err := client.SessionsDelete(ctx, protocol.SessionsDeleteParams{SessionKey: key})
+```
+
+##### Agents CRUD
+
+```go
+list, err := client.AgentsList(ctx)
+created, err := client.AgentsCreate(ctx, protocol.AgentsCreateParams{Name: "my-agent"})
+err := client.AgentsUpdate(ctx, protocol.AgentsUpdateParams{AgentID: id})
+err := client.AgentsDelete(ctx, protocol.AgentsDeleteParams{AgentID: id})
+
+// Agent files
+files, err := client.AgentsFilesList(ctx, protocol.AgentsFilesListParams{AgentID: id})
+content, err := client.AgentsFilesGet(ctx, protocol.AgentsFilesGetParams{AgentID: id, Path: path})
+err := client.AgentsFilesSet(ctx, protocol.AgentsFilesSetParams{AgentID: id, Path: path, Content: data})
+```
+
+##### Config
+
+```go
+cfg, err := client.ConfigGet(ctx, protocol.ConfigGetParams{})
+schema, err := client.ConfigSchema(ctx)
+err := client.ConfigSet(ctx, protocol.ConfigSetParams{Key: "key", Value: val})
+err := client.ConfigPatch(ctx, protocol.ConfigPatchParams{Patch: patch})
+err := client.ConfigApply(ctx, protocol.ConfigApplyParams{Restart: true})
+```
+
+##### Exec Approvals
+
+```go
+result, err := client.ExecApprovalRequest(ctx, protocol.ExecApprovalRequestParams{...})
+result, err := client.ExecApprovalResolve(ctx, protocol.ExecApprovalResolveParams{
+    ID: "approval-id", Decision: "approved",
+})
+result, err := client.ExecApprovalWaitDecision(ctx, protocol.ExecApprovalWaitDecisionParams{ID: id})
+```
+
+##### Nodes & Pairing
+
+```go
+// Node operations
+result, err := client.NodeList(ctx)
+desc, err := client.NodeDescribe(ctx, protocol.NodeDescribeParams{NodeID: id})
+result, err := client.NodeInvoke(ctx, protocol.NodeInvokeParams{NodeID: id, Cap: "tool", Args: args})
+
+// Node pairing
+result, err := client.NodePairRequest(ctx, protocol.NodePairRequestParams{...})
+pairs, err := client.NodePairList(ctx)
+err := client.NodePairApprove(ctx, protocol.NodePairApproveParams{ID: id})
+err := client.NodePairReject(ctx, protocol.NodePairRejectParams{ID: id})
+
+// Device pairing
+pairs, err := client.DevicePairList(ctx)
+err := client.DevicePairApprove(ctx, protocol.DevicePairApproveParams{ID: id})
+err := client.DevicePairRemove(ctx, protocol.DevicePairRemoveParams{DeviceID: id})
+result, err := client.DeviceTokenRotate(ctx, protocol.DeviceTokenRotateParams{DeviceID: id})
+```
+
+##### Cron
+
+```go
+jobs, err := client.CronList(ctx, protocol.CronListParams{})
+status, err := client.CronStatus(ctx)
+err := client.CronAdd(ctx, protocol.CronAddParams{Name: "nightly", Schedule: sched})
+err := client.CronUpdate(ctx, protocol.CronUpdateParams{ID: id})
+err := client.CronRemove(ctx, protocol.CronRemoveParams{ID: id})
+err := client.CronRun(ctx, protocol.CronRunParams{ID: id})
+runs, err := client.CronRuns(ctx, protocol.CronRunsParams{ID: id})
+```
+
+##### TTS
+
+```go
+status, err := client.TTSStatus(ctx)
+providers, err := client.TTSProviders(ctx)
+err := client.TTSEnable(ctx)
+err := client.TTSDisable(ctx)
+result, err := client.TTSConvert(ctx, protocol.TTSConvertParams{Text: "Hello"})
+err := client.TTSSetProvider(ctx, protocol.TTSSetProviderParams{Provider: "eleven"})
+```
+
+##### Other Methods
+
+```go
+// Health & status
+health, err := client.Health(ctx)
+status, err := client.Status(ctx)
+presence, err := client.Presence(ctx)
+
+// Models
+models, err := client.ModelsList(ctx)
+
+// Logs
+logs, err := client.LogsTail(ctx, protocol.LogsTailParams{Lines: 100})
+
+// Channels & talk
+chStatus, err := client.ChannelsStatus(ctx, protocol.ChannelsStatusParams{})
+talkCfg, err := client.TalkConfig(ctx, protocol.TalkConfigParams{})
+
+// Skills
+skills, err := client.SkillsStatus(ctx, protocol.SkillsStatusParams{})
+bins, err := client.SkillsBins(ctx)
+
+// Wizard
+wizard, err := client.WizardStart(ctx, protocol.WizardStartParams{})
+next, err := client.WizardNext(ctx, protocol.WizardNextParams{})
+
+// Misc
+err := client.Wake(ctx, protocol.WakeParams{})
+err := client.SendMessage(ctx, protocol.SendParams{...})
+```
+
+#### Node Mode
+
+To connect as a capability node, use `WithRole(protocol.RoleNode)` and `WithOnInvoke`:
+
+```go
+client := gateway.NewClient(
+    gateway.WithToken("node-token"),
+    gateway.WithRole(protocol.RoleNode),
+    gateway.WithCaps("search", "calculator"),
+    gateway.WithOnInvoke(func(inv protocol.Invoke) protocol.InvokeResponse {
+        // Handle the invocation
+        result := processInvocation(inv.Cap, inv.Args)
+        return protocol.InvokeResponse{
+            OK:      true,
+            Payload: result,
+        }
+    }),
+)
+```
+
+#### Concurrency
+
+The client is safe for concurrent use. Writes are mutex-protected, request IDs use an atomic counter, and the pending response map is synchronized. The background read loop and tick loop run in separate goroutines.
+
+### chatcompletions
+
+```
+import "github.com/a3tai/openclaw-go/chatcompletions"
+```
+
+Package `chatcompletions` implements an HTTP client for the OpenClaw OpenAI-compatible Chat Completions endpoint (`POST /v1/chat/completions`). Supports both non-streaming and SSE streaming modes.
+
+#### Client Setup
+
+```go
+client := &chatcompletions.Client{
+    BaseURL:    "http://localhost:18789",
+    Token:      "my-token",
+    AgentID:    "main",               // optional: x-openclaw-agent-id header
+    SessionKey: "my-session",         // optional: x-openclaw-session-key header
+    HTTPClient: &http.Client{},       // optional: custom HTTP client
+}
+```
+
+#### Non-Streaming
+
+```go
+resp, err := client.Create(ctx, chatcompletions.Request{
+    Model: "openclaw:main",
+    Messages: []chatcompletions.Message{
+        {Role: "user", Content: "Hello!"},
+    },
+    Temperature: &temp,
+    MaxTokens:   &maxTok,
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println(resp.Choices[0].Message.Content)
+fmt.Printf("tokens: %d\n", resp.Usage.TotalTokens)
+```
+
+#### Streaming
+
+```go
+stream, err := client.CreateStream(ctx, chatcompletions.Request{
+    Model: "openclaw:main",
+    Messages: []chatcompletions.Message{
+        {Role: "user", Content: "Tell me about Go"},
+    },
+})
+if err != nil {
+    log.Fatal(err)
+}
+defer stream.Close()
+
+for {
+    chunk, err := stream.Recv()
+    if err == io.EOF {
+        break
+    }
+    if err != nil {
+        log.Fatal(err)
+    }
+    if len(chunk.Choices) > 0 {
+        fmt.Print(chunk.Choices[0].Delta.Content)
+    }
+}
+```
+
+#### Types
+
+```go
+type Request struct {
+    Model            string    `json:"model"`
+    Messages         []Message `json:"messages"`
+    Stream           bool      `json:"stream,omitempty"`
+    Temperature      *float64  `json:"temperature,omitempty"`
+    TopP             *float64  `json:"top_p,omitempty"`
+    MaxTokens        *int      `json:"max_tokens,omitempty"`
+    Stop             []string  `json:"stop,omitempty"`
+    PresencePenalty  *float64  `json:"presence_penalty,omitempty"`
+    FrequencyPenalty *float64  `json:"frequency_penalty,omitempty"`
+    User             string    `json:"user,omitempty"`
+    N                *int      `json:"n,omitempty"`
+}
+
+type Message struct {
+    Role       string     `json:"role"`
+    Content    string     `json:"content,omitempty"`
+    Name       string     `json:"name,omitempty"`
+    ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+    ToolCallID string     `json:"tool_call_id,omitempty"`
+}
+
+type Response struct {
+    ID      string   `json:"id"`
+    Object  string   `json:"object"`
+    Created int64    `json:"created"`
+    Model   string   `json:"model"`
+    Choices []Choice `json:"choices"`
+    Usage   *Usage   `json:"usage,omitempty"`
+}
+
+type StreamChunk struct {
+    ID      string        `json:"id"`
+    Object  string        `json:"object"`
+    Created int64         `json:"created"`
+    Model   string        `json:"model"`
+    Choices []StreamDelta `json:"choices"`
+}
+```
+
+#### Error Handling
+
+Non-200 responses return an `*HTTPError`:
+
+```go
+resp, err := client.Create(ctx, req)
+if err != nil {
+    var httpErr *chatcompletions.HTTPError
+    if errors.As(err, &httpErr) {
+        fmt.Printf("status=%d retry-after=%s\n", httpErr.StatusCode, httpErr.RetryAfter)
+    }
+}
+```
+
+The `RetryAfter` field is populated from the `Retry-After` response header when present (e.g., on 429 responses).
+
+#### OpenClaw Headers
+
+The client automatically sets these headers when the corresponding fields are non-empty:
+
+| Header | Client Field |
+|--------|-------------|
+| `Authorization: Bearer <token>` | `Token` |
+| `x-openclaw-agent-id` | `AgentID` |
+| `x-openclaw-session-key` | `SessionKey` |
+
+### openresponses
+
+```
+import "github.com/a3tai/openclaw-go/openresponses"
+```
+
+Package `openresponses` implements an HTTP client for the OpenClaw OpenAI Responses API-compatible endpoint (`POST /v1/responses`). This is the newer API (vs Chat Completions) supporting structured input items, typed SSE streaming events, and tool/function calling.
+
+#### Client Setup
+
+```go
+client := &openresponses.Client{
+    BaseURL:    "http://localhost:18789",
+    Token:      "my-token",
+    AgentID:    "main",               // optional
+    SessionKey: "my-session",         // optional
+    HTTPClient: &http.Client{},       // optional
+}
+```
+
+#### Non-Streaming
+
+```go
+maxTokens := 200
+resp, err := client.Create(ctx, openresponses.Request{
+    Model: "openclaw:main",
+    Input: openresponses.InputFromItems([]openresponses.InputItem{
+        openresponses.MessageItem("user", "What is OpenClaw?"),
+    }),
+    MaxOutputTokens: &maxTokens,
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, item := range resp.Output {
+    if item.Type == "message" {
+        for _, part := range item.Content {
+            if part.Type == "output_text" {
+                fmt.Println(part.Text)
+            }
+        }
+    }
+}
+```
+
+#### Streaming
+
+```go
+stream, err := client.CreateStream(ctx, openresponses.Request{
+    Model: "openclaw:main",
+    Input: openresponses.InputFromString("Hello!"),
+})
+if err != nil {
+    log.Fatal(err)
+}
+defer stream.Close()
+
+for {
+    ev, err := stream.Recv()
+    if err == io.EOF {
+        break
+    }
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    switch ev.EventType {
+    case "response.created":
+        fmt.Println("response started")
+    case "response.output_text.delta":
+        var delta openresponses.OutputTextDeltaEvent
+        json.Unmarshal(ev.RawData, &delta)
+        fmt.Print(delta.Delta)
+    case "response.completed":
+        fmt.Println("\ndone")
+    }
+}
+```
+
+#### Input Construction
+
+The `Input` field accepts either a plain string or structured items:
+
+```go
+// Simple string input
+req := openresponses.Request{
+    Model: "openclaw:main",
+    Input: openresponses.InputFromString("Hello!"),
+}
+
+// Structured input items
+req := openresponses.Request{
+    Model: "openclaw:main",
+    Input: openresponses.InputFromItems([]openresponses.InputItem{
+        openresponses.MessageItem("system", "You are helpful."),
+        openresponses.MessageItem("user", "What is Go?"),
+    }),
+}
+
+// Multi-part content
+req := openresponses.Request{
+    Model: "openclaw:main",
+    Input: openresponses.InputFromItems([]openresponses.InputItem{
+        openresponses.MessageItemParts("user", []openresponses.ContentPart{
+            {Type: "input_text", Text: "Describe this image"},
+            {Type: "input_image", ImageURL: "https://example.com/img.png"},
+        }),
+    }),
+}
+
+// Function call output (multi-turn tool use)
+req := openresponses.Request{
+    Model: "openclaw:main",
+    Input: openresponses.InputFromItems([]openresponses.InputItem{
+        openresponses.MessageItem("user", "What's the weather?"),
+        openresponses.FunctionCallItem("call_123", "get_weather", `{"location":"SF"}`),
+        openresponses.FunctionCallOutputItem("call_123", `{"temp":72,"unit":"F"}`),
+    }),
+}
+```
+
+#### Tool Definitions
+
+```go
+req := openresponses.Request{
+    Model: "openclaw:main",
+    Input: openresponses.InputFromString("What's the weather in SF?"),
+    Tools: []openresponses.ToolDefinition{
+        {
+            Type: "function",
+            Function: openresponses.FunctionTool{
+                Name:        "get_weather",
+                Description: "Get current weather for a location",
+                Parameters: map[string]any{
+                    "type": "object",
+                    "properties": map[string]any{
+                        "location": map[string]string{
+                            "type": "string",
+                            "description": "City name",
+                        },
+                    },
+                    "required": []string{"location"},
+                },
+            },
+        },
+    },
+    ToolChoice: "auto", // or "none", "required", or openresponses.ToolChoiceFunction{...}
+}
+```
+
+#### Stream Event Types
+
+| Event Type | Description |
+|------------|-------------|
+| `response.created` | Response object created |
+| `response.in_progress` | Processing started |
+| `response.output_item.added` | New output item added |
+| `response.content_part.added` | New content part added |
+| `response.output_text.delta` | Incremental text chunk |
+| `response.output_text.done` | Text generation complete |
+| `response.function_call_arguments.delta` | Incremental function args |
+| `response.function_call_arguments.done` | Function args complete |
+| `response.output_item.done` | Output item complete |
+| `response.content_part.done` | Content part complete |
+| `response.completed` | Full response complete |
+| `response.failed` | Response failed |
+
+Each event's `RawData` field contains the full JSON payload. Unmarshal into the corresponding typed struct (e.g., `OutputTextDeltaEvent`, `ResponseEvent`, `OutputItemEvent`).
+
+#### Error Handling
+
+```go
+resp, err := client.Create(ctx, req)
+if err != nil {
+    var httpErr *openresponses.HTTPError
+    if errors.As(err, &httpErr) {
+        fmt.Printf("status=%d retry-after=%s\n", httpErr.StatusCode, httpErr.RetryAfter)
+    }
+}
+```
+
+### toolsinvoke
+
+```
+import "github.com/a3tai/openclaw-go/toolsinvoke"
+```
+
+Package `toolsinvoke` implements an HTTP client for the OpenClaw Tools Invoke endpoint (`POST /tools/invoke`). This allows calling gateway-registered tools directly over HTTP without a WebSocket connection.
+
+#### Client Setup
+
+```go
+client := &toolsinvoke.Client{
+    BaseURL:        "http://localhost:18789",
+    Token:          "my-token",
+    MessageChannel: "cli",        // optional: x-openclaw-message-channel header
+    AccountID:      "acct-123",   // optional: x-openclaw-account-id header
+    HTTPClient:     &http.Client{}, // optional
+}
+```
+
+#### Invoking Tools
+
+```go
+resp, err := client.Invoke(ctx, toolsinvoke.Request{
+    Tool:       "sessions_list",
+    Action:     "json",
+    Args:       map[string]any{"filter": "active"},
+    SessionKey: "main",
+    DryRun:     false,
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("ok=%v result=%s\n", resp.OK, resp.Result)
+```
+
+#### Types
+
+```go
+type Request struct {
+    Tool       string         `json:"tool"`
+    Action     string         `json:"action,omitempty"`
+    Args       map[string]any `json:"args,omitempty"`
+    SessionKey string         `json:"sessionKey,omitempty"`
+    DryRun     bool           `json:"dryRun,omitempty"`
+}
+
+type Response struct {
+    OK     bool            `json:"ok"`
+    Result json.RawMessage `json:"result,omitempty"`
+    Error  *ErrorDetail    `json:"error,omitempty"`
+}
+
+type ErrorDetail struct {
+    Type    string `json:"type"`
+    Message string `json:"message"`
+}
+```
+
+#### Error Handling
+
+The package distinguishes between transport-level errors and tool-level errors:
+
+```go
+resp, err := client.Invoke(ctx, req)
+if err != nil {
+    var httpErr *toolsinvoke.HTTPError
+    var invokeErr *toolsinvoke.InvokeError
+
+    if errors.As(err, &httpErr) {
+        // Transport error (401, 405, 429)
+        fmt.Printf("HTTP %d: %s (retry-after: %s)\n",
+            httpErr.StatusCode, httpErr.Body, httpErr.RetryAfter)
+    } else if errors.As(err, &invokeErr) {
+        // Tool-level error (JSON body with ok:false)
+        // Note: resp is still populated with the error details
+        fmt.Printf("invoke error: %s: %s\n", invokeErr.Type, invokeErr.Message)
+    }
+}
+```
+
+- **`HTTPError`**: Returned for 401 (unauthorized), 405 (method not allowed), 429 (rate limited), and non-JSON responses. Includes `RetryAfter` from the response header.
+- **`InvokeError`**: Returned when the endpoint returns a JSON body with `ok: false`. The `Response` is still populated so you can inspect `resp.Error` for details.
+
+### discovery
+
+```
+import "github.com/a3tai/openclaw-go/discovery"
+```
+
+Package `discovery` discovers OpenClaw Gateway instances on the local network using mDNS/DNS-SD (Bonjour). The gateway advertises itself as `_openclaw-gw._tcp`.
+
+#### Platform Support
+
+| Platform | Implementation | Tool |
+|----------|---------------|------|
+| macOS | Native | `dns-sd` CLI |
+| Linux | Native | `avahi-browse` CLI |
+| Windows | Stub | Returns "not supported" error |
+
+#### Scanning for Gateways
+
+```go
+browser := discovery.NewBrowser()
+
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+beacons, err := browser.Browse(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, b := range beacons {
+    fmt.Printf("Found: %s\n", b.DisplayName)
+    fmt.Printf("  Host: %s:%d\n", b.Host, b.Port)
+    fmt.Printf("  WebSocket: %s\n", b.WebSocketURL())
+    fmt.Printf("  HTTP: %s\n", b.HTTPURL())
+    fmt.Printf("  TLS: %v\n", b.GatewayTLS)
+    if b.TailnetDNS != "" {
+        fmt.Printf("  Tailnet: %s\n", b.TailnetDNS)
+    }
+}
+```
+
+#### Beacon Fields
+
+The `Beacon` struct contains all information from the mDNS TXT records:
+
+| Field | Description |
+|-------|-------------|
+| `InstanceName` | mDNS instance name |
+| `Domain` | DNS-SD domain (e.g., `"local."`) |
+| `Host` | Resolved hostname from SRV record |
+| `Port` | Resolved port from SRV record |
+| `DisplayName` | Human-readable gateway name |
+| `LanHost` | `<hostname>.local` address |
+| `TailnetDNS` | MagicDNS hostname (Tailscale) |
+| `GatewayPort` | Gateway WebSocket/HTTP port |
+| `GatewayTLS` | Whether TLS is enabled |
+| `GatewayTLSFingerprint` | SHA-256 certificate fingerprint |
+| `SSHPort` | SSH port on the gateway host |
+| `CLIPath` | Absolute path to the `openclaw` CLI |
+| `Role` | Beacon role (always `"gateway"`) |
+| `Transport` | Transport type (always `"gateway"`) |
+| `CanvasPort` | Canvas host port if enabled |
+| `TXT` | Raw TXT record key-value map |
+
+#### URL Helpers
+
+```go
+// WebSocket URL (ws:// or wss:// based on GatewayTLS)
+wsURL := beacon.WebSocketURL()
+
+// HTTP URL (http:// or https:// based on GatewayTLS)
+httpURL := beacon.HTTPURL()
+```
+
+Host resolution priority: SRV host > TailnetDNS > LanHost > `127.0.0.1`.
+
+Port resolution priority: SRV port > GatewayPort > `18789` (default).
+
+#### Constants
+
+```go
+discovery.ServiceType        // "_openclaw-gw._tcp"
+discovery.DefaultGatewayPort // 18789
+```
+
+### acp
+
+```
+import "github.com/a3tai/openclaw-go/acp"
+```
+
+Package `acp` implements an Agent Client Protocol (ACP) server. ACP uses JSON-RPC 2.0 over NDJSON (newline-delimited JSON) on stdio, enabling IDE clients to communicate with AI agent processes.
+
+The IDE spawns the agent process and communicates over stdin/stdout. The `Server` handles the read/dispatch loop and bidirectional request/response correlation.
+
+#### Architecture
+
+```
+IDE (client)  <--stdin/stdout-->  ACP Server (agent)
+                  JSON-RPC 2.0
+                  NDJSON format
+```
+
+#### Implementing a Handler
+
+Implement the `Handler` interface to process ACP methods:
+
+```go
+type MyHandler struct{}
+
+func (h *MyHandler) Initialize(ctx context.Context, req acp.InitializeRequest) (*acp.InitializeResponse, error) {
+    return &acp.InitializeResponse{
+        Name:    "my-agent",
+        Version: "1.0.0",
+        Capabilities: acp.AgentCapabilities{
+            Streaming: true,
+        },
+    }, nil
+}
+
+func (h *MyHandler) Authenticate(ctx context.Context, req acp.AuthenticateRequest) (*acp.AuthenticateResponse, error) {
+    return &acp.AuthenticateResponse{}, nil
+}
+
+func (h *MyHandler) NewSession(ctx context.Context, req acp.NewSessionRequest) (*acp.NewSessionResponse, error) {
+    return &acp.NewSessionResponse{
+        SessionID: "session-1",
+    }, nil
+}
+
+func (h *MyHandler) Prompt(ctx context.Context, req acp.PromptRequest) (*acp.PromptResponse, error) {
+    // Process the prompt, send session updates...
+    return &acp.PromptResponse{
+        StopReason: acp.StopReasonEndTurn,
+    }, nil
+}
+
+// ... implement all 12 Handler methods
+```
+
+#### Handler Interface
+
+```go
+type Handler interface {
+    Initialize(ctx, InitializeRequest) (*InitializeResponse, error)
+    Authenticate(ctx, AuthenticateRequest) (*AuthenticateResponse, error)
+    NewSession(ctx, NewSessionRequest) (*NewSessionResponse, error)
+    LoadSession(ctx, LoadSessionRequest) (*LoadSessionResponse, error)
+    ListSessions(ctx, ListSessionsRequest) (*ListSessionsResponse, error)
+    ForkSession(ctx, ForkSessionRequest) (*ForkSessionResponse, error)
+    ResumeSession(ctx, ResumeSessionRequest) (*ResumeSessionResponse, error)
+    Prompt(ctx, PromptRequest) (*PromptResponse, error)
+    Cancel(ctx, CancelNotification)
+    SetSessionMode(ctx, SetSessionModeRequest) (*SetSessionModeResponse, error)
+    SetSessionModel(ctx, SetSessionModelRequest) (*SetSessionModelResponse, error)
+    SetSessionConfigOption(ctx, SetSessionConfigOptionRequest) (*SetSessionConfigOptionResponse, error)
+}
+```
+
+#### Running the Server
+
+```go
+func main() {
+    handler := &MyHandler{}
+    server := acp.NewServer(handler, os.Stdin, os.Stdout)
+
+    ctx := context.Background()
+    if err := server.Serve(ctx); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+#### Sending Notifications and Requests
+
+The server can send notifications and requests back to the IDE client:
+
+```go
+// Send a session update notification
+err := server.SessionUpdate(acp.SessionNotification{
+    SessionID: "session-1",
+    Updates: []acp.SessionUpdate{
+        {
+            Type: "text",
+            Text: &acp.ContentBlock{Type: "text", Text: "Processing..."},
+        },
+    },
+})
+
+// Send a generic notification
+err := server.SendNotification("session/update", params)
+
+// Send a request to the client and wait for a response (agent -> client)
+resp, err := server.SendRequest(ctx, "fs/read_text_file", acp.ReadTextFileRequest{
+    Path: "/path/to/file.go",
+})
+```
+
+#### Session Update Types
+
+The protocol supports 11 session update variants:
+
+| Update Type | Description |
+|-------------|-------------|
+| `text` | Text content block |
+| `tool_call` | Tool call started/updated |
+| `tool_call_update` | Tool call progress update |
+| `plan` | Agent plan |
+| `usage` | Token usage statistics |
+| `modes` | Available session modes changed |
+| `models` | Available models changed |
+| `config_options` | Config options changed |
+| `available_commands` | Available commands changed |
+| `status` | Session status change |
+| `error` | Error notification |
+
+#### Key Types
+
+##### Content Blocks (discriminated union)
+
+```go
+type ContentBlock struct {
+    Type         string          // "text", "image", "audio", "resource_link", "resource"
+    Text         string          // for "text"
+    MimeType     string          // for binary types
+    Data         string          // base64 for binary types
+    ResourceURI  string          // for "resource_link"
+}
+```
+
+##### Tool Calls
+
+```go
+type ToolCall struct {
+    ID        string
+    Type      string
+    Name      string
+    Status    string            // "in_progress", "completed", "errored", "cancelled"
+    Kind      string            // "bash", "file_edit", "file_read", etc.
+    Content   []ToolCallContent // output content
+    Locations []any             // file locations
+}
+```
+
+##### Permissions
+
+```go
+type PermissionOption struct {
+    ID          string
+    Kind        string  // "always", "allow", "deny"
+    Title       string
+    Description string
+}
+
+// Request permission from the user
+resp, err := server.SendRequest(ctx, "request_permission", acp.RequestPermissionRequest{
+    ToolCall: toolCallUpdate,
+    Options:  []acp.PermissionOption{...},
+})
+```
+
+#### Error Codes
+
+```go
+acp.ErrCodeParseError            // -32700
+acp.ErrCodeInvalidRequest        // -32600
+acp.ErrCodeMethodNotFound        // -32601
+acp.ErrCodeInvalidParams         // -32602
+acp.ErrCodeInternal              // -32603
+acp.ErrCodeRequestCancelled      // -32800
+acp.ErrCodeAuthenticationNeeded  // -32001
+acp.ErrCodeResourceNotFound      // -32002
+```
+
+#### Constants
+
+```go
+acp.ProtocolVersion  // 1
+
+// Stop reasons
+acp.StopReasonEndTurn
+acp.StopReasonMaxTokens
+acp.StopReasonStopSequence
+acp.StopReasonToolUse
+acp.StopReasonError
+acp.StopReasonCancel
+
+// Tool call statuses
+acp.ToolCallStatusInProgress
+acp.ToolCallStatusCompleted
+acp.ToolCallStatusErrored
+acp.ToolCallStatusCancelled
+```

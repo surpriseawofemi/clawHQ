@@ -1,0 +1,185 @@
+name: Build
+
+# macOS runners bill at a 10x minute multiplier on private repos, so the real builds
+# only run on tags. Every push gets a cheap Linux check that still catches the two
+# things most likely to break a mac build: type errors and darwin build-tag mistakes.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.25'
+  NODE_VERSION: '22'
+  WAILS_VERSION: v3.0.0-beta.21
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # The wails3 CLI links against GTK and WebKit, so it will not compile on a bare
+      # Linux runner. macOS and Windows carry their webviews in the OS and need nothing.
+      - name: Install Linux webview dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # Bindings are generated from the Go services and are not tracked in git, so the
+      # frontend cannot typecheck until they exist.
+      - name: Generate bindings
+        run: wails3 generate bindings -d frontend/bindings
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Vet Go
+        run: go vet ./internal/... .
+
+      # Catches a wrong //go:build tag on Linux in seconds rather than at tag time on a
+      # macOS runner. Only internal/ — the Wails layer needs CGO and a real mac.
+      - name: Cross-compile internal packages for macOS
+        env:
+          GOOS: darwin
+          GOARCH: arm64
+          CGO_ENABLED: '0'
+        run: go build ./internal/...
+
+  macos:
+    name: macOS (Apple Silicon)
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      # macos-latest runners are Apple Silicon, so a native build is already arm64.
+      # A universal build would mean lipo-ing two binaries, and that is a second thing
+      # that can go wrong in a bundle we cannot test from CI. The task chain installs
+      # frontend deps, regenerates bindings, builds the frontend, and ad-hoc signs the
+      # bundle, which Apple Silicon requires before it will execute anything at all.
+      - name: Build .app
+        run: wails3 task package
+
+      # Prove the bundle is what we think it is before shipping it. A wrong
+      # architecture or a broken signature produces an app that dies silently on
+      # launch, and that is miserable to debug from the other side of a download.
+      - name: Verify the bundle
+        run: |
+          file bin/ClawHQ.app/Contents/MacOS/ClawHQ
+          codesign -dv --verbose=2 bin/ClawHQ.app 2>&1 | head -5
+          codesign --verify --deep --strict bin/ClawHQ.app && echo "signature OK"
+
+      # Zip with ditto, not upload-artifact directly: the artifact action drops the
+      # executable bit, which makes an .app bundle refuse to launch.
+      - name: Zip the bundle
+        run: |
+          cd bin
+          ditto -c -k --keepParent ClawHQ.app ClawHQ-macos-arm64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clawhq-macos-arm64
+          path: bin/ClawHQ-macos-arm64.zip
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      # `task build` rather than `task package`: package also drives makensis for an
+      # installer, which is an extra dependency for no gain here. The portable .exe is
+      # self-contained.
+      - name: Build
+        run: wails3 task build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clawhq-windows-amd64
+          path: bin/ClawHQ.exe
+          if-no-files-found: error
+
+  release:
+    name: Attach to release
+    needs: [macos, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          append_body: true
+          body: |
+            ### macOS: first launch
+
+            The app is ad-hoc signed, not notarized, so macOS quarantines it after
+            download and refuses to open it — usually claiming it is "damaged". It is
+            not. Clear the quarantine flag once:
+
+            ```bash
+            xattr -dr com.apple.quarantine /Applications/ClawHQ.app
+            ```
+
+            Notarizing properly needs a paid Apple Developer account.

@@ -1,0 +1,14 @@
+# golangci-lint configuration for openclaw-go
+linters:
+  enable-all: false
+
+issues:
+  exclude-rules:
+    # Test helpers and mock servers intentionally skip error checking
+    - path: '_test\.go'
+      linters:
+        - errcheck
+    # Examples are intentionally simple
+    - path: 'examples/'
+      linters:
+        - errcheck

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>ClawHQ</title>
+  <defs>
+    <linearGradient id="clawhqTile" x1="0" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#9184ff"/>
+      <stop offset="1" stop-color="#5842d4"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="url(#clawhqTile)"/>
+
+  <!-- An open pincer, kept from the app's OpenClaw origins. Built from a palm plus
+       two stroked fingers so thickness is explicit; each finger hooks back toward the
+       other at the tip, which is what makes it a claw rather than a pair of horns.
+       The group is nudged to optically centre the mark inside the tile. -->
+  <g fill="#ffffff" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round"
+     transform="translate(-6 34)">
+    <ellipse cx="352" cy="556" rx="168" ry="152" transform="rotate(-20 352 556)"/>
+    <path d="M 372 470 C 512 374 656 300 768 294 C 812 292 826 348 798 388"
+          fill="none" stroke-width="116"/>
+    <path d="M 392 648 C 528 712 668 696 764 606"
+          fill="none" stroke-width="104"/>
+  </g>
+</svg>

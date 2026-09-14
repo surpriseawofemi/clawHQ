@@ -1,0 +1,46 @@
+# openclaw-go
+
+> Go client library for OpenClaw, the open gateway for AI agents. Provides typed clients for the Gateway WebSocket protocol (v3), OpenAI-compatible Chat Completions and Responses HTTP APIs, Tools Invoke HTTP API, mDNS/DNS-SD local network discovery, and the Agent Client Protocol (ACP) server. Only one external dependency (gorilla/websocket). Requires Go 1.25+.
+
+Key design points:
+
+- Module path: `github.com/a3tai/openclaw-go`
+- 7 packages: `protocol`, `gateway`, `chatcompletions`, `openresponses`, `toolsinvoke`, `discovery`, `acp`
+- The `protocol` package defines all wire types and serialization -- every other package depends on it
+- The `gateway` package is a WebSocket client with challenge/connect/hello-ok handshake, 96+ typed RPC methods, event and invoke callbacks, and keepalive ticks
+- HTTP clients (`chatcompletions`, `openresponses`, `toolsinvoke`) are standalone and do not require a WebSocket connection
+- All HTTP clients support `Retry-After` header parsing on error responses
+- `chatcompletions` and `openresponses` support both non-streaming and SSE streaming via `Stream`/`Recv` pattern
+- The `acp` package implements a JSON-RPC 2.0 over NDJSON server for IDE-to-agent communication over stdio
+- The `discovery` package uses platform-specific mDNS tooling (dns-sd on macOS, avahi-browse on Linux, stub on Windows)
+- All packages are safe for concurrent use
+- 13 runnable examples in `examples/`
+
+## Docs
+
+- [Protocol Types](https://github.com/a3tai/openclaw-go/blob/main/docs/protocol.md): Wire types, frame formats, serialization helpers, roles, scopes, connect handshake, 100+ RPC param/result types, event payloads, and constants for the Gateway WebSocket protocol v3
+- [Gateway Client](https://github.com/a3tai/openclaw-go/blob/main/docs/gateway.md): WebSocket client with functional options pattern, configuration options, 96+ typed RPC convenience methods organized by category (chat, agent, sessions, agents CRUD, config, approvals, nodes, pairing, cron, TTS, channels, skills, wizard, health, models, logs), and node mode
+- [Chat Completions](https://github.com/a3tai/openclaw-go/blob/main/docs/chatcompletions.md): OpenAI-compatible Chat Completions HTTP client (POST /v1/chat/completions) with non-streaming Create and SSE streaming CreateStream/Recv, request/response types, and HTTPError with RetryAfter
+- [Open Responses](https://github.com/a3tai/openclaw-go/blob/main/docs/openresponses.md): OpenAI Responses API HTTP client (POST /v1/responses) with structured input items, tool/function calling, typed SSE stream events, input construction helpers (InputFromString, InputFromItems, MessageItem, FunctionCallItem), and 12 event types
+- [Tools Invoke](https://github.com/a3tai/openclaw-go/blob/main/docs/toolsinvoke.md): Tools Invoke HTTP client (POST /tools/invoke) for calling gateway-registered tools over HTTP, with HTTPError vs InvokeError distinction for transport-level vs tool-level errors
+- [Discovery](https://github.com/a3tai/openclaw-go/blob/main/docs/discovery.md): mDNS/DNS-SD local network gateway discovery with Browser/Browse pattern, Beacon struct with 15 TXT record fields, WebSocketURL/HTTPURL helpers, and platform-specific implementations
+- [ACP Server](https://github.com/a3tai/openclaw-go/blob/main/docs/acp.md): Agent Client Protocol JSON-RPC 2.0 over NDJSON server with 12-method Handler interface, bidirectional SendRequest for agent-to-client calls, SessionUpdate notifications, 11 session update variants, and discriminated union content types
+
+## Examples
+
+- [Mock Server](https://github.com/a3tai/openclaw-go/blob/main/examples/server/main.go): Mock OpenClaw Gateway for local development; serves WebSocket protocol, chat completions, and tools invoke endpoints
+- [Client Demo](https://github.com/a3tai/openclaw-go/blob/main/examples/client/main.go): All three client APIs (WebSocket gateway, chat completions, tools invoke) in a single example
+- [Chat](https://github.com/a3tai/openclaw-go/blob/main/examples/chat/main.go): Interactive chat session with streaming event handling via the gateway WebSocket protocol
+- [Open Responses](https://github.com/a3tai/openclaw-go/blob/main/examples/openresponses/main.go): OpenAI Responses API with non-streaming create and SSE streaming with tool definitions
+- [Agents CRUD](https://github.com/a3tai/openclaw-go/blob/main/examples/agents/main.go): Agent lifecycle: list, create, update, manage files, delete
+- [Sessions](https://github.com/a3tai/openclaw-go/blob/main/examples/sessions/main.go): Session management: list, preview, patch, usage, reset
+- [Approvals](https://github.com/a3tai/openclaw-go/blob/main/examples/approvals/main.go): Exec approval flow: listen for events, auto-approve/reject, admin config
+- [Node](https://github.com/a3tai/openclaw-go/blob/main/examples/node/main.go): Connect as a capability node: declare capabilities, handle invoke requests, send events
+- [Discovery](https://github.com/a3tai/openclaw-go/blob/main/examples/discovery/main.go): Scan the local network for OpenClaw Gateway instances via mDNS/DNS-SD
+- [ACP](https://github.com/a3tai/openclaw-go/blob/main/examples/acp/main.go): ACP agent server over stdio handling initialize, session lifecycle, prompts, and mode/model changes
+
+## Optional
+
+- [Pairing](https://github.com/a3tai/openclaw-go/blob/main/examples/pairing/main.go): Node and device pairing workflows: list, approve, reject, token rotation, removal
+- [Config](https://github.com/a3tai/openclaw-go/blob/main/examples/config/main.go): Gateway configuration management: get, schema, patch, apply with restart
+- [Cron](https://github.com/a3tai/openclaw-go/blob/main/examples/cron/main.go): Cron job management: list, add, run manually, view run history, remove

@@ -1,0 +1,248 @@
+name: Upstream Release Spec
+
+on:
+  issues:
+    types: [opened, reopened, edited, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+
+jobs:
+  spec-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine if issue is upstream-release
+        id: gate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = (context.payload.issue?.labels || [])
+              .filter((label) => label && typeof label.name === 'string')
+              .map((label) => label.name);
+            const enabled = labels.includes('upstream-release');
+            core.setOutput('enabled', enabled ? 'true' : 'false');
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.enabled == 'true'
+
+      - name: Resolve release version
+        if: steps.gate.outputs.enabled == 'true'
+        id: version
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title || '';
+            const match = title.match(/v\d+\.\d+\.\d+(?:-\d+)?/);
+
+            if (!match) {
+              core.setFailed(`Could not parse version from issue title: ${title}`);
+              return;
+            }
+
+            core.setOutput('version', match[0]);
+
+      - name: Clone upstream openclaw
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          git clone https://github.com/openclaw/openclaw /tmp/openclaw
+          git -C /tmp/openclaw checkout "${{ steps.version.outputs.version }}"
+
+      - name: Build upstream release diff report
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          python3 scripts/upstream_release_diff.py \
+            --upstream-root /tmp/openclaw \
+            --version "${{ steps.version.outputs.version }}" \
+            --output /tmp/upstream-release-diff.json \
+            --markdown-output /tmp/upstream-release-diff.md
+
+      - name: Generate release spec file
+        if: steps.gate.outputs.enabled == 'true'
+        id: generate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const issue = context.payload.issue;
+            const version = '${{ steps.version.outputs.version }}';
+            const issueUrl = issue.html_url;
+            const upstreamReleaseUrl = `https://github.com/openclaw/openclaw/releases/tag/${version}`;
+            const releaseDiffMarkdown = fs.readFileSync('/tmp/upstream-release-diff.md', 'utf8').trim();
+            const releaseDiffJson = JSON.parse(fs.readFileSync('/tmp/upstream-release-diff.json', 'utf8'));
+
+            let releaseBody = '';
+            try {
+              const rel = await github.request('GET /repos/{owner}/{repo}/releases/tags/{tag}', {
+                owner: 'openclaw',
+                repo: 'openclaw',
+                tag: version,
+              });
+              releaseBody = rel.data.body || '';
+            } catch (err) {
+              core.warning(`Could not fetch upstream tag ${version}; using issue body excerpt fallback.`);
+              releaseBody = issue.body || '';
+            }
+
+            const keywords = [
+              'gateway', 'protocol', 'rpc', 'node.pending', 'talk.speak',
+              'sessions_spawn', 'sessions_yield', 'breaking', 'security',
+            ];
+
+            const relevant = releaseBody
+              .split(/\r?\n/)
+              .map((line) => line.trim())
+              .filter((line) => line.startsWith('-'))
+              .filter((line) => {
+                const lower = line.toLowerCase();
+                return keywords.some((k) => lower.includes(k));
+              })
+              .slice(0, 20);
+
+            const relevantBlock = relevant.length > 0
+              ? relevant.map((line) => `- ${line.replace(/^[-\s]+/, '')}`).join('\n')
+              : '- No obvious gateway/protocol deltas auto-detected; manual review required.';
+
+            const spec = [
+              `# Upstream Sync Spec: ${version}`,
+              '',
+              `- Upstream release: ${upstreamReleaseUrl}`,
+              `- Tracking issue: ${issueUrl}`,
+              '',
+              releaseDiffMarkdown,
+              '',
+              '## Relevant upstream deltas (auto-detected)',
+              '',
+              relevantBlock,
+              '',
+              '## openclaw-go changes required',
+              '',
+              `- [ ] Confirm coverage for added methods: ${releaseDiffJson.added_methods.length}`,
+              `- [ ] Confirm coverage for changed methods: ${releaseDiffJson.changed_methods.length}`,
+              '- [ ] Confirm protocol type delta coverage in `protocol/`',
+              '- [ ] Confirm gateway typed RPC coverage in `gateway/`',
+              '- [ ] Confirm/expand test coverage in `gateway/methods_test.go`',
+              '- [ ] Update `CHANGELOG.md`',
+              '',
+              '## Required review gates',
+              '',
+              '- [ ] Architecture review',
+              '- [ ] Go standards code review',
+              '- [ ] API coverage review',
+              '- [ ] Security review (Kingpin)',
+              '- [ ] Final HITL review',
+              '',
+              '## Validation',
+              '',
+              '- [ ] `go test ./... -race`',
+              '',
+              '## Status',
+              '',
+              '- Draft',
+              '',
+            ].join('\n');
+
+            const dir = path.join(process.env.GITHUB_WORKSPACE, 'docs', 'specs');
+            fs.mkdirSync(dir, { recursive: true });
+            const filePath = path.join(dir, `${version}.md`);
+            fs.writeFileSync(filePath, spec, 'utf8');
+
+            core.setOutput('version', version);
+            core.setOutput('spec_path', `docs/specs/${version}.md`);
+
+      - name: Ensure release labels exist
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              { name: 'upstream-release', color: '0E8A16', description: 'Tracks new openclaw upstream releases' },
+              { name: 'release-sync', color: '1D76DB', description: 'Tracks downstream release sync work' },
+            ];
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ...label,
+                });
+              } catch (err) {
+                if (err.status !== 422) {
+                  throw err;
+                }
+              }
+            }
+
+      - name: Create or update spec PR
+        if: steps.gate.outputs.enabled == 'true'
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "docs(spec): draft upstream sync spec ${{ steps.generate.outputs.version }}"
+          title: "docs(spec): draft upstream sync spec ${{ steps.generate.outputs.version }}"
+          body: |
+            Generated from upstream release tracking issue #${{ github.event.issue.number }}.
+
+            Includes:
+            - auto-generated release sync spec at `${{ steps.generate.outputs.spec_path }}`
+            - required review gates:
+              - architecture review
+              - go standards code review
+              - api coverage review
+              - security review (Kingpin)
+              - final HITL review
+          branch: "automation/spec-${{ steps.generate.outputs.version }}"
+          labels: |
+            upstream-release
+            release-sync
+          add-paths: |
+            ${{ steps.generate.outputs.spec_path }}
+          signoff: true
+
+      - name: Comment on tracking issue
+        if: steps.gate.outputs.enabled == 'true' && steps.cpr.outputs.pull-request-number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prUrl = '${{ steps.cpr.outputs.pull-request-url }}';
+
+            await github.request('POST /repos/{owner}/{repo}/issues/{issue_number}/comments', {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: [
+                `Opened/updated spec PR: ${prUrl}`,
+                '',
+                'Required release gates before tagging:',
+                '- Architecture review',
+                '- Go standards code review',
+                '- API coverage review',
+                '- Security review (Kingpin)',
+                '- Final HITL review',
+              ].join('\n'),
+            });
+
+      - name: Trigger OpenCode release-sync run
+        if: steps.gate.outputs.enabled == 'true' && steps.cpr.outputs.pull-request-number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = String(context.payload.issue.number);
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'release-sync-a3t.yml',
+              ref: 'main',
+              inputs: {
+                issue_number: issueNumber,
+              },
+            });
+
+            core.info(`Triggered release-sync-a3t.yml for issue #${issueNumber}`);

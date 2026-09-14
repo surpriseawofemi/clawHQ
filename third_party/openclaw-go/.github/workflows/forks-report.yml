@@ -1,0 +1,243 @@
+name: Forks Report
+
+on:
+  schedule:
+    - cron: '30 12 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  forks-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate forks snapshot
+        id: forks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const forks = await github.paginate(github.rest.repos.listForks, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sort: 'newest',
+              per_page: 100,
+            });
+
+            forks.sort((a, b) => new Date(b.pushed_at) - new Date(a.pushed_at));
+            const inspected = forks.slice(0, 20);
+            const analyses = [];
+
+            for (const fork of inspected) {
+              const analysis = {
+                full_name: fork.full_name,
+                html_url: fork.html_url,
+                stargazers_count: fork.stargazers_count,
+                open_issues_count: fork.open_issues_count,
+                pushed_at: fork.pushed_at,
+                default_branch: fork.default_branch,
+              };
+
+              try {
+                const basehead = `${context.repo.owner}:main...${fork.owner.login}:${fork.default_branch}`;
+                const compare = await github.rest.repos.compareCommitsWithBasehead({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  basehead,
+                });
+
+                const data = compare.data;
+                const commits = (data.commits || []).map((c) => {
+                  const subject = (c.commit?.message || '').split('\n')[0].trim();
+                  return {
+                    sha: (c.sha || '').slice(0, 7),
+                    subject,
+                    html_url: c.html_url,
+                  };
+                });
+                const files = (data.files || []).map((f) => ({
+                  filename: f.filename,
+                  status: f.status,
+                  additions: f.additions,
+                  deletions: f.deletions,
+                }));
+
+                analysis.status = data.status || 'unknown';
+                analysis.ahead_by = data.ahead_by || 0;
+                analysis.behind_by = data.behind_by || 0;
+                analysis.commits = commits.slice(0, 5);
+                analysis.files = files.slice(0, 8);
+                analysis.total_commits = commits.length;
+                analysis.total_files = files.length;
+              } catch (error) {
+                analysis.status = 'compare_failed';
+                analysis.ahead_by = 0;
+                analysis.behind_by = 0;
+                analysis.commits = [];
+                analysis.files = [];
+                analysis.total_commits = 0;
+                analysis.total_files = 0;
+                analysis.error = error?.message || 'compare request failed';
+              }
+
+              analyses.push(analysis);
+            }
+
+            analyses.sort((a, b) => {
+              if (b.ahead_by !== a.ahead_by) {
+                return b.ahead_by - a.ahead_by;
+              }
+              return new Date(b.pushed_at) - new Date(a.pushed_at);
+            });
+
+            const divergent = analyses.filter((a) => a.ahead_by > 0).slice(0, 12);
+
+            core.setOutput('count', String(forks.length));
+            core.setOutput('inspected_count', String(inspected.length));
+            core.setOutput('forks_json', JSON.stringify(divergent));
+            core.setOutput('all_analyses_json', JSON.stringify(analyses.slice(0, 20)));
+
+      - name: Open or update forks report issue
+        id: issue
+        uses: actions/github-script@v7
+        env:
+          FORKS_JSON: ${{ steps.forks.outputs.forks_json }}
+          ALL_ANALYSES_JSON: ${{ steps.forks.outputs.all_analyses_json }}
+          FORKS_COUNT: ${{ steps.forks.outputs.count }}
+          INSPECTED_COUNT: ${{ steps.forks.outputs.inspected_count }}
+        with:
+          script: |
+            const title = 'Automation: Forks activity report';
+            const rows = JSON.parse(process.env.FORKS_JSON || '[]');
+            const allRows = JSON.parse(process.env.ALL_ANALYSES_JSON || '[]');
+            const total = Number(process.env.FORKS_COUNT || '0');
+            const inspected = Number(process.env.INSPECTED_COUNT || '0');
+
+            const statusSummary = allRows.reduce((acc, row) => {
+              const key = row.status || 'unknown';
+              acc[key] = (acc[key] || 0) + 1;
+              return acc;
+            }, {});
+
+            const statusLines = Object.entries(statusSummary)
+              .sort((a, b) => b[1] - a[1])
+              .map(([status, count]) => `- ${status}: **${count}**`);
+
+            const details = rows.flatMap((f) => {
+              const commitLines = (f.commits || []).length
+                ? [
+                    ...f.commits.map((c) => `  - [\`${c.sha}\`](${c.html_url}) ${c.subject || '(no subject)'}`),
+                  ]
+                : ['  - none'];
+
+              const fileLines = (f.files || []).length
+                ? [
+                    ...f.files.map((file) => `  - \`${file.status}\` \`${file.filename}\` (+${file.additions}/-${file.deletions})`),
+                  ]
+                : ['  - none'];
+
+              const lines = [
+                `#### ${f.full_name}`,
+                `- Fork: ${f.html_url}`,
+                `- Compare status: **${f.status}** (ahead: **${f.ahead_by}**, behind: **${f.behind_by}**)`,
+                `- Last push: ${f.pushed_at}`,
+                `- Commits ahead sampled (${(f.commits || []).length}/${f.total_commits || 0}):`,
+                ...commitLines,
+                `- Changed files sampled (${(f.files || []).length}/${f.total_files || 0}):`,
+                ...fileLines,
+              ];
+
+              if (f.error) {
+                lines.push(`- Compare error: \`${f.error}\``);
+              }
+              lines.push('');
+              return lines;
+            });
+
+            const body = [
+              '## Forks Divergence Snapshot',
+              '',
+              `- Total forks: **${total}**`,
+              `- Inspected: **${inspected}** most recently pushed forks`,
+              `- Divergent forks ahead of upstream/main: **${rows.length}**`,
+              '',
+              '### Compare status counts',
+              ...(statusLines.length ? statusLines : ['- none']),
+              '',
+              '### Divergent forks summary',
+              '| Fork | Ahead | Behind | Commits sampled | Files sampled | Last push (UTC) |',
+              '|---|---:|---:|---:|---:|---:|',
+              ...(rows.length
+                ? rows.map((f) => `| [${f.full_name}](${f.html_url}) | ${f.ahead_by} | ${f.behind_by} | ${(f.commits || []).length}/${f.total_commits || 0} | ${(f.files || []).length}/${f.total_files || 0} | ${f.pushed_at} |`)
+                : ['| none | 0 | 0 | 0 | 0 | - |']),
+              '',
+              '### Divergent fork details (commits + file diffs)',
+              ...(details.length ? details : ['No divergent forks detected in inspected set.', '']),
+              '### Suggested follow-up',
+              '- Review divergent forks with high `ahead` counts first and evaluate whether commits should be upstreamed into `openclaw` or `openclaw-go`.',
+              '- For relevant protocol/gateway deltas, open an `upstream-release` or `release-sync` issue and link to the fork commit(s).',
+              '',
+              '_Generated automatically by `forks-report.yml`._',
+            ].join('\n');
+
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            const existing = openIssues.find((i) => i.title === title);
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+              core.info(`Updated issue #${existing.number}`);
+              core.setOutput('issue_number', String(existing.number));
+              return;
+            }
+
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['release-sync'],
+              assignees: ['slantview'],
+            });
+            core.info(`Created issue #${created.data.number}`);
+            core.setOutput('issue_number', String(created.data.number));
+
+      - name: Send forks report email via Resend
+        if: always()
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+          RESEND_TO_EMAIL: ${{ secrets.RESEND_TO_EMAIL }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RESEND_API_KEY:-}" ] || [ -z "${RESEND_FROM_EMAIL:-}" ] || [ -z "${RESEND_TO_EMAIL:-}" ]; then
+            echo "Resend secrets not configured; skipping email notification."
+            exit 0
+          fi
+
+          if [ -z "${ISSUE_NUMBER:-}" ]; then
+            echo "Issue number missing; skipping email notification."
+            exit 0
+          fi
+
+          ISSUE_URL="https://github.com/${REPO}/issues/${ISSUE_NUMBER}"
+          SUBJECT="[openclaw-go] Forks activity report"
+          BODY="Forks activity report is available: ${ISSUE_URL}"
+
+          curl -sS https://api.resend.com/emails \
+            -H "Authorization: Bearer ${RESEND_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{\"from\":\"${RESEND_FROM_EMAIL}\",\"to\":[\"${RESEND_TO_EMAIL}\"],\"subject\":\"${SUBJECT}\",\"text\":\"${BODY}\"}" >/tmp/resend-forks.json
+          echo "Sent Resend forks email notification"

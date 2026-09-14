@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.2.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.2.0",
+			"CompanyName": "My Company",
+			"FileDescription": "Desktop command center for your OpenClaw agent org",
+			"LegalCopyright": "© 2026, My Company",
+			"ProductName": "ClawHQ",
+			"Comments": "This is a comment"
+		}
+	}
+}

@@ -1,0 +1,267 @@
+name: PR Guard
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # -----------------------------------------------------------------------
+  # Require DCO sign-off on every commit (blocks unsigned AI slop)
+  # -----------------------------------------------------------------------
+  dco:
+    name: DCO Sign-off
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check DCO sign-off
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          failed=0
+          for sha in $(git rev-list "$base".."$head"); do
+            msg=$(git log -1 --format='%B' "$sha")
+            if ! echo "$msg" | grep -qiE '^Signed-off-by: .+ <.+>'; then
+              echo "::error::Commit $sha is missing 'Signed-off-by' line."
+              echo "  Message: $(git log -1 --format='%s' "$sha")"
+              failed=1
+            fi
+          done
+          if [ "$failed" = "1" ]; then
+            echo ""
+            echo "All commits must include a DCO sign-off line."
+            echo "Use: git commit -s -m 'your message'"
+            echo "See: https://developercertificate.org/"
+            exit 1
+          fi
+          echo "All commits have DCO sign-off."
+
+  # -----------------------------------------------------------------------
+  # Lint with golangci-lint (catches generated/low-quality code patterns)
+  # -----------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+
+      - name: Run golangci-lint
+        run: golangci-lint run --timeout=5m
+
+  # -----------------------------------------------------------------------
+  # Diff size guard -- flag unreasonably large PRs for manual review
+  # -----------------------------------------------------------------------
+  diff-size:
+    name: Diff Size Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check diff size
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+
+          added=$(git diff --numstat "$base".."$head" -- '*.go' | awk '{s+=$1} END {print s+0}')
+          removed=$(git diff --numstat "$base".."$head" -- '*.go' | awk '{s+=$2} END {print s+0}')
+          files=$(git diff --name-only "$base".."$head" -- '*.go' | wc -l | tr -d ' ')
+
+          echo "Go lines added:   $added"
+          echo "Go lines removed: $removed"
+          echo "Go files changed: $files"
+
+          # Warn at 1000 lines, fail at 3000
+          if [ "$added" -gt 3000 ]; then
+            echo "::error::PR adds $added lines of Go code. PRs over 3000 added lines require maintainer approval."
+            exit 1
+          elif [ "$added" -gt 1000 ]; then
+            echo "::warning::PR adds $added lines of Go code. Large PRs take longer to review."
+          fi
+
+  # -----------------------------------------------------------------------
+  # Verify go.mod is tidy (no phantom dependencies snuck in)
+  # -----------------------------------------------------------------------
+  tidy:
+    name: Go Mod Tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Check go.mod and go.sum are tidy
+        run: |
+          go mod tidy
+          if ! git diff --quiet go.mod go.sum; then
+            echo "::error::go.mod or go.sum is not tidy. Run 'go mod tidy' and commit the result."
+            git diff go.mod go.sum
+            exit 1
+          fi
+
+  # -----------------------------------------------------------------------
+  # Check for common AI slop patterns
+  # -----------------------------------------------------------------------
+  slop-check:
+    name: AI Slop Detector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for AI slop patterns
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          failed=0
+
+          # Get the diff of added lines only (Go files)
+          diff_content=$(git diff "$base".."$head" -- '*.go' | grep '^+' | grep -v '^+++' || true)
+
+          # Check for "TODO: implement" stubs (classic AI placeholder)
+          if echo "$diff_content" | grep -qiE 'TODO:?\s*(implement|add|fix|handle)\b'; then
+            count=$(echo "$diff_content" | grep -ciE 'TODO:?\s*(implement|add|fix|handle)\b' || true)
+            echo "::warning::Found $count TODO placeholder(s). Ensure all functionality is actually implemented."
+          fi
+
+          # Check for panic("not implemented") or panic("todo")
+          if echo "$diff_content" | grep -qiE 'panic\(\s*"(not implemented|todo|implement me)'; then
+            echo "::error::Found panic(\"not implemented\") stubs. All code must be functional."
+            failed=1
+          fi
+
+          # Check for empty function bodies (func ... { })
+          new_files=$(git diff --name-only "$base".."$head" -- '*.go' || true)
+          for f in $new_files; do
+            if [ -f "$f" ]; then
+              if grep -Pzo 'func\s+\w+\([^)]*\)[^{]*\{\s*\n\s*\}' "$f" 2>/dev/null; then
+                echo "::warning::File $f may contain empty function bodies."
+              fi
+            fi
+          done
+
+          # Check for suspicious identical/repetitive comments
+          if echo "$diff_content" | grep -oiE '//\s*.{10,}' | sort | uniq -c | sort -rn | head -5 | awk '$1 > 5 {found=1} END {exit !found}' 2>/dev/null; then
+            echo "::warning::Found highly repetitive comments in the diff. This may indicate generated code."
+          fi
+
+          if [ "$failed" = "1" ]; then
+            exit 1
+          fi
+          echo "Slop check passed."
+
+  # -----------------------------------------------------------------------
+  # PR description quality check
+  # -----------------------------------------------------------------------
+  pr-description:
+    name: PR Description
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR description
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Title must not be empty or generic
+          if [ -z "$PR_TITLE" ] || echo "$PR_TITLE" | grep -qiE '^(update|fix|changes|patch|pr|pull request|untitled)$'; then
+            echo "::error::PR title is missing or too generic. Please provide a descriptive title."
+            exit 1
+          fi
+
+          # Body must have some substance (at least 30 chars)
+          body_len=${#PR_BODY}
+          if [ "$body_len" -lt 30 ]; then
+            echo "::error::PR description is too short ($body_len chars). Please explain what this PR does and why."
+            exit 1
+          fi
+
+          echo "PR description looks good."
+
+  # -----------------------------------------------------------------------
+  # Enforce release review gates for release-sync PRs
+  # -----------------------------------------------------------------------
+  release-gates:
+    name: Release Gates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Validate release gate checklist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || "";
+            const labels = new Set(
+              (pr.labels || [])
+                .filter((label) => label && typeof label.name === 'string')
+                .map((label) => label.name),
+            );
+
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                per_page: 100,
+              },
+            );
+
+            const changedPaths = files.map((f) => f.filename);
+            const hasSpecFile = changedPaths.some((p) => /^docs\/specs\/v\d+\.\d+\.\d+(?:-\d+)?\.md$/.test(p));
+
+            const isReleasePR =
+              labels.has("release-sync") ||
+              labels.has("upstream-release") ||
+              hasSpecFile;
+
+            if (!isReleasePR) {
+              core.info("Not a release-sync PR; skipping release gate enforcement.");
+              return;
+            }
+
+            const requiredChecks = [
+              { name: "Architecture review", re: /- \[[xX]\]\s+Architecture review/ },
+              { name: "Go standards code review", re: /- \[[xX]\]\s+Go standards code review/ },
+              { name: "API coverage review", re: /- \[[xX]\]\s+API coverage review/ },
+              { name: "Security review \(Kingpin \/ @slantview\)", re: /- \[[xX]\]\s+Security review \(Kingpin \/ @slantview\)/ },
+              { name: "Final HITL review", re: /- \[[xX]\]\s+Final HITL review/ },
+              { name: "go test ./... -race", re: /- \[[xX]\]\s+`go test \.\/\.\.\. -race`/ },
+            ];
+
+            const missing = requiredChecks.filter((c) => !c.re.test(body)).map((c) => c.name);
+            if (!hasSpecFile) {
+              missing.push("docs/specs/<version>.md in PR diff");
+            }
+
+            if (missing.length > 0) {
+              core.setFailed(
+                [
+                  "Release gate validation failed.",
+                  "Missing required items:",
+                  ...missing.map((m) => `- ${m}`),
+                ].join("\n"),
+              );
+            } else {
+              core.info("Release gate validation passed.");
+            }
