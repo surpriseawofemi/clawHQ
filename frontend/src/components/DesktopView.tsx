@@ -21,6 +21,10 @@ const INTERVALS = [
  * every frame is a full PNG over the gateway.
  */
 export function DesktopView({ node }: Props): React.JSX.Element {
+  // `connected` comes from node.list. A paired node that is not connected has nowhere
+  // for the gateway to forward the invoke, and the reply is a bare
+  // "node.invoke: node not connected" — so say what is going on instead of asking.
+  const online = node.connected === true
   const [src, setSrc] = useState<string | null>(null)
   const [size, setSize] = useState<{ w: number; h: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -32,7 +36,7 @@ export function DesktopView({ node }: Props): React.JSX.Element {
   const inFlight = useRef(false)
 
   const capture = useCallback(async () => {
-    if (inFlight.current) return
+    if (inFlight.current || !online) return
     inFlight.current = true
     setLoading(true)
     try {
@@ -57,9 +61,9 @@ export function DesktopView({ node }: Props): React.JSX.Element {
       inFlight.current = false
       setLoading(false)
     }
-  }, [node.nodeId])
+  }, [node.nodeId, online])
 
-  // Capture once when the node changes, then on the chosen interval.
+  // Capture once when the node changes or comes online, then on the chosen interval.
   useEffect(() => {
     setSrc(null)
     setError(null)
@@ -67,7 +71,7 @@ export function DesktopView({ node }: Props): React.JSX.Element {
   }, [capture])
 
   useEffect(() => {
-    if (intervalMs <= 0) return
+    if (intervalMs <= 0 || !online) return
     const t = setInterval(() => void capture(), intervalMs)
     return () => clearInterval(t)
   }, [intervalMs, capture])
@@ -82,7 +86,7 @@ export function DesktopView({ node }: Props): React.JSX.Element {
             {loading && <i className="dot-active" title="Capturing" />}
           </h1>
           <p>
-            {size ? `${size.w}×${size.h}` : 'no capture yet'}
+            {!online ? 'offline' : size ? `${size.w}×${size.h}` : 'no capture yet'}
             {lastAt ? ` · updated ${new Date(lastAt).toLocaleTimeString()}` : ''}
           </p>
         </div>
@@ -92,20 +96,34 @@ export function DesktopView({ node }: Props): React.JSX.Element {
               key={opt.ms}
               className={`btn btn-sm${intervalMs === opt.ms ? ' btn-primary' : ''}`}
               onClick={() => setIntervalMs(opt.ms)}
+              disabled={!online}
             >
               {opt.label}
             </button>
           ))}
-          <button className="btn btn-sm" onClick={() => void capture()} disabled={loading}>
+          <button className="btn btn-sm" onClick={() => void capture()} disabled={loading || !online}>
             Refresh
           </button>
         </div>
       </header>
 
       <div className="desk-stage">
-        {error && <p className="error-text">{error}</p>}
-        {!error && !src && <p className="thread-empty">Capturing…</p>}
-        {src && <img className="desk-image" src={src} alt="Remote desktop" />}
+        {!online ? (
+          <div className="desk-offline">
+            <p className="thread-empty">This desktop is offline.</p>
+            <p className="onboard-hint">
+              The gateway still has it paired, but nothing is connected under that identity, so
+              there is no screen to capture. Start ClawHQ with its node role enabled — or the
+              OpenClaw node app — on that machine and this view wakes up on its own.
+            </p>
+          </div>
+        ) : (
+          <>
+            {error && <p className="error-text">{error}</p>}
+            {!error && !src && <p className="thread-empty">Capturing…</p>}
+            {src && <img className="desk-image" src={src} alt="Remote desktop" />}
+          </>
+        )}
       </div>
     </main>
   )

@@ -145,6 +145,15 @@ code,
   background: var(--accent-soft);
 }
 
+/* Paired but not connected: still selectable (the pane explains why), just visibly not live. */
+.agent-row.is-offline {
+  opacity: 0.55;
+}
+
+.agent-row.is-offline.is-selected {
+  opacity: 0.75;
+}
+
 .agent-emoji {
   font-size: 17px;
   width: 22px;

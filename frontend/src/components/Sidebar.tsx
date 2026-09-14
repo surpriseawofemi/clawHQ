@@ -143,7 +143,10 @@ export function Sidebar({
             {desktops.map((node) => (
               <div
                 key={node.nodeId}
-                className={`agent-row${node.nodeId === selectedNodeId ? ' is-selected' : ''}`}
+                className={`agent-row${node.nodeId === selectedNodeId ? ' is-selected' : ''}${
+                  node.connected ? '' : ' is-offline'
+                }`}
+                title={node.connected ? undefined : 'Paired, but not connected right now'}
                 role="button"
                 tabIndex={0}
                 onClick={() => onSelectDesktop(node.nodeId)}
@@ -155,9 +158,11 @@ export function Sidebar({
                 <span className="agent-meta">
                   <span className="agent-name">
                     {node.displayName || node.platform || 'desktop'}
-                    {node.connected && <i className="dot dot-ok" />}
+                    <i className={`dot ${node.connected ? 'dot-ok' : 'dot-off'}`} />
                   </span>
-                  <span className="agent-sub">{node.nodeId.slice(0, 12)}</span>
+                  <span className="agent-sub">
+                    {node.connected ? node.nodeId.slice(0, 12) : `offline · ${node.nodeId.slice(0, 12)}`}
+                  </span>
                 </span>
               </div>
             ))}

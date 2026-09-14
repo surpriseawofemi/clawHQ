@@ -92,6 +92,28 @@ export function useFleet() {
     }
   }, [])
 
+  // Nodes come and go without any session changing, so poll node.list on its own.
+  // Cheap: it is one small RPC, and it is what flips a desktop between online and
+  // offline in the sidebar.
+  const refreshDesktops = useCallback(async () => {
+    if (!api()) return
+    try {
+      const nodes = await api().rpc.request<{ paired?: RemoteNode[]; nodes?: RemoteNode[] }>(
+        'node.list'
+      )
+      const list = nodes?.paired ?? nodes?.nodes ?? []
+      setDesktops(list.filter((n) => (n.commands ?? []).includes('screen.snapshot')))
+    } catch {
+      // Keep the last known list; a transient failure should not blank the sidebar.
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!connected) return
+    const tick = setInterval(() => void refreshDesktops(), 10_000)
+    return () => clearInterval(tick)
+  }, [connected, refreshDesktops])
+
   useEffect(() => {
     if (connected) {
       subscribed.current.clear()
@@ -188,9 +210,14 @@ export function useFleet() {
       if (event === 'sessions.changed') {
         void refreshFleet()
       }
+      // Any node lifecycle event (pairing, connect, disconnect) is a reason to re-read
+      // the list rather than wait for the next poll.
+      if (event.startsWith('node.') && !event.startsWith('node.invoke')) {
+        void refreshDesktops()
+      }
     })
     return () => off()
-  }, [refreshFleet])
+  }, [refreshFleet, refreshDesktops])
 
   // ---- per-session history ---------------------------------------------
   const openSession = useCallback(
