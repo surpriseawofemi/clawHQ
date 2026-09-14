@@ -1,8 +1,8 @@
 name: Build
 
-# macOS runners bill at a 10x minute multiplier on private repos, so the real builds
-# only run on tags. Every push gets a cheap Linux check that still catches the two
-# things most likely to break a mac build: type errors and darwin build-tag mistakes.
+# Platform builds run on tags so that pushes do not litter the repo with artifacts.
+# Every push gets a full check: Go vet, frontend typecheck, and a darwin cross-compile
+# of internal/, which catches a wrong //go:build tag before it reaches a mac.
 on:
   push:
     branches: [main]
@@ -22,7 +22,10 @@ env:
 jobs:
   check:
     name: Check
-    runs-on: ubuntu-latest
+    # Windows, not Linux: the wails3 CLI links against GTK and WebKit, and installing
+    # those headers on a bare ubuntu runner still failed here. Windows carries its
+    # webview in the OS, and the same install step has succeeded on it every run.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -36,13 +39,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      # The wails3 CLI links against GTK and WebKit, so it will not compile on a bare
-      # Linux runner. macOS and Windows carry their webviews in the OS and need nothing.
-      - name: Install Linux webview dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
@@ -63,8 +59,9 @@ jobs:
       - name: Vet Go
         run: go vet ./internal/... .
 
-      # Catches a wrong //go:build tag on Linux in seconds rather than at tag time on a
-      # macOS runner. Only internal/ — the Wails layer needs CGO and a real mac.
+      # Catches a wrong //go:build tag here rather than at tag time on a macOS runner.
+      # Only internal/ — the Wails layer needs CGO and a real mac, and the root package
+      # embeds frontend/dist which does not exist until a build has run.
       - name: Cross-compile internal packages for macOS
         env:
           GOOS: darwin
