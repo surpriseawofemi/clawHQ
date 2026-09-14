@@ -926,3 +926,9 @@ code,
 .dept-title .dept-emoji {
   flex: none;
 }
+
+.release-notes {
+  white-space: pre-wrap;
+  max-height: 180px;
+  overflow-y: auto;
+}

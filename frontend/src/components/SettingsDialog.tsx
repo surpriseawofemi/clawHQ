@@ -4,6 +4,7 @@ import { api } from '../api'
 import { ConnectionPanel } from './ConnectionPanel'
 import { NodePanel } from './NodePanel'
 import { PairingApprovals } from './PairingApprovals'
+import { UpdatePanel } from './UpdatePanel'
 
 type Props = {
   status: ConnectionStatus
@@ -132,6 +133,8 @@ export function SettingsDialog({
               <ConnectionPanel status={status} onConnected={onReconnected} />
 
               <NodePanel />
+
+              <UpdatePanel />
 
               <section className="panel">
                 <h3>Gateway service</h3>

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/surpriseawofemi/clawhq/internal/gateway"
 	"github.com/surpriseawofemi/clawhq/internal/node"
@@ -15,6 +16,14 @@ import (
 
 //go:embed all:frontend/dist
 var assets embed.FS
+
+// version is the running release, kept in a file rather than injected with
+// -ldflags because the Wails taskfiles hardcode their link flags. CI asserts that
+// this matches the tag being built, so the updater can never mistake which
+// version it is.
+//
+//go:embed VERSION
+var versionFile string
 
 // Events pushed to the frontend. Registering them gives the binding generator typed
 // JS/TS signatures.
@@ -48,6 +57,10 @@ func main() {
 	// The connection is created before the app so services can hold it; the emit
 	// callbacks close over app, which is assigned just below.
 	var app *application.App
+
+	// The update service needs the App itself, which does not exist until services
+	// are already being registered, so hold the pointer and fill it in afterwards.
+	updateSvc := &UpdateService{}
 
 	conn, err := gateway.New(
 		identityDir(),
@@ -93,6 +106,7 @@ func main() {
 			application.NewService(&ConfigService{store: cfgStore}),
 			application.NewService(&DaemonService{}),
 			application.NewService(&NodeService{host: nodeHost, store: cfgStore, conn: conn}),
+			application.NewService(updateSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -140,6 +154,14 @@ func main() {
 			}
 		}
 	}()
+
+	updateSvc.app = app
+
+	// Self-update from GitHub releases. Failing to wire this up is not fatal;
+	// the app simply will not offer updates.
+	if err := initUpdater(app, strings.TrimSpace(versionFile)); err != nil {
+		log.Printf("updater unavailable: %v", err)
+	}
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

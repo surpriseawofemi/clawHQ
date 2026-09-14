@@ -20,8 +20,8 @@ itself. Windows and macOS, built with Wails v3 (Go + React).
 
 ## Installing
 
-Grab a build from [Releases](../../releases): `ClawHQ-macos-arm64.zip` (Apple Silicon)
-or `ClawHQ.exe` (Windows, portable).
+Grab a build from [Releases](../../releases): `ClawHQ-darwin-arm64.zip` (Apple Silicon)
+or `ClawHQ-windows-amd64.exe` (Windows, portable).
 
 **macOS will refuse to open a browser-downloaded build.** The app is ad-hoc signed but
 not notarized, so Safari or Chrome tag it with `com.apple.quarantine` and Gatekeeper
@@ -30,7 +30,7 @@ reports it as "damaged". It isn't.
 The cleanest route is to download in Terminal, which never sets the quarantine flag:
 
 ```bash
-curl -L -o ClawHQ.zip https://github.com/surpriseawofemi/clawHQ/releases/latest/download/ClawHQ-macos-arm64.zip
+curl -L -o ClawHQ.zip https://github.com/surpriseawofemi/clawHQ/releases/latest/download/ClawHQ-darwin-arm64.zip
 unzip ClawHQ.zip
 mv ClawHQ.app /Applications/
 open /Applications/ClawHQ.app
@@ -45,6 +45,17 @@ xattr -dr com.apple.quarantine /Applications/ClawHQ.app
 Notarizing properly — so it opens with a double-click like any other app — needs a paid
 Apple Developer account. Intel Macs and Linux aren't built today; both are a small
 change to `.github/workflows/build.yml`.
+
+## Updating
+
+The app checks GitHub releases every six hours and can update itself in place —
+Settings shows the running version and a Check now button. On macOS the downloaded
+artifact is a whole signed `.app` and the updater swaps the bundle wholesale, so the
+signature survives and nothing needs re-signing; because the download comes over Go's
+HTTP client rather than a browser, Gatekeeper never quarantines it either.
+
+The running version lives in the `VERSION` file, and CI refuses to build a tag that
+disagrees with it.
 
 ## Building it
 

@@ -126,6 +126,15 @@ export type RemoteNode = {
   commands?: string[]
 }
 
+export type UpdateStatus = {
+  currentVersion: string
+  state: string
+  available: boolean
+  latestVersion: string
+  notes: string
+  error: string
+}
+
 export const UNASSIGNED = '__unassigned__'
 
 /** Flatten assistant content blocks into displayable text. */

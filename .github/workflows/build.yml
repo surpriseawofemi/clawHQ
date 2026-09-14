@@ -72,6 +72,21 @@ jobs:
           CGO_ENABLED: '0'
         run: go build ./internal/...
 
+  version-check:
+    name: Version matches tag
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare VERSION with the tag
+        run: |
+          set -euo pipefail
+          FILE=$(tr -d '[:space:]' < VERSION)
+          TAG=${GITHUB_REF_NAME#v}
+          echo "VERSION file: $FILE"
+          echo "git tag:      $TAG"
+          test "$FILE" = "$TAG"             || { echo "::error::VERSION says '$FILE' but the tag is '$TAG'. The updater compares against VERSION, so a mismatch means the app misreports whether it is current."; exit 1; }
+
   macos:
     name: macOS (Apple Silicon)
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -132,12 +147,12 @@ jobs:
       - name: Zip the bundle
         run: |
           cd bin
-          ditto -c -k --keepParent ClawHQ.app ClawHQ-macos-arm64.zip
+          ditto -c -k --keepParent ClawHQ.app ClawHQ-darwin-arm64.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: clawhq-macos-arm64
-          path: bin/ClawHQ-macos-arm64.zip
+          name: clawhq-darwin-arm64
+          path: bin/ClawHQ-darwin-arm64.zip
           if-no-files-found: error
 
   windows:
@@ -167,10 +182,14 @@ jobs:
       - name: Build
         run: wails3 task build
 
+      # Same naming rule as the mac asset: the updater matches on GOOS and GOARCH.
+      - name: Name the artifact for the updater
+        run: Copy-Item bin/ClawHQ.exe bin/ClawHQ-windows-amd64.exe
+
       - uses: actions/upload-artifact@v4
         with:
           name: clawhq-windows-amd64
-          path: bin/ClawHQ.exe
+          path: bin/ClawHQ-windows-amd64.exe
           if-no-files-found: error
 
   release:

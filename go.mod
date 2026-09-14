@@ -4,7 +4,10 @@ go 1.25.0
 
 require github.com/wailsapp/wails/v3 v3.0.0-beta.21
 
-require github.com/gorilla/websocket v1.5.3 // indirect
+require (
+	github.com/gorilla/websocket v1.5.3 // indirect
+	golang.org/x/mod v0.37.0 // indirect
+)
 
 require (
 	github.com/a3tai/openclaw-go v1.20260325.0

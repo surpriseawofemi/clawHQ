@@ -3,7 +3,8 @@ import {
   ConfigService,
   DaemonService,
   GatewayService,
-  NodeService
+  NodeService,
+  UpdateService
 } from '../bindings/github.com/surpriseawofemi/clawhq'
 import type {
   ClawHQConfig,
@@ -11,7 +12,8 @@ import type {
   DaemonStatus,
   Department,
   GatewayProfile,
-  NodeStatus
+  NodeStatus,
+  UpdateStatus
 } from './types'
 
 /**
@@ -78,6 +80,11 @@ export const api = {
     disable: (): Promise<NodeStatus> => NodeService.Disable() as Promise<NodeStatus>,
     setSharedFolders: (folders: string[]): Promise<NodeStatus> =>
       NodeService.SetSharedFolders(folders) as Promise<NodeStatus>
+  },
+  update: {
+    status: (): Promise<UpdateStatus> => UpdateService.Status() as Promise<UpdateStatus>,
+    check: (): Promise<UpdateStatus> => UpdateService.Check() as Promise<UpdateStatus>,
+    install: (): Promise<void> => UpdateService.Install()
   },
   shell: {
     openPath: (path: string): Promise<void> => DaemonService.OpenPath(path)
