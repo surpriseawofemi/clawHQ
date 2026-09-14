@@ -34,3 +34,6 @@ func showNotification(title, body string) error {
 	script := fmt.Sprintf(`display notification "%s" with title "%s" sound name "default"`, esc(body), esc(title))
 	return exec.Command("osascript", "-e", script).Run()
 }
+
+func holdKeysBegin(combo string) error { return errNoInput }
+func holdKeysEnd(combo string)         {}

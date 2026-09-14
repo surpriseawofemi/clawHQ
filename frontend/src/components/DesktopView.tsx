@@ -48,6 +48,7 @@ export function DesktopView({ node }: Props): React.JSX.Element {
 
   const [src, setSrc] = useState<string | null>(null)
   const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+  const [frameId, setFrameId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [intervalMs, setIntervalMs] = useState(0)
@@ -70,7 +71,9 @@ export function DesktopView({ node }: Props): React.JSX.Element {
     inFlight.current = true
     setLoading(true)
     try {
-      const res = await api.rpc.request<{ payload?: { base64?: string; width?: number; height?: number } }>(
+      const res = await api.rpc.request<{
+        payload?: { base64?: string; width?: number; height?: number; displayFrameId?: string }
+      }>(
         'node.invoke',
         {
           nodeId: node.nodeId,
@@ -83,6 +86,7 @@ export function DesktopView({ node }: Props): React.JSX.Element {
       if (!payload?.base64) throw new Error('the node returned no image')
       setSrc(`data:image/png;base64,${payload.base64}`)
       if (payload.width && payload.height) setSize({ w: payload.width, h: payload.height })
+      setFrameId(payload.displayFrameId ?? null)
       setLastAt(Date.now())
       setError(null)
     } catch (err) {
@@ -100,13 +104,16 @@ export function DesktopView({ node }: Props): React.JSX.Element {
     refreshTimer.current = window.setTimeout(() => void capture(), 350)
   }, [capture])
 
+  // The gateway's cua-computer plugin validates computer.act params against a strict
+  // schema (no unknown fields) before forwarding: pointer actions carry x/y, key
+  // actions carry `keys`, and screenshot is a separate command entirely.
   const act = useCallback(
     async (params: Record<string, unknown>) => {
       try {
         await api.rpc.request('node.invoke', {
           nodeId: node.nodeId,
           command: 'computer.act',
-          params: { screenIndex: 0, ...params },
+          params,
           idempotencyKey: `clawhq-act-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         })
         setActError(null)
@@ -134,15 +141,15 @@ export function DesktopView({ node }: Props): React.JSX.Element {
     [flushTyped]
   )
 
-  /** Screenshot pixel coordinates for a pointer event on the image. */
-  const pointOf = (e: React.MouseEvent): [number, number] | null => {
+  /** Pointer fields for an event on the image: x/y in screenshot pixels plus the frame. */
+  const pointOf = (e: React.MouseEvent): Record<string, unknown> | null => {
     const img = imgRef.current
     if (!img || !size) return null
     const rect = img.getBoundingClientRect()
     const x = Math.round(((e.clientX - rect.left) / rect.width) * size.w)
     const y = Math.round(((e.clientY - rect.top) / rect.height) * size.h)
     if (x < 0 || y < 0 || x >= size.w || y >= size.h) return null
-    return [x, y]
+    return { x, y, refWidth: size.w, screenIndex: 0, ...(frameId ? { displayFrameId: frameId } : {}) }
   }
 
   const onClick = (e: React.MouseEvent): void => {
@@ -155,12 +162,12 @@ export function DesktopView({ node }: Props): React.JSX.Element {
     if (clickTimer.current) {
       window.clearTimeout(clickTimer.current)
       clickTimer.current = null
-      void act({ action: 'double_click', coordinate: pt })
+      void act({ action: 'double_click', ...pt })
       return
     }
     clickTimer.current = window.setTimeout(() => {
       clickTimer.current = null
-      void act({ action: 'left_click', coordinate: pt })
+      void act({ action: 'left_click', ...pt })
     }, 220)
   }
 
@@ -168,7 +175,7 @@ export function DesktopView({ node }: Props): React.JSX.Element {
     e.preventDefault()
     if (!control) return
     const pt = pointOf(e)
-    if (pt) void act({ action: 'right_click', coordinate: pt })
+    if (pt) void act({ action: 'right_click', ...pt })
   }
 
   const onWheel = (e: React.WheelEvent): void => {
@@ -180,7 +187,7 @@ export function DesktopView({ node }: Props): React.JSX.Element {
     const delta = vertical ? e.deltaY : e.deltaX
     const amount = Math.max(1, Math.min(10, Math.round(Math.abs(delta) / 100)))
     const direction = vertical ? (delta > 0 ? 'down' : 'up') : delta > 0 ? 'right' : 'left'
-    void act({ action: 'scroll', coordinate: pt, scrollDirection: direction, scrollAmount: amount })
+    void act({ action: 'scroll', ...pt, scrollDirection: direction, scrollAmount: amount })
   }
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
@@ -199,13 +206,13 @@ export function DesktopView({ node }: Props): React.JSX.Element {
     const special = SPECIAL_KEYS[e.key] ?? (/^F\d{1,2}$/.test(e.key) ? e.key.toLowerCase() : null)
     if (special) {
       flushTyped()
-      void act({ action: 'key', text: [...mods, special].join('+') })
+      void act({ action: 'key', keys: [...mods, special].join('+') })
       return
     }
     if (e.key.length === 1) {
       if (mods.length > 0) {
         flushTyped()
-        void act({ action: 'key', text: [...mods, e.key.toLowerCase()].join('+') })
+        void act({ action: 'key', keys: [...mods, e.key.toLowerCase()].join('+') })
       } else {
         queueTyped(e.key)
       }
@@ -343,10 +350,10 @@ export function DesktopView({ node }: Props): React.JSX.Element {
           <button className="btn btn-sm" onClick={sendTypeBox} disabled={!typeBox}>
             Send text
           </button>
-          <button className="btn btn-sm" onClick={() => void act({ action: 'key', text: 'Return' })}>
+          <button className="btn btn-sm" onClick={() => void act({ action: 'key', keys: 'Return' })}>
             ⏎ Enter
           </button>
-          <button className="btn btn-sm" onClick={() => void act({ action: 'key', text: 'tab' })}>
+          <button className="btn btn-sm" onClick={() => void act({ action: 'key', keys: 'tab' })}>
             ⇥ Tab
           </button>
           {actError && <span className="error-text">{actError}</span>}

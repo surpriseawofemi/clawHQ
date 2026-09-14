@@ -293,6 +293,32 @@ func pressKeys(combo string) error {
 	return sendInputs(inputs)
 }
 
+// holdKeysBegin presses every key in combo and leaves them down; holdKeysEnd releases
+// them in reverse. Used to hold modifiers around a pointer action.
+func holdKeysBegin(combo string) error {
+	codes, err := comboCodes(combo)
+	if err != nil {
+		return err
+	}
+	var down []winInput
+	for _, vk := range codes {
+		down = append(down, keyEvent(vk, 0, 0))
+	}
+	return sendInputs(down)
+}
+
+func holdKeysEnd(combo string) {
+	codes, err := comboCodes(combo)
+	if err != nil {
+		return
+	}
+	var up []winInput
+	for i := len(codes) - 1; i >= 0; i-- {
+		up = append(up, keyEvent(codes[i], 0, keyEventKeyUp))
+	}
+	_ = sendInputs(up)
+}
+
 func holdKeys(combo string, d time.Duration) error {
 	codes, err := comboCodes(combo)
 	if err != nil {

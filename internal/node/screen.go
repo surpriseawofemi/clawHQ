@@ -55,12 +55,13 @@ func (h *Host) screenSnapshot(raw json.RawMessage) (any, string) {
 	}
 
 	return map[string]any{
-		"base64":      base64.StdEncoding.EncodeToString(buf.Bytes()),
-		"format":      "png",
-		"width":       img.Bounds().Dx(),
-		"height":      img.Bounds().Dy(),
-		"screenIndex": params.ScreenIndex,
-		"frameId":     frameID,
+		"base64":         base64.StdEncoding.EncodeToString(buf.Bytes()),
+		"format":         "png",
+		"width":          img.Bounds().Dx(),
+		"height":         img.Bounds().Dy(),
+		"screenIndex":    params.ScreenIndex,
+		"displayFrameId": frameID,
+		"capturedAtMs":   time.Now().UnixMilli(),
 	}, ""
 }
 
