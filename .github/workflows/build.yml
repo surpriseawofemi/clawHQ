@@ -101,14 +101,31 @@ jobs:
       - name: Build .app
         run: wails3 task package
 
-      # Prove the bundle is what we think it is before shipping it. A wrong
-      # architecture or a broken signature produces an app that dies silently on
-      # launch, and that is miserable to debug from the other side of a download.
+      # Prove the bundle can actually launch before shipping it.
+      #
+      # Checking the signature and architecture is not enough: a v0.1.0 build passed
+      # both while CFBundleExecutable named a file that did not exist, so macOS called
+      # the app "damaged or incomplete" and refused to start it. Resolve the plist the
+      # way Finder does and confirm the binary it names is really there.
       - name: Verify the bundle
         run: |
-          file bin/ClawHQ.app/Contents/MacOS/ClawHQ
-          codesign -dv --verbose=2 bin/ClawHQ.app 2>&1 | head -5
-          codesign --verify --deep --strict bin/ClawHQ.app && echo "signature OK"
+          set -euo pipefail
+          APP=bin/ClawHQ.app
+          EXE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Contents/Info.plist")
+          echo "CFBundleExecutable = $EXE"
+          test -f "$APP/Contents/MacOS/$EXE"             || { echo "::error::Info.plist names '$EXE' but $APP/Contents/MacOS/$EXE does not exist"; exit 1; }
+          test -x "$APP/Contents/MacOS/$EXE"             || { echo "::error::$EXE is not executable"; exit 1; }
+          file "$APP/Contents/MacOS/$EXE"
+          file "$APP/Contents/MacOS/$EXE" | grep -q arm64             || { echo "::error::binary is not arm64"; exit 1; }
+          codesign --verify --deep --strict "$APP" && echo "signature OK"
+          # Launch it headless and make sure the process survives a few seconds. This
+          # is the check that would have caught the broken plist.
+          "$APP/Contents/MacOS/$EXE" &
+          PID=$!
+          sleep 5
+          kill -0 $PID 2>/dev/null             || { echo "::error::the app exited within 5s of launching"; exit 1; }
+          kill $PID 2>/dev/null || true
+          echo "app launched and stayed alive"
 
       # Zip with ditto, not upload-artifact directly: the artifact action drops the
       # executable bit, which makes an .app bundle refuse to launch.
