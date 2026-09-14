@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
 import { AgentSettingsDialog } from './components/AgentSettingsDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { DesktopView } from './components/DesktopView'
 import { Onboarding } from './components/Onboarding'
+import { api } from './api'
 import { useFleet } from './state/useFleet'
+import type { NodeNotification } from './types'
 
 function App(): React.JSX.Element {
   const fleet = useFleet()
@@ -13,6 +15,10 @@ function App(): React.JSX.Element {
   const [agentSettingsId, setAgentSettingsId] = useState<string | null>(null)
   // Selecting a desktop takes over the main pane; selecting an agent gives it back.
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<NodeNotification | null>(null)
+
+  // An agent asked for a human through system.notify on this machine's node role.
+  useEffect(() => api.onNodeNotification(setNotice), [])
 
   const {
     status,
@@ -78,6 +84,31 @@ function App(): React.JSX.Element {
         onAbort={abortRun}
         onSettings={() => selectedAgentId && setAgentSettingsId(selectedAgentId)}
       />
+      )}
+
+      {notice && (
+        <div className="notice" role="status">
+          <span className="notice-icon">🔔</span>
+          <span className="notice-text">
+            <strong>{notice.title}</strong>
+            {notice.body && <span>{notice.body}</span>}
+          </span>
+          {desktops.some((d) => d.connected) && (
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={() => {
+                const live = desktops.find((d) => d.connected)
+                if (live) setSelectedNodeId(live.nodeId)
+                setNotice(null)
+              }}
+            >
+              Open desktop
+            </button>
+          )}
+          <button className="icon-btn" onClick={() => setNotice(null)}>
+            ✕
+          </button>
+        </div>
       )}
 
       {error && (

@@ -49,13 +49,15 @@ var commands = []string{
 	CmdSystemWhich,
 	CmdFsListDir,
 	CmdScreenSnapshot,
+	CmdComputerAct,
+	CmdSystemNotify,
 	CmdDepartmentsList,
 	CmdDepartmentCreate,
 	CmdAgentAssign,
 }
 
 // Caps ClawHQ claims. "file" covers directory browsing, "system" covers binary lookup.
-var Caps = []string{"file", "system", "screen"}
+var Caps = []string{"file", "system", "screen", "computer", "notify"}
 
 // DepartmentStore is the slice of ClawHQ's config the node is allowed to touch.
 // Narrow on purpose: agents can shape the org chart and nothing else.
@@ -72,7 +74,9 @@ type Status struct {
 	DeviceID      string   `json:"deviceId"`
 	SharedFolders []string `json:"sharedFolders"`
 	Commands      []string `json:"commands"`
-	Error         string   `json:"error"`
+	// DesktopControl is whether computer.act invokes are honoured on this machine.
+	DesktopControl bool   `json:"desktopControl"`
+	Error          string `json:"error"`
 	// LastInvoke is a short human-readable trace of the most recent request, which is
 	// the difference between "it silently does nothing" and a debuggable feature.
 	LastInvoke string `json:"lastInvoke"`
@@ -88,17 +92,23 @@ type Host struct {
 	sharedFolders []string
 	store         DepartmentStore
 
+	desktopControl bool
+	lastFrame      frameGeometry
+
 	emitStatus func(Status)
+	// onNotify receives system.notify requests so the app can surface them.
+	onNotify func(Notification)
 	// logUnknown records invokes we do not implement yet, so the command surface can
 	// be extended against real traffic instead of guesswork.
 	logUnknown func(command string, params string)
 }
 
-func New(identityRoot string, st DepartmentStore, emitStatus func(Status), logUnknown func(string, string)) *Host {
+func New(identityRoot string, st DepartmentStore, emitStatus func(Status), onNotify func(Notification), logUnknown func(string, string)) *Host {
 	return &Host{
 		identityRoot: identityRoot,
 		store:        st,
 		emitStatus:   emitStatus,
+		onNotify:     onNotify,
 		logUnknown:   logUnknown,
 		status:       Status{Commands: commands},
 	}
@@ -334,6 +344,10 @@ func (h *Host) runInvoke(req invokeRequest) {
 		payload = h.fsListDir(params)
 	case CmdScreenSnapshot:
 		payload, failure = h.screenSnapshot(params)
+	case CmdComputerAct:
+		payload, failure = h.computerAct(params)
+	case CmdSystemNotify:
+		payload, failure = h.systemNotify(params)
 	case CmdDepartmentsList:
 		payload = h.departmentsList()
 	case CmdDepartmentCreate:

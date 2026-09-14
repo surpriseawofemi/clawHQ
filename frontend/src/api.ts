@@ -13,7 +13,8 @@ import type {
   Department,
   GatewayProfile,
   NodeStatus,
-  UpdateStatus
+  UpdateStatus,
+  NodeNotification
 } from './types'
 
 /**
@@ -79,7 +80,11 @@ export const api = {
     enable: (token: string): Promise<NodeStatus> => NodeService.Enable(token) as Promise<NodeStatus>,
     disable: (): Promise<NodeStatus> => NodeService.Disable() as Promise<NodeStatus>,
     setSharedFolders: (folders: string[]): Promise<NodeStatus> =>
-      NodeService.SetSharedFolders(folders) as Promise<NodeStatus>
+      NodeService.SetSharedFolders(folders) as Promise<NodeStatus>,
+    setDesktopControl: (on: boolean): Promise<NodeStatus> =>
+      NodeService.SetDesktopControl(on) as Promise<NodeStatus>,
+    /** Drop the node identity so the next enable pairs afresh with the current command list. */
+    rePair: (): Promise<NodeStatus> => NodeService.RePair() as Promise<NodeStatus>
   },
   update: {
     status: (): Promise<UpdateStatus> => UpdateService.Status() as Promise<UpdateStatus>,
@@ -126,6 +131,12 @@ export const api = {
         }
       }
       cb({ event: frame.event, payload })
+    })
+  },
+  onNodeNotification: (cb: (n: NodeNotification) => void): (() => void) => {
+    return Events.On('node:notify', (raw: any) => {
+      const n = eventPayload<NodeNotification>(raw)
+      if (n) cb(n)
     })
   },
   onNodeStatus: (cb: (status: NodeStatus) => void): (() => void) => {

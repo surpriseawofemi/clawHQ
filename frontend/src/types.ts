@@ -112,8 +112,16 @@ export type NodeStatus = {
   deviceId: string
   sharedFolders: string[]
   commands: string[]
+  desktopControl: boolean
   error: string
   lastInvoke: string
+}
+
+/** A system.notify an agent sent to this machine through the node role. */
+export type NodeNotification = {
+  title: string
+  body: string
+  atMs: number
 }
 
 /** A node paired with the gateway, as reported by node.list. */

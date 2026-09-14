@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/png"
+	"time"
 )
 
 // CmdScreenSnapshot is OpenClaw's own screen-capture command. Unlike an invented name
@@ -28,10 +30,24 @@ func (h *Host) screenSnapshot(raw json.RawMessage) (any, string) {
 	if err != nil {
 		return nil, err.Error()
 	}
+	fullW, fullH := img.Bounds().Dx(), img.Bounds().Dy()
 
 	if params.MaxWidth > 0 && img.Bounds().Dx() > params.MaxWidth {
 		img = downscale(img, params.MaxWidth)
 	}
+
+	// computer.act coordinates are pixels in the most recent screenshot, so record
+	// how this one maps back onto the screen.
+	sx, sy, sw, sh := screenGeometry()
+	if sw == 0 || sh == 0 {
+		sx, sy, sw, sh = 0, 0, fullW, fullH
+	}
+	frameID := fmt.Sprintf("%d", time.Now().UnixNano())
+	h.rememberFrame(frameGeometry{
+		imgW: img.Bounds().Dx(), imgH: img.Bounds().Dy(),
+		screenX: sx, screenY: sy, screenW: sw, screenH: sh,
+		frameID: frameID,
+	})
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
@@ -44,6 +60,7 @@ func (h *Host) screenSnapshot(raw json.RawMessage) (any, string) {
 		"width":       img.Bounds().Dx(),
 		"height":      img.Bounds().Dy(),
 		"screenIndex": params.ScreenIndex,
+		"frameId":     frameID,
 	}, ""
 }
 

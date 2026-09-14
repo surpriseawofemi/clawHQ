@@ -33,8 +33,8 @@ const (
 	smCXVirtualScreen = 78
 	smCYVirtualScreen = 79
 
-	srcCopy    = 0x00CC0020
-	captureBlt = 0x40000000 // include layered windows, or overlays come out blank
+	srcCopy      = 0x00CC0020
+	captureBlt   = 0x40000000 // include layered windows, or overlays come out blank
 	dibRGBColors = 0
 )
 

@@ -107,6 +107,39 @@ export function NodePanel(): React.JSX.Element {
         </div>
       </div>
 
+      <div className="field">
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={status?.desktopControl ?? false}
+            disabled={busy !== null}
+            onChange={(e) => run('control', () => api.node.setDesktopControl(e.target.checked))}
+          />
+          <span>Allow desktop control</span>
+        </label>
+        <p className="field-hint">
+          Lets ClawHQ on another machine — and agents, through <code>computer.act</code> —
+          move the mouse and type on this computer. Off by default. Windows only for now.
+        </p>
+      </div>
+
+      {status?.enabled && (
+        <div className="field">
+          <p className="field-hint">
+            If this node was paired before desktop control and notifications existed, the
+            gateway still holds the old command list. Re-pairing raises a fresh approval with
+            the current one.
+          </p>
+          <button
+            className="btn"
+            disabled={busy !== null}
+            onClick={() => run('repair', () => api.node.rePair())}
+          >
+            {busy === 'repair' ? 'Forgetting pairing…' : 'Re-pair with new command list'}
+          </button>
+        </div>
+      )}
+
       {!status?.enabled && (
         <label className="field">
           <span>Gateway token (first time only)</span>

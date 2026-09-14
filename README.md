@@ -168,6 +168,25 @@ It is **off by default** and scoped to an explicit folder list. Commands adverti
 | `fs.listDir` | Lists sub-directories, refusing anything outside the shared folders |
 | `system.which` | Resolves binaries on PATH |
 | `screen.snapshot` | Captures the desktop as a PNG (Windows only so far) |
+| `computer.act` | Mouse, keyboard and scroll in screenshot coordinates (Windows only so far). Refused unless "Allow desktop control" is on in Settings |
+| `system.notify` | Shows a notification on this machine and a banner in ClawHQ — how an agent asks for a human |
+
+### Seeing and driving a remote desktop
+
+Pick a desktop in the sidebar to watch it. **Take control** sends your clicks, scroll,
+keystrokes and pastes to that machine as `computer.act` actions and pulls a fresh frame
+after each one. Cmd on a Mac keyboard is sent as Ctrl, since the target is Windows. The
+text box at the bottom sends a string verbatim, which is the reliable way to enter a
+password. Every action is a gateway round trip, so expect a beat of latency; this is for
+logging into an account for an agent, not for using the machine all day.
+
+When an agent needs you it can call `system.notify` on the node role of the machine you
+are sitting at. ClawHQ shows the message as a banner with an **Open desktop** shortcut,
+and macOS gets a Notification Center alert as well.
+
+Adding `computer.act` and `system.notify` changed the advertised command list, so a node
+paired before this needs **Re-pair with new command list** in Settings, followed by a
+fresh approval on the gateway.
 
 Turning it on needs the gateway token once (a node gets its own device identity, so it
 appears separately from the operator in `openclaw devices list`) and an operator has to
@@ -272,10 +291,10 @@ gateway lock file.
   reach an agent (see above).
 - **The node exposes no shell.** `system.run` is deliberately not implemented — the
   gateway reserves it for the exec tool and its approval policy, and it deserves its own
-  design pass rather than being bolted on. Desktop control (`computer.act`,
-  `screen.snapshot`) is not implemented either.
+  design pass rather than being bolted on.
+- **Desktop control and capture are Windows-only.** `screen.snapshot` and `computer.act`
+  are implemented with plain Win32 calls; macOS needs ScreenCaptureKit and CGEvent
+  through CGO plus Screen Recording and Accessibility grants.
 - **Uptime** shows "unknown" when `openclaw daemon status` omits it.
-- **macOS is untested** — the code is cross-platform and the build targets it, but it
-  has only been run on Windows so far.
 - Attachments, tool-call rendering, and multi-session-per-agent views are not built yet;
   only each agent's main thread is shown.

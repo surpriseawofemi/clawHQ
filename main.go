@@ -31,6 +31,7 @@ func init() {
 	application.RegisterEvent[gateway.Event]("gateway:event")
 	application.RegisterEvent[gateway.Status]("gateway:status")
 	application.RegisterEvent[node.Status]("node:status")
+	application.RegisterEvent[node.Notification]("node:notify")
 }
 
 // identityDir is where the Ed25519 device identity and device token live. It is
@@ -87,6 +88,12 @@ func main() {
 				app.Event.Emit("node:status", st)
 			}
 		},
+		// system.notify from an agent: hand it to the UI for a banner.
+		func(n node.Notification) {
+			if app != nil {
+				app.Event.Emit("node:notify", n)
+			}
+		},
 		// Unimplemented commands are logged in full so the surface can be extended
 		// against real gateway traffic instead of a guessed schema.
 		func(command, params string) {
@@ -97,6 +104,7 @@ func main() {
 	// Load the shared-folder list up front so the settings panel reflects what is
 	// configured even while the node role is switched off.
 	nodeHost.SetSharedFolders(cfgStore.Read().Node.SharedFolders)
+	nodeHost.SetDesktopControl(cfgStore.Read().Node.DesktopControl)
 
 	app = application.New(application.Options{
 		Name:        "ClawHQ",

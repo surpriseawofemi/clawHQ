@@ -42,6 +42,8 @@ type GatewayProfile struct {
 type NodeConfig struct {
 	Enabled       bool     `json:"enabled"`
 	SharedFolders []string `json:"sharedFolders"`
+	// DesktopControl lets computer.act drive this machine's mouse and keyboard.
+	DesktopControl bool `json:"desktopControl,omitempty"`
 }
 
 type Config struct {

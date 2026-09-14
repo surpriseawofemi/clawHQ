@@ -941,3 +941,76 @@ code,
   max-height: 180px;
   overflow-y: auto;
 }
+
+/* ---- desktop control ---- */
+.desk-surface {
+  outline: none;
+  max-width: 100%;
+}
+
+.desk-surface.is-control {
+  cursor: crosshair;
+}
+
+.desk-surface.is-control:focus .desk-image {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.desk-typebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex-wrap: wrap;
+}
+
+.desk-typebar input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.desk-offline {
+  max-width: 460px;
+  text-align: center;
+}
+
+/* ---- agent notification banner ---- */
+.notice {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 680px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12.5px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 40;
+}
+
+.notice-icon {
+  font-size: 16px;
+}
+
+.notice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}

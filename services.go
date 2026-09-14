@@ -257,8 +257,9 @@ func (s *NodeService) RePair() (node.Status, error) {
 	}
 	cfg := s.store.Read()
 	if _, err := s.store.SetNodeConfig(store.NodeConfig{
-		Enabled:       false,
-		SharedFolders: cfg.Node.SharedFolders,
+		Enabled:        false,
+		SharedFolders:  cfg.Node.SharedFolders,
+		DesktopControl: cfg.Node.DesktopControl,
 	}); err != nil {
 		return s.host.Status(), err
 	}
@@ -285,13 +286,15 @@ func (s *NodeService) Enable(ctx context.Context, token string) (node.Status, er
 	}
 
 	s.host.SetSharedFolders(cfg.Node.SharedFolders)
+	s.host.SetDesktopControl(cfg.Node.DesktopControl)
 	status, err := s.host.Start(ctx, profile.ID, profile.URL, token)
 	if err != nil {
 		return status, err
 	}
 	if _, err := s.store.SetNodeConfig(store.NodeConfig{
-		Enabled:       true,
-		SharedFolders: cfg.Node.SharedFolders,
+		Enabled:        true,
+		SharedFolders:  cfg.Node.SharedFolders,
+		DesktopControl: cfg.Node.DesktopControl,
 	}); err != nil {
 		return status, err
 	}
@@ -302,8 +305,9 @@ func (s *NodeService) Disable() (node.Status, error) {
 	s.host.Disable()
 	cfg := s.store.Read()
 	if _, err := s.store.SetNodeConfig(store.NodeConfig{
-		Enabled:       false,
-		SharedFolders: cfg.Node.SharedFolders,
+		Enabled:        false,
+		SharedFolders:  cfg.Node.SharedFolders,
+		DesktopControl: cfg.Node.DesktopControl,
 	}); err != nil {
 		return s.host.Status(), err
 	}
@@ -314,11 +318,28 @@ func (s *NodeService) Disable() (node.Status, error) {
 func (s *NodeService) SetSharedFolders(folders []string) (node.Status, error) {
 	cfg := s.store.Read()
 	if _, err := s.store.SetNodeConfig(store.NodeConfig{
-		Enabled:       cfg.Node.Enabled,
-		SharedFolders: folders,
+		Enabled:        cfg.Node.Enabled,
+		SharedFolders:  folders,
+		DesktopControl: cfg.Node.DesktopControl,
 	}); err != nil {
 		return s.host.Status(), err
 	}
 	s.host.SetSharedFolders(folders)
+	return s.host.Status(), nil
+}
+
+// SetDesktopControl decides whether agents (and ClawHQ on another machine) may drive
+// this computer's mouse and keyboard through computer.act. Off by default: it is the
+// single most powerful thing the node role can expose.
+func (s *NodeService) SetDesktopControl(on bool) (node.Status, error) {
+	cfg := s.store.Read()
+	if _, err := s.store.SetNodeConfig(store.NodeConfig{
+		Enabled:        cfg.Node.Enabled,
+		SharedFolders:  cfg.Node.SharedFolders,
+		DesktopControl: on,
+	}); err != nil {
+		return s.host.Status(), err
+	}
+	s.host.SetDesktopControl(on)
 	return s.host.Status(), nil
 }
