@@ -52,9 +52,12 @@ jobs:
       - name: Generate bindings
         run: wails3 generate bindings -d frontend/bindings
 
-      - name: Typecheck frontend
+      # `npm run build`, not `tsc --noEmit`: it typechecks *and* writes frontend/dist,
+      # which the root package embeds. Without dist, `go vet .` dies on
+      # "pattern all:frontend/dist: no matching files found".
+      - name: Build frontend
         working-directory: frontend
-        run: npx tsc --noEmit
+        run: npm run build
 
       - name: Vet Go
         run: go vet ./internal/... .
