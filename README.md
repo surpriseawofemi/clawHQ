@@ -23,17 +23,28 @@ itself. Windows and macOS, built with Wails v3 (Go + React).
 Grab a build from [Releases](../../releases): `ClawHQ-macos-arm64.zip` (Apple Silicon)
 or `ClawHQ.exe` (Windows, portable).
 
-**macOS will refuse to open it the first time.** The app is ad-hoc signed but not
-notarized, so macOS quarantines anything downloaded and reports it as "damaged". It
-isn't — clear the flag once:
+**macOS will refuse to open a browser-downloaded build.** The app is ad-hoc signed but
+not notarized, so Safari or Chrome tag it with `com.apple.quarantine` and Gatekeeper
+reports it as "damaged". It isn't.
+
+The cleanest route is to download in Terminal, which never sets the quarantine flag:
+
+```bash
+curl -L -o ClawHQ.zip https://github.com/surpriseawofemi/clawHQ/releases/latest/download/ClawHQ-macos-arm64.zip
+unzip ClawHQ.zip
+mv ClawHQ.app /Applications/
+open /Applications/ClawHQ.app
+```
+
+If you already downloaded it in a browser, strip the flag instead:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/ClawHQ.app
 ```
 
-Notarizing properly requires a paid Apple Developer account. Intel Macs and Linux
-aren't built today; both are a small change to `.github/workflows/build.yml` if you
-want them.
+Notarizing properly — so it opens with a double-click like any other app — needs a paid
+Apple Developer account. Intel Macs and Linux aren't built today; both are a small
+change to `.github/workflows/build.yml`.
 
 ## Building it
 
