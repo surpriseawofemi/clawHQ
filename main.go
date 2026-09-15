@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/surpriseawofemi/clawhq/internal/gateway"
 	"github.com/surpriseawofemi/clawhq/internal/node"
@@ -175,18 +176,36 @@ func main() {
 		URL:              "/",
 	})
 
-	// Best-effort auto-connect to the last used gateway: a paired install should come
-	// up connected without the user opening settings.
+	// Auto-connect to the last used gateway: a paired install should come up
+	// connected without the user opening settings. A gateway that is down at launch
+	// is retried with backoff; the reconnect watcher takes over once a connection
+	// has been made. The autopilot brings the node role up when this lands.
 	go func() {
 		cfg := cfgStore.Read()
 		profile, ok := cfg.ActiveGateway()
-		if !ok || !conn.HasStoredPairing(profile.ID) {
+		if !ok || !cfg.AutoConnect || !conn.HasStoredPairing(profile.ID) {
 			return
 		}
-		// The autopilot brings the node role up once this lands.
-		if _, err := conn.Connect(context.Background(), profile.ID, profile.URL, gateway.Credential{}); err != nil {
-			// The UI surfaces this through connection status; nothing to do here.
-			log.Printf("auto-connect failed: %v", err)
+		delay := 5 * time.Second
+		for {
+			if !cfgStore.Read().AutoConnect {
+				return
+			}
+			st, err := conn.Connect(context.Background(), profile.ID, profile.URL, gateway.Credential{})
+			if err == nil && st.Phase == gateway.PhaseConnected {
+				return
+			}
+			if err != nil {
+				log.Printf("auto-connect failed: %v", err)
+			}
+			// A user action (connect, remove, re-pair) supersedes this loop.
+			if cur := conn.Status(); cur.Phase == gateway.PhaseConnected || cur.GatewayID != profile.ID && cur.Phase != gateway.PhaseIdle {
+				return
+			}
+			time.Sleep(delay)
+			if delay < 60*time.Second {
+				delay *= 2
+			}
 		}
 	}()
 

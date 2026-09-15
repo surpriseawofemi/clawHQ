@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
 import { AgentSettingsDialog } from './components/AgentSettingsDialog'
-import { SettingsDialog } from './components/SettingsDialog'
+import { SettingsPage } from './components/settings/SettingsPage'
 import { DesktopView } from './components/DesktopView'
 import { Onboarding } from './components/Onboarding'
 import { ApprovalBanners } from './components/ApprovalBanners'
+import { GatewaySwitcher } from './components/GatewaySwitcher'
+import type { SettingsSection } from './components/settings/SettingsPage'
 import { api } from './api'
 import { useFleet } from './state/useFleet'
 import type { NodeNotification } from './types'
@@ -13,6 +15,13 @@ import type { NodeNotification } from './types'
 function App(): React.JSX.Element {
   const fleet = useFleet()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('gateways')
+  const [switcherOpen, setSwitcherOpen] = useState(false)
+  const openSettings = (section?: SettingsSection): void => {
+    if (section) setSettingsSection(section)
+    setSwitcherOpen(false)
+    setSettingsOpen(true)
+  }
   const [agentSettingsId, setAgentSettingsId] = useState<string | null>(null)
   // Selecting a desktop takes over the main pane; selecting an agent gives it back.
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -39,6 +48,9 @@ function App(): React.JSX.Element {
     newSession,
     currentMessages,
     currentStream,
+    historyLoading,
+    historyComplete,
+    loadFullHistory,
     busy,
     error,
     setError,
@@ -71,13 +83,44 @@ function App(): React.JSX.Element {
         desktops={desktops}
         selectedNodeId={selectedNodeId}
         onSelectDesktop={setSelectedNodeId}
+        onRemoveDesktop={(node) => {
+          // A node is a device with the node role, so the gateway keeps its pairing in
+          // the node queue; the device queue is the fallback for older gateways.
+          void (async () => {
+            try {
+              await api.rpc.request('node.pair.remove', { nodeId: node.nodeId })
+            } catch {
+              try {
+                await api.rpc.request('device.pair.remove', { deviceId: node.nodeId })
+              } catch (err) {
+                setError(err instanceof Error ? err.message : String(err))
+                return
+              }
+            }
+            if (selectedNodeId === node.nodeId) setSelectedNodeId(null)
+            void refreshFleet()
+          })()
+        }}
         onAgentSettings={setAgentSettingsId}
-        onOpenSettings={() => setSettingsOpen(true)}
-        connected={connected}
-        serverVersion={status.serverVersion}
+        onOpenSettings={() => openSettings()}
+        onOpenSwitcher={() => setSwitcherOpen(true)}
+        status={status}
+        settingsOpen={settingsOpen}
       />
 
-      {selectedNodeId ? (
+      {settingsOpen ? (
+        <SettingsPage
+          status={status}
+          daemon={daemon}
+          config={config}
+          pendingCount={0}
+          initialSection={settingsSection}
+          onClose={() => setSettingsOpen(false)}
+          onConfigChanged={setConfig}
+          onDaemonChanged={setDaemon}
+          onReconnected={refreshFleet}
+        />
+      ) : selectedNodeId ? (
         <DesktopView node={desktops.find((d) => d.nodeId === selectedNodeId)!} />
       ) : (
       <ChatView
@@ -88,6 +131,9 @@ function App(): React.JSX.Element {
         onNewSession={newSession}
         messages={currentMessages}
         stream={currentStream}
+        loadingHistory={historyLoading}
+        historyComplete={historyComplete}
+        onLoadFullHistory={() => void loadFullHistory()}
         busy={busy}
         connected={connected}
         onSend={sendMessage}
@@ -97,6 +143,16 @@ function App(): React.JSX.Element {
       )}
 
       <ApprovalBanners connected={connected} />
+
+      {switcherOpen && (
+        <GatewaySwitcher
+          status={status}
+          onClose={() => setSwitcherOpen(false)}
+          onConnected={refreshFleet}
+          onConfigChanged={setConfig}
+          onOpenSettings={(section) => openSettings(section)}
+        />
+      )}
 
       {notice && (
         <div className="notice" role="status">
@@ -143,17 +199,6 @@ function App(): React.JSX.Element {
         />
       )}
 
-      {settingsOpen && (
-        <SettingsDialog
-          status={status}
-          daemon={daemon}
-          config={config}
-          onClose={() => setSettingsOpen(false)}
-          onConfigChanged={setConfig}
-          onDaemonChanged={setDaemon}
-          onReconnected={refreshFleet}
-        />
-      )}
     </div>
   )
 }

@@ -226,15 +226,27 @@ export function useFleet() {
   }, [refreshFleet, refreshDesktops])
 
   // ---- per-session history ---------------------------------------------
-  const openSession = useCallback(
-    async (sessionKey: string) => {
+  // A thread opens with its recent tail. Over a tunnel every message costs bytes on
+  // the wire and again crossing into the webview, so the first load stays small and
+  // the rest comes on request.
+  const HISTORY_TAIL = 60
+  const HISTORY_FULL = 1000
+  const [historyLoading, setHistoryLoading] = useState<string | null>(null)
+  const [historyFull, setHistoryFull] = useState<Record<string, boolean>>({})
+
+  const loadHistory = useCallback(
+    async (sessionKey: string, limit: number) => {
       if (!connected) return
+      setHistoryLoading(sessionKey)
       try {
         const history = await api().rpc.request<{ messages?: ChatMessage[] }>('chat.history', {
           sessionKey,
-          limit: 200
+          limit
         })
-        setMessages((prev) => ({ ...prev, [sessionKey]: history?.messages ?? [] }))
+        const list = history?.messages ?? []
+        setMessages((prev) => ({ ...prev, [sessionKey]: list }))
+        // Fewer than asked for means there is nothing older to fetch.
+        setHistoryFull((prev) => ({ ...prev, [sessionKey]: limit >= HISTORY_FULL || list.length < limit }))
         if (!subscribed.current.has(sessionKey)) {
           // The subscribe param is `key`, not `sessionKey` — the two RPCs disagree.
           await api().rpc.request('sessions.messages.subscribe', { key: sessionKey })
@@ -243,10 +255,18 @@ export function useFleet() {
         setError(null)
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setHistoryLoading((cur) => (cur === sessionKey ? null : cur))
       }
     },
     [connected]
   )
+
+  const openSession = useCallback((sessionKey: string) => loadHistory(sessionKey, HISTORY_TAIL), [loadHistory])
+
+  const loadFullHistory = useCallback(async () => {
+    if (selectedKey) await loadHistory(selectedKey, HISTORY_FULL)
+  }, [selectedKey, loadHistory])
 
   useEffect(() => {
     if (selectedKey && connected) void openSession(selectedKey)
@@ -351,6 +371,9 @@ export function useFleet() {
     newSession,
     currentMessages,
     currentStream,
+    historyLoading: selectedKey !== null && historyLoading === selectedKey,
+    historyComplete: selectedKey !== null && historyFull[selectedKey] === true,
+    loadFullHistory,
     busy,
     error,
     setError,

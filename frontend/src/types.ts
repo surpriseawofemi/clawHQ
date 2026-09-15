@@ -64,9 +64,10 @@ export type GatewayProfile = {
 }
 
 export type ClawHQConfig = {
-  version: 1
+  version: number
   gateways: GatewayProfile[]
   activeGatewayId: string
+  autoConnect: boolean
   departments: Department[]
   assignments: Record<string, string>
 }

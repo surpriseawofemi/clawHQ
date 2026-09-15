@@ -65,6 +65,8 @@ export const api = {
       GatewayService.Connect(gatewayId ?? '') as Promise<ConnectionStatus>,
     removeGateway: (gatewayId: string): Promise<ClawHQConfig> =>
       GatewayService.RemoveGateway(gatewayId) as Promise<ClawHQConfig>,
+    renameGateway: (gatewayId: string, name: string): Promise<ClawHQConfig> =>
+      GatewayService.RenameGateway(gatewayId, name) as Promise<ClawHQConfig>,
     forgetPairing: (gatewayId: string): Promise<void> => GatewayService.ForgetPairing(gatewayId),
     cancelApprovalWait: (): Promise<void> => GatewayService.CancelApprovalWait(),
     disconnect: (): Promise<void> => GatewayService.Disconnect()
@@ -125,6 +127,8 @@ export const api = {
   config: {
     get: (): Promise<ClawHQConfig> => ConfigService.Get() as Promise<ClawHQConfig>,
     path: (): Promise<string> => ConfigService.Path(),
+    setAutoConnect: (on: boolean): Promise<ClawHQConfig> =>
+      ConfigService.SetAutoConnect(on) as Promise<ClawHQConfig>,
     assignAgent: (agentId: string, departmentId: string | null): Promise<ClawHQConfig> =>
       ConfigService.AssignAgent(agentId, departmentId ?? '') as Promise<ClawHQConfig>,
     upsertDepartment: (dept: Partial<Department>): Promise<ClawHQConfig> =>

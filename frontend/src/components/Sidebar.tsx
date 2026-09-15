@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
-import type { Agent, ClawHQConfig, RemoteNode, SessionInfo } from '../types'
+import { useEffect, useMemo, useState } from 'react'
+import type { Agent, ClawHQConfig, ConnectionStatus, NodeStatus, RemoteNode, SessionInfo } from '../types'
 import { UNASSIGNED, agentEmoji, agentLabel } from '../types'
+import { api } from '../api'
 import { Logo } from './Logo'
 
 type Props = {
@@ -11,11 +12,52 @@ type Props = {
   onSelect: (agentId: string) => void
   onAgentSettings: (agentId: string) => void
   onOpenSettings: () => void
-  connected: boolean
-  serverVersion: string | null
+  onOpenSwitcher: () => void
+  status: ConnectionStatus
+  settingsOpen: boolean
   desktops: RemoteNode[]
   selectedNodeId: string | null
   onSelectDesktop: (nodeId: string) => void
+  onRemoveDesktop: (node: RemoteNode) => void
+}
+
+/** Group id for the desktops bucket in the collapsed set. */
+const DESKTOPS = '__desktops__'
+
+/** One line for the gateway link, one for this machine's node role. */
+function connectionLines(
+  status: ConnectionStatus,
+  node: NodeStatus | null,
+  gatewayName: string | null
+): { dot: string; main: string; sub: string } {
+  const name = gatewayName ?? 'Gateway'
+  let dot = 'dot-off'
+  let main = 'Disconnected'
+  if (status.phase === 'connected') {
+    dot = 'dot-ok'
+    main = name
+  } else if (status.phase === 'connecting' && status.paired) {
+    dot = 'dot-warn'
+    main = `Reconnecting to ${name}…`
+  } else if (status.phase === 'connecting') {
+    dot = 'dot-warn'
+    main = `Connecting to ${name}…`
+  } else if (status.phase === 'pending') {
+    dot = 'dot-warn'
+    main = 'Waiting for approval'
+  }
+
+  let sub = ''
+  if (node && node.enabled) {
+    if (node.connected) sub = 'this Mac is a node'
+    else if (node.pairing === 'awaiting-approval') sub = 'node: pairing…'
+    else if (node.pairing === 'reconnecting') sub = 'node: reconnecting…'
+    else if (node.pairing === 'connecting') sub = 'node: connecting…'
+    else sub = 'node: waiting for gateway'
+  } else if (node) {
+    sub = 'node role off'
+  }
+  return { dot, main, sub }
 }
 
 type Group = {
@@ -34,12 +76,50 @@ export function Sidebar({
   onSelect,
   onAgentSettings,
   onOpenSettings,
-  connected,
-  serverVersion,
+  onOpenSwitcher,
+  status,
+  settingsOpen,
   desktops,
   selectedNodeId,
-  onSelectDesktop
+  onSelectDesktop,
+  onRemoveDesktop
 }: Props): React.JSX.Element {
+  const connected = status.phase === 'connected'
+  const [node, setNode] = useState<NodeStatus | null>(null)
+  useEffect(() => {
+    api.node
+      .status()
+      .then(setNode)
+      .catch(() => undefined)
+    return api.onNodeStatus(setNode)
+  }, [])
+  const gatewayName = config?.gateways.find((g) => g.id === status.gatewayId)?.name ?? null
+  const lines = connectionLines(status, node, gatewayName)
+
+  // Collapsed groups are remembered per machine; a group id is a department id or
+  // the desktops bucket.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const raw = window.localStorage.getItem('clawhq.sidebar.collapsed')
+      return new Set<string>(raw ? (JSON.parse(raw) as string[]) : [])
+    } catch {
+      return new Set<string>()
+    }
+  })
+  const toggleGroup = (id: string): void => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      try {
+        window.localStorage.setItem('clawhq.sidebar.collapsed', JSON.stringify([...next]))
+      } catch {
+        /* per-machine convenience only */
+      }
+      return next
+    })
+  }
+
   /** Agents grouped by department, with an "Unassigned" bucket that hides when empty. */
   const groups = useMemo<Group[]>(() => {
     const departments = config?.departments ?? []
@@ -91,13 +171,24 @@ export function Sidebar({
         )}
 
         {groups.map((group) => (
-          <section key={group.id} className="dept">
+          <section key={group.id} className={`dept${collapsed.has(group.id) ? ' is-collapsed' : ''}`}>
             <h2 className="dept-title">
-              <span className="dept-emoji">{group.emoji}</span>
-              {group.name}
-              <span className="dept-count">{group.agents.length}</span>
+              <button
+                className="dept-toggle"
+                onClick={() => toggleGroup(group.id)}
+                aria-expanded={!collapsed.has(group.id)}
+                title={collapsed.has(group.id) ? 'Expand' : 'Collapse'}
+              >
+                <span className="dept-emoji">{group.emoji}</span>
+                {group.name}
+                <span className="dept-count">{group.agents.length}</span>
+                <span className="dept-chevron" aria-hidden="true">
+                  ›
+                </span>
+              </button>
             </h2>
-            {group.agents.map((agent) => {
+            {!collapsed.has(group.id) &&
+              group.agents.map((agent) => {
               const selected = agent.id === selectedAgentId
               return (
                 <div
@@ -134,47 +225,84 @@ export function Sidebar({
           </section>
         ))}
         {desktops.length > 0 && (
-          <section className="dept">
+          <section className={`dept${collapsed.has(DESKTOPS) ? ' is-collapsed' : ''}`}>
             <h2 className="dept-title">
-              <span className="dept-emoji">🖥️</span>
-              Desktops
-              <span className="dept-count">{desktops.length}</span>
-            </h2>
-            {desktops.map((node) => (
-              <div
-                key={node.nodeId}
-                className={`agent-row${node.nodeId === selectedNodeId ? ' is-selected' : ''}${
-                  node.connected ? '' : ' is-offline'
-                }`}
-                title={node.connected ? undefined : 'Paired, but not connected right now'}
-                role="button"
-                tabIndex={0}
-                onClick={() => onSelectDesktop(node.nodeId)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') onSelectDesktop(node.nodeId)
-                }}
+              <button
+                className="dept-toggle"
+                onClick={() => toggleGroup(DESKTOPS)}
+                aria-expanded={!collapsed.has(DESKTOPS)}
+                title={collapsed.has(DESKTOPS) ? 'Expand' : 'Collapse'}
               >
-                <span className="agent-emoji">🖥️</span>
-                <span className="agent-meta">
-                  <span className="agent-name">
-                    {node.displayName || node.platform || 'desktop'}
-                    <i className={`dot ${node.connected ? 'dot-ok' : 'dot-off'}`} />
-                  </span>
-                  <span className="agent-sub">
-                    {node.connected ? node.nodeId.slice(0, 12) : `offline · ${node.nodeId.slice(0, 12)}`}
-                  </span>
+                <span className="dept-emoji">🖥️</span>
+                Desktops
+                <span className="dept-count">{desktops.length}</span>
+                <span className="dept-chevron" aria-hidden="true">
+                  ›
                 </span>
-              </div>
-            ))}
+              </button>
+            </h2>
+            {!collapsed.has(DESKTOPS) &&
+              desktops.map((node) => (
+                <div
+                  key={node.nodeId}
+                  className={`agent-row${node.nodeId === selectedNodeId ? ' is-selected' : ''}${
+                    node.connected ? '' : ' is-offline'
+                  }`}
+                  title={node.connected ? undefined : 'Paired, but not connected right now'}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelectDesktop(node.nodeId)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') onSelectDesktop(node.nodeId)
+                  }}
+                >
+                  <span className="agent-emoji">🖥️</span>
+                  <span className="agent-meta">
+                    <span className="agent-name">
+                      {node.displayName || node.platform || 'desktop'}
+                      <i className={`dot ${node.connected ? 'dot-ok' : 'dot-off'}`} />
+                    </span>
+                    <span className="agent-sub">
+                      {node.connected ? node.nodeId.slice(0, 12) : `offline · ${node.nodeId.slice(0, 12)}`}
+                    </span>
+                  </span>
+                  {!node.connected && (
+                    <button
+                      className="icon-btn agent-gear"
+                      title="Forget this desktop"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRemoveDesktop(node)
+                      }}
+                    >
+                      🗑
+                    </button>
+                  )}
+                </div>
+              ))}
           </section>
         )}
       </nav>
 
       <footer className="sidebar-foot">
-        <button className="conn-pill" onClick={onOpenSettings} title="Open settings">
-          <i className={`dot ${connected ? 'dot-ok' : 'dot-off'}`} />
-          <span>{connected ? `Gateway ${serverVersion ?? ''}`.trim() : 'Disconnected'}</span>
-          <span className="conn-gear">⚙</span>
+        <button className="conn-pill" onClick={onOpenSwitcher} title="Switch or rename gateway">
+          <i className={`dot ${lines.dot}`} />
+          <span className="conn-lines">
+            <span>{lines.main}</span>
+            {lines.sub && <span className="conn-sub">{lines.sub}</span>}
+          </span>
+          <span className="conn-chevron">⌃</span>
+        </button>
+        <button
+          className={`conn-gear${settingsOpen ? ' is-active' : ''}`}
+          onClick={onOpenSettings}
+          title="Settings"
+          aria-label="Settings"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+          </svg>
         </button>
       </footer>
     </aside>

@@ -35,6 +35,12 @@ func (s *GatewayService) SaveGateway(g store.GatewayProfile) (store.Config, erro
 	return s.store.UpsertGateway(g)
 }
 
+// RenameGateway gives a saved gateway a display name, so two look-alike URLs can be
+// told apart in the switcher.
+func (s *GatewayService) RenameGateway(gatewayID, name string) (store.Config, error) {
+	return s.store.RenameGateway(gatewayID, name)
+}
+
 func (s *GatewayService) RemoveGateway(gatewayID string) (store.Config, error) {
 	// Drop the device identity too, so a re-added gateway pairs cleanly instead of
 	// presenting a token the gateway may have already revoked.
@@ -194,6 +200,11 @@ type ConfigService struct {
 func (s *ConfigService) Get() store.Config { return s.store.Read() }
 
 func (s *ConfigService) Path() string { return s.store.Path() }
+
+// SetAutoConnect decides whether ClawHQ reconnects to the last gateway at launch.
+func (s *ConfigService) SetAutoConnect(on bool) (store.Config, error) {
+	return s.store.SetAutoConnect(on)
+}
 
 func (s *ConfigService) AssignAgent(agentID, departmentID string) (store.Config, error) {
 	return s.store.AssignAgent(agentID, departmentID)

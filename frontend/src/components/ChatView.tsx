@@ -11,6 +11,11 @@ type Props = {
   onNewSession: (label?: string) => void
   messages: ChatMessage[]
   stream: StreamingReply | null
+  /** History for this thread is being fetched. */
+  loadingHistory: boolean
+  /** Everything the gateway has for this thread is loaded. */
+  historyComplete: boolean
+  onLoadFullHistory: () => void
   busy: boolean
   connected: boolean
   onSend: (text: string, paths?: string[]) => void
@@ -41,6 +46,9 @@ export function ChatView({
   onNewSession,
   messages,
   stream,
+  loadingHistory,
+  historyComplete,
+  onLoadFullHistory,
   busy,
   connected,
   onSend,
@@ -153,8 +161,20 @@ export function ChatView({
       </header>
 
       <div className="messages" ref={scroller}>
-        {visible.length === 0 && !stream && (
+        {loadingHistory && visible.length === 0 && (
+          <p className="thread-empty thread-loading">
+            <i className="spinner" /> Loading messages…
+          </p>
+        )}
+        {visible.length === 0 && !stream && !loadingHistory && (
           <p className="thread-empty">No messages yet — say hello.</p>
+        )}
+        {visible.length > 0 && !historyComplete && (
+          <div className="thread-more">
+            <button className="btn btn-sm btn-ghost" disabled={loadingHistory} onClick={onLoadFullHistory}>
+              {loadingHistory ? 'Loading…' : 'Load earlier messages'}
+            </button>
+          </div>
         )}
 
         {visible.map((msg, i) => {

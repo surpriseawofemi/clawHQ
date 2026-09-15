@@ -291,6 +291,36 @@ That removes the last reason to keep the Control UI around: capability changes o
 require a fresh approval, so without this you would be back in the terminal every time
 the command surface changed.
 
+## Settings
+
+Settings is a page, not a dialog: it takes over the main pane the way a desktop view
+does, with a section nav on the left. Connection and This machine cover pairing and
+the node role; Departments is ClawHQ's own org chart; the Gateway group is the
+gateway's own config, edited over the wire.
+
+### Config is rendered from the gateway's schema
+
+The gateway publishes a JSON schema for its whole config (`config.schema`, with UI
+hints), and its Control UI is generated from it. ClawHQ does the same. Reads go
+through `config.get`, writes through `config.patch` (a JSON merge patch checked
+against the hash from the last read, so a concurrent edit fails loudly). The
+`SchemaForm` component renders any object node: switches, text, numbers, enums,
+string lists, string maps, nested groups, and a JSON box for anything else. Secrets
+arrive redacted and are only sent back when you type a new value.
+
+- **Plugins** lists `plugins.list`: on, off, and available. A switch calls
+  `plugins.setEnabled`; Install sends the row's own `install` descriptor to
+  `plugins.install`, which pulls the package onto the gateway host. Each plugin's
+  settings are the schema at `plugins.entries.<id>.config`. ClawHub search uses
+  `plugins.search`.
+- **MCP servers** edits `mcp.servers`. Adding one writes the transport plus a command
+  or URL; everything else is the schema form. Removing writes `null`, which merge
+  patch treats as delete.
+- **Automations** lists `cron.list` and offers pause, resume and run now through
+  `cron.update` and `cron.run`.
+- **Service** keeps the local start/stop/restart and adds a remote restart through
+  `gateway.restart.request`, which works over a tunnel.
+
 ## Departments
 
 OpenClaw has no department concept, so ClawHQ owns that data and keeps it in
@@ -321,10 +351,13 @@ gateway lock file.
 - **The pending-approval path is untested.** Loopback always auto-approves, so the
   waiting-for-approval flow has only been exercised against the docs, not a real remote
   gateway that defers approval.
-- **Gateway service controls are local-only.** Start/Stop/Restart shell out to the
-  `openclaw` CLI on the machine ClawHQ is running on, so they do nothing for a gateway
-  reached over a tunnel. `gateway.restart.request` would make restart work remotely;
-  start/stop cannot, since a stopped gateway has no RPC to answer.
+- **Gateway start and stop are local-only.** They shell out to the `openclaw` CLI on
+  the machine ClawHQ is running on. Restart works remotely; start and stop cannot,
+  since a stopped gateway has no RPC to answer.
+- **ClawHub installs use an unverified source name.** Official plugins install with
+  the descriptor the gateway hands out. Search results are sent as
+  `{source: "clawhub", packageName}`; if the gateway spells that differently its
+  validation error is shown verbatim.
 - **One connection at a time.** Several gateways can be saved and switched between, but
   only the active one is connected; the sidebar shows its agents alone.
 - **Departments live on one machine.** Agents manage them through this machine's node

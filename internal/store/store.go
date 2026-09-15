@@ -69,7 +69,7 @@ type NodeConfig struct {
 }
 
 // configVersion is bumped when a saved config needs migrating on read.
-const configVersion = 2
+const configVersion = 3
 
 type Config struct {
 	Version int `json:"version"`
@@ -77,16 +77,19 @@ type Config struct {
 	GatewayURL      string           `json:"gatewayUrl,omitempty"`
 	Gateways        []GatewayProfile `json:"gateways"`
 	ActiveGatewayID string           `json:"activeGatewayId"`
-	Node            NodeConfig       `json:"node"`
-	Departments     []Department     `json:"departments"`
+	// AutoConnect reconnects to the last used gateway at launch. On by default.
+	AutoConnect bool         `json:"autoConnect"`
+	Node        NodeConfig   `json:"node"`
+	Departments []Department `json:"departments"`
 	// Assignments maps agentId to departmentId. Agents with no entry are "Unassigned".
 	Assignments map[string]string `json:"assignments"`
 }
 
 func defaults() Config {
 	return Config{
-		Version:  configVersion,
-		Gateways: []GatewayProfile{},
+		Version:     configVersion,
+		Gateways:    []GatewayProfile{},
+		AutoConnect: true,
 		Departments: []Department{
 			{ID: "executive", Name: "Executive", Emoji: "🏛️", Order: 0},
 			{ID: "marketing", Name: "Marketing", Emoji: "📣", Order: 1},
@@ -159,6 +162,12 @@ func (s *Store) readLocked() Config {
 	// the switch in Settings still turns it off for good.
 	if cfg.Version < 2 {
 		cfg.Node.Enabled = true
+	}
+	// Version 3 added the auto-connect switch; older files never had it off.
+	if cfg.Version < 3 {
+		cfg.AutoConnect = true
+	}
+	if cfg.Version < configVersion {
 		cfg.Version = configVersion
 	}
 	// Migrate the single-gateway field into the list so existing installs keep their
@@ -279,6 +288,33 @@ func (s *Store) RemoveGateway(id string) (Config, error) {
 			cfg.ActiveGatewayID = cfg.Gateways[0].ID
 		}
 	}
+	return s.writeLocked(cfg)
+}
+
+// RenameGateway changes a profile's display name without touching which one is active.
+func (s *Store) RenameGateway(id, name string) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	name = strings.TrimSpace(name)
+	for i := range cfg.Gateways {
+		if cfg.Gateways[i].ID == id {
+			if name == "" {
+				name = cfg.Gateways[i].URL
+			}
+			cfg.Gateways[i].Name = name
+			return s.writeLocked(cfg)
+		}
+	}
+	return cfg, fmt.Errorf("no saved gateway with id %q", id)
+}
+
+// SetAutoConnect stores whether ClawHQ reconnects to the last gateway at launch.
+func (s *Store) SetAutoConnect(on bool) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	cfg.AutoConnect = on
 	return s.writeLocked(cfg)
 }
 
