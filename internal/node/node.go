@@ -138,6 +138,7 @@ type Host struct {
 	onPending         func(gatewayID, deviceID string)
 	onConnected       func(gatewayID, deviceID string)
 	onExecRequest     func(ExecRequest)
+	onExecRecord      func(ExecRecord)
 	onAllowAlways     func(commandText string)
 	onExecModeChanged func(mode string)
 }
@@ -152,6 +153,8 @@ type Hooks struct {
 	OnConnected func(gatewayID, deviceID string)
 	// OnExecRequest fires when a command needs the user's decision.
 	OnExecRequest func(ExecRequest)
+	// OnExecRecord fires after every system.run, ran or refused, for the audit log.
+	OnExecRecord func(ExecRecord)
 	// OnAllowAlways fires when the user picked "always" for a command.
 	OnAllowAlways func(commandText string)
 	// OnExecModeChanged fires when the gateway pushes a new exec policy.
@@ -177,6 +180,7 @@ func (h *Host) SetHooks(hooks Hooks) {
 	h.onPending = hooks.OnPending
 	h.onConnected = hooks.OnConnected
 	h.onExecRequest = hooks.OnExecRequest
+	h.onExecRecord = hooks.OnExecRecord
 	h.onAllowAlways = hooks.OnAllowAlways
 	h.onExecModeChanged = hooks.OnExecModeChanged
 }

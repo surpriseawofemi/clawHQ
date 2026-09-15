@@ -2,6 +2,7 @@ import { Events } from '@wailsio/runtime'
 import {
   ConfigService,
   DaemonService,
+  ExecLogService,
   GatewayService,
   InboxService,
   NodeService,
@@ -15,6 +16,7 @@ import type {
   DaemonStatus,
   Department,
   ExecMode,
+  ExecRecord,
   ExecRequest,
   GatewayProfile,
   NodeStatus,
@@ -115,6 +117,10 @@ export const api = {
     markRead: (id: string): Promise<NodeNotification[]> => InboxService.MarkRead(id) as Promise<NodeNotification[]>,
     remove: (id: string): Promise<NodeNotification[]> => InboxService.Delete(id) as Promise<NodeNotification[]>,
     clear: (): Promise<NodeNotification[]> => InboxService.Clear() as Promise<NodeNotification[]>
+  },
+  execLog: {
+    list: (): Promise<ExecRecord[]> => ExecLogService.List() as Promise<ExecRecord[]>,
+    clear: (): Promise<ExecRecord[]> => ExecLogService.Clear() as Promise<ExecRecord[]>
   },
   window: {
     /** Open (or focus) the detached desktop window, pointed at a node. */

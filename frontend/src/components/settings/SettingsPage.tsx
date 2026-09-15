@@ -9,6 +9,7 @@ import { PluginsPage } from './PluginsPage'
 import { McpServersPage } from './McpServersPage'
 import { AutomationsPage } from './AutomationsPage'
 import { NotificationsPage } from './NotificationsPage'
+import { CommandHistoryPage } from './CommandHistoryPage'
 
 type Props = {
   status: ConnectionStatus
@@ -28,6 +29,7 @@ export type SettingsSection =
   | 'machine'
   | 'departments'
   | 'notifications'
+  | 'commands'
   | 'service'
   | 'plugins'
   | 'mcp'
@@ -52,6 +54,7 @@ const NAV: NavGroup[] = [
       { id: 'notifications', label: 'Notifications' }
     ]
   },
+  { label: 'Trust', items: [{ id: 'commands', label: 'Command history' }] },
   {
     label: 'Gateway',
     items: [
@@ -69,6 +72,7 @@ const TITLES: Record<SettingsSection, string> = {
   machine: 'This machine',
   departments: 'Departments',
   notifications: 'Notifications',
+  commands: 'Command history',
   service: 'Gateway service',
   plugins: 'Plugins',
   mcp: 'MCP servers',
@@ -362,6 +366,7 @@ export function SettingsPage({
         )}
 
         {section === 'notifications' && <NotificationsPage onOpenAgent={onOpenAgent} />}
+        {section === 'commands' && <CommandHistoryPage />}
         {section === 'plugins' && <PluginsPage connected={connected} />}
         {section === 'mcp' && <McpServersPage connected={connected} />}
         {section === 'automations' && <AutomationsPage connected={connected} />}

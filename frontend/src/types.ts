@@ -125,6 +125,24 @@ export type ExecRequest = {
   expiresAtMs: number
 }
 
+/** One command an agent asked this machine to run, from the local audit log. */
+export type ExecRecord = {
+  id: string
+  atMs: number
+  agentId?: string
+  sessionKey?: string
+  command: string
+  cwd?: string
+  decision: string
+  ran: boolean
+  exitCode?: number
+  success: boolean
+  timedOut?: boolean
+  durationMs?: number
+  output?: string
+  error?: string
+}
+
 export type NodeStatus = {
   enabled: boolean
   connected: boolean

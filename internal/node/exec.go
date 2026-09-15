@@ -49,6 +49,23 @@ type ExecRequest struct {
 	ExpiresAtMs int64    `json:"expiresAtMs"`
 }
 
+// ExecRecord is what the audit log keeps about each system.run: the store's shape,
+// filled in here once the decision and the result are known.
+type ExecRecord = store.ExecRecord
+
+// Decisions as they are written to the audit log.
+const (
+	recAllowlisted = "allowlisted"
+	recAllowed     = "allowed"
+	recAlways      = "always"
+	recGateway     = "approved-by-gateway"
+	recNoAsk       = "run-without-asking"
+	recDenied      = "denied"
+	recTimedOut    = "timed-out"
+	recOff         = "off"
+	recRefused     = "refused"
+)
+
 // execGate holds the pending-approval state for system.run.
 type execGate struct {
 	mu      sync.Mutex
@@ -273,21 +290,40 @@ func (h *Host) systemRun(raw json.RawMessage) (any, string) {
 	mode := h.exec.mode
 	h.exec.mu.Unlock()
 
+	rec := ExecRecord{
+		AtMs: time.Now().UnixMilli(), AgentID: p.AgentID, SessionKey: p.SessionKey,
+		Command: text, Cwd: cwd,
+	}
+	refuse := func(decision, msg string) (any, string) {
+		rec.Decision, rec.Error = decision, msg
+		h.record(rec)
+		return nil, msg
+	}
+
 	switch {
 	case mode == store.ExecOff:
-		return nil, "agent commands are switched off on this machine — turn them on in ClawHQ → Settings → node"
-	case p.Approved, mode == store.ExecAllow, h.allowlisted(text):
-		// run
+		return refuse(recOff, "agent commands are switched off on this machine — turn them on in ClawHQ → Settings → node")
+	case p.Approved:
+		rec.Decision = recGateway
+	case mode == store.ExecAllow:
+		rec.Decision = recNoAsk
+	case h.allowlisted(text):
+		rec.Decision = recAllowlisted
 	case mode == store.ExecAsk:
 		decision, err := h.askUser(text, argv, cwd, p.AgentID, p.SessionKey)
 		if err != nil {
-			return nil, err.Error()
+			return refuse(recTimedOut, err.Error())
 		}
-		if decision == ExecDecisionDeny {
-			return nil, "the user declined to run this command"
+		switch decision {
+		case ExecDecisionDeny:
+			return refuse(recDenied, "the user declined to run this command")
+		case ExecDecisionAlways:
+			rec.Decision = recAlways
+		default:
+			rec.Decision = recAllowed
 		}
 	default:
-		return nil, "agent commands are not allowed on this machine"
+		return refuse(recRefused, "agent commands are not allowed on this machine")
 	}
 
 	timeout := execDefaultTimeout
@@ -297,7 +333,22 @@ func (h *Host) systemRun(raw json.RawMessage) (any, string) {
 	if timeout > execMaxTimeout {
 		timeout = execMaxTimeout
 	}
-	return runCommand(argv, cwd, p.Env, timeout), ""
+	res := runCommand(argv, cwd, p.Env, timeout)
+	rec.Ran, rec.ExitCode, rec.Success, rec.TimedOut = true, res.ExitCode, res.Success, res.TimedOut
+	rec.DurationMs, rec.Error = res.DurationMs, res.Error
+	rec.Output = res.Stdout
+	if res.Stderr != "" {
+		rec.Output = strings.TrimRight(rec.Output, "\n") + "\n" + res.Stderr
+	}
+	h.record(rec)
+	return res, ""
+}
+
+// record hands a finished entry to the audit log, when one is attached.
+func (h *Host) record(rec ExecRecord) {
+	if h.onExecRecord != nil {
+		h.onExecRecord(rec)
+	}
 }
 
 // askUser raises a request to the frontend and waits for the answer. A request that

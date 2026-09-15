@@ -1642,6 +1642,55 @@ html.is-mac .sidebar-head {
   line-height: 1.5;
 }
 
+/* ---- command history ---- */
+.hist-mark {
+  font-size: 15px;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.hist-mark.is-ok {
+  color: var(--ok);
+}
+
+.hist-mark.is-bad {
+  color: var(--danger);
+}
+
+.hist-mark.is-off {
+  color: var(--text-faint);
+}
+
+.hist-badge {
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.hist-badge.is-ok {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.hist-badge.is-warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.hist-badge.is-bad {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.hist-output {
+  min-height: 0;
+  max-height: 260px;
+  margin-top: 6px;
+  overflow: auto;
+}
+
 /* ---- notification history ---- */
 .inbox-list {
   display: flex;

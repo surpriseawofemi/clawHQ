@@ -251,6 +251,23 @@ func (s *InboxService) Clear() ([]store.Notice, error) {
 }
 
 // ---------------------------------------------------------------------------
+// ExecLogService — every command an agent asked this machine to run.
+// ---------------------------------------------------------------------------
+
+type ExecLogService struct {
+	log *store.ExecLog
+}
+
+func (s *ExecLogService) List() []store.ExecRecord { return s.log.List() }
+
+func (s *ExecLogService) Clear() ([]store.ExecRecord, error) {
+	if err := s.log.Clear(); err != nil {
+		return s.log.List(), err
+	}
+	return []store.ExecRecord{}, nil
+}
+
+// ---------------------------------------------------------------------------
 // DaemonService — gateway process lifecycle.
 // ---------------------------------------------------------------------------
 

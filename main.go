@@ -129,6 +129,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	execLog, err := store.NewExecLog()
+	if err != nil {
+		log.Fatal(err)
+	}
 	notify = newNotifier(conn, nodeHost, nativeNotifications, inbox)
 
 	// The autopilot starts, pairs and approves the node role whenever the operator
@@ -141,6 +145,12 @@ func main() {
 		OnExecRequest: func(req node.ExecRequest) {
 			if app != nil {
 				app.Event.Emit("node:exec-request", req)
+			}
+		},
+		// Every command, ran or refused, goes to the local audit log.
+		OnExecRecord: func(rec node.ExecRecord) {
+			if _, err := execLog.Append(store.ExecRecord(rec)); err != nil {
+				log.Printf("exec log: %v", err)
 			}
 		},
 		OnAllowAlways: func(commandText string) {
@@ -168,6 +178,7 @@ func main() {
 			application.NewService(windowSvc),
 			application.NewService(nativeNotifications),
 			application.NewService(&InboxService{inbox: inbox}),
+			application.NewService(&ExecLogService{log: execLog}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

@@ -230,6 +230,13 @@ Output is capped at 256 KB per stream and commands at ten minutes. The generic
 `node.invoke` RPC refuses `system.run`, so an agent cannot reach it except through the
 exec tool and its approval policy.
 
+Every `system.run`, whether it ran or was refused, is written to
+`~/.openclaw/clawhq-exec-log.json` (last 500, output tail of 4 KB each) and shown in
+Settings → Command history: the agent, the time, the decision (allowlisted, allowed
+once, always, approved on the gateway, run without asking, denied, nobody answered,
+off), the exit code, and the output on demand. It is this machine's log only; commands
+that run on the gateway host are in the gateway's own logs.
+
 ### Seeing and driving a remote desktop
 
 Pick a desktop in the sidebar to watch it. **Take control** sends your clicks, scroll,

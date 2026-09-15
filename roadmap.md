@@ -40,18 +40,18 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 5 | Tool calls in the chat thread: each `toolcall` block under the agent's message with its paired `tool_result`, collapsed to name plus a gist, expandable to arguments and output | v0.1.12 |
 | 19 | Daily updates (a per-agent cron job that writes `DAILY-UPDATE.md`, set from the Documents tab) and an Activity tab (threads by recency, recently changed files) | v0.1.11 |
 | 20 | Notifications reach every ClawHQ: the receiving machine's operator side fans out `system.notify` to every other connected ClawHQ node (the gateway drops unknown `node.event` names, so that route was out) | v0.1.10 |
+| 6 | Command history: every `system.run` on this machine (agent, time, decision, exit code, output tail) in `clawhq-exec-log.json`, shown under Settings → Trust | v0.1.13 |
 
 ## Now
 
 | # | Item | Size | Notes |
 | --- | --- | --- | --- |
-| 6 | **Approvals history.** Every command an agent ran on this machine: which agent, when, the decision, the output. | S | promoted from Next |
+| 7 | **Health and logs page.** Live log tail with filtering (`logs.tail`) and the health snapshot. | M | promoted from Next |
 
 ## Next
 
 | # | Item | Size | Notes |
 | --- | --- | --- | --- |
-| 7 | **Health and logs page.** Live log tail with filtering (`logs.tail`) and the health snapshot. | M | |
 | 8 | **Per-agent command policy.** A trusted agent runs without asking while a new one still asks. | S | |
 | 10 | **Channels page.** Telegram, Discord and the rest as status plus config, from the same schema as plugins. | S | needs 2 |
 
