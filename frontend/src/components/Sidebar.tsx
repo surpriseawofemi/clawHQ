@@ -20,6 +20,7 @@ type Props = {
   onToggleDesktops: () => void
   unreadNotices: number
   onOpenNotifications: () => void
+  onOpenSearch: () => void
 }
 
 /** One line for the gateway link, one for this machine's node role. */
@@ -81,7 +82,8 @@ export function Sidebar({
   desktopsOpen,
   onToggleDesktops,
   unreadNotices,
-  onOpenNotifications
+  onOpenNotifications,
+  onOpenSearch
 }: Props): React.JSX.Element {
   const desktopsOnline = desktops.filter((d) => d.connected).length
   const connected = status.phase === 'connected'
@@ -161,6 +163,12 @@ export function Sidebar({
           <Logo size={22} className="brand-mark" />
           <span className="brand-name">ClawHQ</span>
         </span>
+        <button className="desk-btn" onClick={onOpenSearch} title="Search (⌘K)" aria-label="Search">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+        </button>
         <button
           className="desk-btn bell-btn"
           onClick={onOpenNotifications}

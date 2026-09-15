@@ -4,6 +4,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { DesktopWindow } from './components/DesktopWindow'
+import { applyTheme, getTheme } from './theme'
+
+applyTheme(getTheme())
 
 // The desktop viewer is a second native window loading the same bundle; the query
 // string says which face to show.

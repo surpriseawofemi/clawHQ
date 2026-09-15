@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { ClawHQConfig, LoginStatus } from '../types'
+import { applyTheme, getTheme, type Theme } from '../theme'
 
 type Props = {
   config: ClawHQConfig | null
@@ -13,6 +14,7 @@ type Props = {
  */
 export function AppPanel({ config, onConfigChanged }: Props): React.JSX.Element {
   const [login, setLogin] = useState<LoginStatus | null>(null)
+  const [theme, setTheme] = useState<Theme>(getTheme())
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -38,6 +40,29 @@ export function AppPanel({ config, onConfigChanged }: Props): React.JSX.Element 
   return (
     <section className="panel">
       <h3>On this computer</h3>
+      <div className="field">
+        <span>Appearance</span>
+        <div className="tabs tabs-inline">
+          {(
+            [
+              ['system', 'Match the system'],
+              ['dark', 'Dark'],
+              ['light', 'Light']
+            ] as [Theme, string][]
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              className={`tab${theme === value ? ' is-active' : ''}`}
+              onClick={() => {
+                applyTheme(value)
+                setTheme(value)
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       <label className="check-row">
         <input
           type="checkbox"

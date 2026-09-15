@@ -407,6 +407,16 @@ Agent settings *do* write real OpenClaw config, via `agents.update`: identity (n
 emoji, theme), model, thinking level, and `subagents.allowAgents` — the reporting line
 that decides who each agent may delegate to.
 
+## Search and appearance
+
+⌘K (Ctrl-K elsewhere), or the magnifier in the sidebar, opens a palette that finds
+agents by name, threads by label, and lines said in threads this window has already
+loaded; Enter opens the hit. The gateway has no message search, so text matches
+cover fetched threads only, and unopened threads match by title. Appearance
+(Settings → This app) follows the system by default or forces dark or light; the
+choice is stamped on `<html data-theme>` and kept in localStorage, so it is per
+machine.
+
 ## Usage
 
 Settings → Usage shows tokens and cost per agent, added up by department, for the

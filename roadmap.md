@@ -46,6 +46,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 10 | Channels page: catalogue from the schema, live state from `channels.status`, enable/disable, log out, schema-driven settings and channel defaults | v0.1.16 |
 | 15 | Usage per agent and department: one `sessions.usage` call per agent for a 7/30/90-day window, totals rolled up along the org chart, unpriced calls counted rather than shown as free | v0.1.17 |
 | 12 | Menu bar presence and launch at login: tray icon with node state and a menu, closing the window hides it while "keep running" is on, launch agent (macOS) or Run key (Windows) | v0.1.18 |
+| 16 | ⌘K search palette (agents, thread labels, loaded message text) and an appearance switch (system, dark, light) | v0.1.19 |
 
 ## Now
 
@@ -62,7 +63,6 @@ changes. Shipped items keep their number so discussions stay anchored.
 | # | Item | Size | Notes |
 | --- | --- | --- | --- |
 | 14 | **Desktop control gaps.** Secondary displays, non-US layouts, clipboard sync, file transfer. | L | |
-| 16 | **Session search and a light theme.** | M | |
 | 17 | **Linux capture and input.** | L | |
 | 21 | **A `clawhq` gateway plugin.** OpenClaw's plugin SDK on the gateway: tools that know which agent called them, departments and notification history stored once on the gateway, lifecycle hooks, ClawHQ's own RPC methods. Installed from Settings via `plugins.install` once published as a package. Replaces the old item 11 (departments on the gateway). Plugin API moves between gateway versions. | L | to consider |
 | 22 | **ClawHQ installs OpenClaw.** "Install OpenClaw here": install the CLI, run onboarding non-interactively, start the service, pair the local ClawHQ. Cannot reach a remote machine that has no gateway yet. | M | to consider |

@@ -370,6 +370,7 @@ export function useFleet() {
     selectSession,
     newSession,
     currentMessages,
+    messages,
     currentStream,
     historyLoading: selectedKey !== null && historyLoading === selectedKey,
     historyComplete: selectedKey !== null && historyFull[selectedKey] === true,

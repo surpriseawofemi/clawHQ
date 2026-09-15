@@ -10,6 +10,7 @@ import { AgentActivity } from './components/AgentActivity'
 import { AgentCharter } from './components/AgentCharter'
 import type { AgentTab } from './components/AgentHeader'
 import { GatewaySwitcher } from './components/GatewaySwitcher'
+import { SearchPalette } from './components/SearchPalette'
 import type { SettingsSection } from './components/settings/SettingsPage'
 import { api } from './api'
 import { useFleet } from './state/useFleet'
@@ -20,6 +21,19 @@ function App(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('gateways')
   const [switcherOpen, setSwitcherOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  // Cmd-K (Ctrl-K elsewhere) opens the search palette from anywhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const openSettings = (section?: SettingsSection): void => {
     if (section) setSettingsSection(section)
     if (section === 'notifications') setUnread(0)
@@ -61,6 +75,7 @@ function App(): React.JSX.Element {
     selectSession,
     newSession,
     currentMessages,
+    messages,
     currentStream,
     historyLoading,
     historyComplete,
@@ -88,6 +103,7 @@ function App(): React.JSX.Element {
         agents={agents}
         sessions={sessions}
         config={config}
+        onOpenSearch={() => setSearchOpen(true)}
         selectedAgentId={selectedAgentId}
         onSelect={(id) => {
           selectSession(null)
@@ -170,6 +186,21 @@ function App(): React.JSX.Element {
 
       <ApprovalBanners connected={connected} />
 
+      {searchOpen && (
+        <SearchPalette
+          agents={agents}
+          sessions={sessions}
+          messages={messages}
+          onClose={() => setSearchOpen(false)}
+          onPick={(agentId, key) => {
+            setSearchOpen(false)
+            setSettingsOpen(false)
+            setSelectedAgentId(agentId)
+            selectSession(key)
+            setAgentTab('chat')
+          }}
+        />
+      )}
       {switcherOpen && (
         <GatewaySwitcher
           status={status}
