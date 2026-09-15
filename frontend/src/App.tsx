@@ -176,6 +176,7 @@ function App(): React.JSX.Element {
                 : notice.title}
             </strong>
             {notice.body && <span>{notice.body}</span>}
+            {notice.origin && <span className="plugin-desc">via {notice.origin}</span>}
           </span>
           {notice.agentId && (
             <button

@@ -129,7 +129,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	notify = newNotifier(conn, nativeNotifications, inbox)
+	notify = newNotifier(conn, nodeHost, nativeNotifications, inbox)
 
 	// The autopilot starts, pairs and approves the node role whenever the operator
 	// connection is up, so nothing below has to think about it.

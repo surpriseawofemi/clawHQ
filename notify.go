@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,7 @@ type AgentNotification = store.Notice
 type notifier struct {
 	app     *application.App
 	conn    *gateway.Conn
+	host    *node.Host
 	native  *notifications.NotificationService
 	inbox   *store.Inbox
 	once    sync.Once
@@ -37,8 +39,8 @@ type notifier struct {
 	seq     int
 }
 
-func newNotifier(conn *gateway.Conn, native *notifications.NotificationService, inbox *store.Inbox) *notifier {
-	return &notifier{conn: conn, native: native, inbox: inbox}
+func newNotifier(conn *gateway.Conn, host *node.Host, native *notifications.NotificationService, inbox *store.Inbox) *notifier {
+	return &notifier{conn: conn, host: host, native: native, inbox: inbox}
 }
 
 // authorize asks macOS once for permission to post notifications. Other platforms
@@ -63,14 +65,22 @@ func (n *notifier) deliver(raw node.Notification) {
 			Title:      raw.Title,
 			Body:       raw.Body,
 			AgentID:    raw.AgentID,
+			AgentName:  raw.AgentName,
+			AgentEmoji: raw.AgentEmoji,
 			SessionKey: raw.SessionKey,
+			Origin:     raw.Origin,
 			AtMs:       raw.AtMs,
 		}
-		if out.AgentID == "" {
+		if out.AgentID == "" && !raw.Relay {
 			out.AgentID = n.guessAgent()
 		}
-		if out.AgentID != "" {
+		if out.AgentID != "" && out.AgentName == "" {
 			out.AgentName, out.AgentEmoji = n.agentIdentity(out.AgentID)
+		}
+		// A notification addressed to this machine is copied to every other ClawHQ
+		// on the gateway, so it is seen wherever the user happens to be sitting.
+		if !raw.Relay {
+			go n.relay(out)
 		}
 		// Stored first, so a notice that arrives while nobody is looking is still
 		// there in the history page later.
@@ -109,6 +119,85 @@ func (n *notifier) deliver(raw node.Notification) {
 			log.Printf("notifications: %v", err)
 		}
 	}()
+}
+
+// relay forwards a notification to every other connected ClawHQ node through the
+// operator connection, as a system.notify marked relay so it is not forwarded again.
+//
+// The gateway's node.event channel drops event names it does not know, and a node
+// cannot address other nodes, but an operator can invoke any node. Every ClawHQ has
+// both roles, so this machine's operator side does the fan-out.
+func (n *notifier) relay(notice store.Notice) {
+	if n.conn.Status().Phase != gateway.PhaseConnected {
+		return
+	}
+	self := n.host.Status().DeviceID
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	raw, err := n.conn.Request(ctx, "node.list", nil)
+	if err != nil {
+		return
+	}
+	var res struct {
+		Nodes []struct {
+			NodeID      string   `json:"nodeId"`
+			ClientID    string   `json:"clientId"`
+			Connected   bool     `json:"connected"`
+			Commands    []string `json:"commands"`
+			DisplayName string   `json:"displayName"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return
+	}
+	origin := notice.Origin
+	if origin == "" {
+		origin = hostLabel()
+	}
+	for _, target := range res.Nodes {
+		if target.NodeID == self || !target.Connected || target.ClientID != "node-host" {
+			continue
+		}
+		hasNotify := false
+		for _, c := range target.Commands {
+			if c == node.CmdSystemNotify {
+				hasNotify = true
+				break
+			}
+		}
+		if !hasNotify {
+			continue
+		}
+		params := map[string]any{
+			"title":      notice.Title,
+			"body":       notice.Body,
+			"agentId":    notice.AgentID,
+			"agentName":  notice.AgentName,
+			"agentEmoji": notice.AgentEmoji,
+			"sessionKey": notice.SessionKey,
+			"atMs":       notice.AtMs,
+			"relay":      true,
+			"origin":     origin,
+		}
+		_, err := n.conn.Request(ctx, "node.invoke", map[string]any{
+			"nodeId":         target.NodeID,
+			"command":        node.CmdSystemNotify,
+			"params":         params,
+			"idempotencyKey": fmt.Sprintf("clawhq-relay-%s-%d", notice.ID, time.Now().UnixNano()),
+		})
+		if err != nil {
+			log.Printf("notifications: relay to %s: %v", target.DisplayName, err)
+		}
+	}
+}
+
+// hostLabel is how this machine names itself in a relayed notification.
+func hostLabel() string {
+	name, err := os.Hostname()
+	if err != nil || name == "" {
+		return "another machine"
+	}
+	return strings.TrimSuffix(name, ".local")
 }
 
 // guessAgent returns the id of the one agent with a run in flight, or "" when the

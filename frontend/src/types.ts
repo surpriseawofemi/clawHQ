@@ -165,6 +165,8 @@ export type NodeNotification = {
   agentName?: string
   agentEmoji?: string
   sessionKey?: string
+  /** Machine that received the original, when this copy was relayed from another ClawHQ. */
+  origin?: string
   atMs: number
   read: boolean
 }

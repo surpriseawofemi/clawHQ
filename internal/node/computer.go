@@ -25,8 +25,14 @@ type Notification struct {
 	Title      string `json:"title"`
 	Body       string `json:"body"`
 	AgentID    string `json:"agentId,omitempty"`
+	AgentName  string `json:"agentName,omitempty"`
+	AgentEmoji string `json:"agentEmoji,omitempty"`
 	SessionKey string `json:"sessionKey,omitempty"`
 	AtMs       int64  `json:"atMs"`
+	// Relay marks a copy forwarded by another ClawHQ, so it is shown and stored
+	// but not forwarded again. Origin names the machine that received the original.
+	Relay  bool   `json:"relay,omitempty"`
+	Origin string `json:"origin,omitempty"`
 }
 
 // frameGeometry remembers how the last screenshot maps onto the real screen, so
@@ -259,7 +265,12 @@ func (h *Host) systemNotify(raw json.RawMessage) (any, string) {
 		Message    string `json:"message"`
 		AgentID    string `json:"agentId"`
 		Agent      string `json:"agent"`
+		AgentName  string `json:"agentName"`
+		AgentEmoji string `json:"agentEmoji"`
 		SessionKey string `json:"sessionKey"`
+		Relay      bool   `json:"relay"`
+		Origin     string `json:"origin"`
+		AtMs       int64  `json:"atMs"`
 	}
 	_ = json.Unmarshal(raw, &p)
 	if p.Body == "" {
@@ -275,12 +286,20 @@ func (h *Host) systemNotify(raw json.RawMessage) (any, string) {
 		p.Title = "An agent needs you"
 	}
 
+	at := time.Now().UnixMilli()
+	if p.Relay && p.AtMs > 0 {
+		at = p.AtMs
+	}
 	n := Notification{
 		Title:      strings.TrimSpace(p.Title),
 		Body:       strings.TrimSpace(p.Body),
 		AgentID:    strings.TrimSpace(p.AgentID),
+		AgentName:  strings.TrimSpace(p.AgentName),
+		AgentEmoji: strings.TrimSpace(p.AgentEmoji),
 		SessionKey: strings.TrimSpace(p.SessionKey),
-		AtMs:       time.Now().UnixMilli(),
+		AtMs:       at,
+		Relay:      p.Relay,
+		Origin:     strings.TrimSpace(p.Origin),
 	}
 	if h.onNotify != nil {
 		h.onNotify(n)

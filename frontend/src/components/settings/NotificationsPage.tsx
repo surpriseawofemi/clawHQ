@@ -77,6 +77,7 @@ export function NotificationsPage({ onOpenAgent }: Props): React.JSX.Element {
               <div className="inbox-body">
                 <div className="inbox-head">
                   <strong>{n.agentName || n.agentId || 'An agent'}</strong>
+                  {n.origin && <span className="plugin-desc">via {n.origin}</span>}
                   <span className="inbox-time">{when(n.atMs)}</span>
                 </div>
                 <div className="inbox-title">{n.title}</div>

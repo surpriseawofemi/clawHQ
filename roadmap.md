@@ -1,0 +1,69 @@
+# ClawHQ roadmap
+
+Sizes: S under a day, M a few days, L a week or more. Order changes as the gateway
+changes. Shipped items keep their number so discussions stay anchored.
+
+## Principles that decide the order
+
+- **Automatic by default, gated by feature.** Connecting should never need a step.
+  What is exposed once connected is a set of explicit switches.
+- **The gateway is the server in the middle.** No second service, no database of our
+  own. State that must outlive one machine goes to the gateway.
+- **Generate from the schema.** Plugin, MCP and channel settings are read from the
+  gateway's own schema, so the app keeps up with the gateway without a release.
+- **Nothing runs silently.** Commands on this machine are logged and, unless
+  allowlisted, asked about. Denied is the default when nobody answers.
+
+## Shipped
+
+| # | Item | Release |
+| --- | --- | --- |
+| A | Node pairs itself: no token, self-approval, reconnects with backoff | v0.1.3 |
+| B | Departments reach agents: gateway allowlist patched over the wire, node tools registered | v0.1.3 |
+| C | Agents can run commands: `system.run` behind ask / allow / off plus an allowlist, one banner for node-side and gateway-side approvals | v0.1.3 |
+| D | macOS desktop control: capture and input, Retina-aware | v0.1.3 |
+| E | Own icon and header on macOS | v0.1.3 |
+| 1 | Settings as a page with a section nav | v0.1.3 |
+| 2 | Schema-driven gateway config (`config.schema`, `config.patch`) | v0.1.3 |
+| 3 | Plugins and MCP servers pages, one-click install of official plugins, ClawHub search | v0.1.3 |
+| 4 | Connection state in the sidebar, gateway name in the pill | v0.1.3 |
+| 9 | Automations: list, pause, resume, run now | v0.1.3 |
+| 13 | Remote gateway restart | v0.1.3 |
+| – | Gateway picker at launch, auto-connect switch, gateway switcher and rename | v0.1.3 |
+| – | Desktops in their own native window, pin on top | v0.1.3 |
+| – | Chat opens with the recent tail, loads the rest on request | v0.1.3 |
+| – | Notifications from ClawHQ itself, naming the agent; `clawhq_ask_human` tool | v0.1.5 |
+| – | Hourly update checks with an auto-install switch | v0.1.6 |
+| – | Notification history page and unread bell | v0.1.7 |
+| 18 | Documents and Charter tabs per agent | v0.1.8 |
+| – | Stable local signing identity so macOS permission grants survive rebuilds | main |
+| 20 | Notifications reach every ClawHQ: the receiving machine's operator side fans out `system.notify` to every other connected ClawHQ node (the gateway drops unknown `node.event` names, so that route was out) | v0.1.10 |
+
+## Now
+
+| # | Item | Size | Notes |
+| --- | --- | --- | --- |
+| 19 | **Daily updates and Activity.** A per-agent automation that writes `DAILY-UPDATE.md` and posts a summary, shown at the top of the agent's pane; an Activity view built from session timestamps and file changes. | M | needs 18 |
+
+## Next
+
+| # | Item | Size | Notes |
+| --- | --- | --- | --- |
+| 5 | **Tool calls in the chat thread.** Show each call and its result inline. | M | |
+| 6 | **Approvals history.** Every command an agent ran on this machine: which agent, when, the decision, the output. | S | |
+| 7 | **Health and logs page.** Live log tail with filtering (`logs.tail`) and the health snapshot. | M | |
+| 8 | **Per-agent command policy.** A trusted agent runs without asking while a new one still asks. | S | |
+| 10 | **Channels page.** Telegram, Discord and the rest as status plus config, from the same schema as plugins. | S | needs 2 |
+
+## Later
+
+| # | Item | Size | Notes |
+| --- | --- | --- | --- |
+| 12 | **Menu bar presence and launch at login.** The node role only helps while ClawHQ runs. | M | macOS |
+| 14 | **Desktop control gaps.** Secondary displays, non-US layouts, clipboard sync, file transfer. | L | |
+| 15 | **Usage and cost per agent and department.** | S | |
+| 16 | **Session search and a light theme.** | M | |
+| 17 | **Linux capture and input.** | L | |
+| 21 | **A `clawhq` gateway plugin.** OpenClaw's plugin SDK on the gateway: tools that know which agent called them, departments and notification history stored once on the gateway, lifecycle hooks, ClawHQ's own RPC methods. Installed from Settings via `plugins.install` once published as a package. Replaces the old item 11 (departments on the gateway). Plugin API moves between gateway versions. | L | to consider |
+| 22 | **ClawHQ installs OpenClaw.** "Install OpenClaw here": install the CLI, run onboarding non-interactively, start the service, pair the local ClawHQ. Cannot reach a remote machine that has no gateway yet. | M | to consider |
+| 23 | **ClawHQ data on the gateway.** OpenClaw already keeps its state in SQLite on the gateway host. Moving ClawHQ's own data (departments, notifications, exec audit) there, through the plugin, makes two installs behave as one system. | M | part of 21 |

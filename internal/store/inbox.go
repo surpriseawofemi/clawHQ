@@ -19,8 +19,11 @@ type Notice struct {
 	AgentName  string `json:"agentName,omitempty"`
 	AgentEmoji string `json:"agentEmoji,omitempty"`
 	SessionKey string `json:"sessionKey,omitempty"`
-	AtMs       int64  `json:"atMs"`
-	Read       bool   `json:"read"`
+	// Origin is the machine that received the notification when it was relayed
+	// from another ClawHQ; empty when it arrived here directly.
+	Origin string `json:"origin,omitempty"`
+	AtMs   int64  `json:"atMs"`
+	Read   bool   `json:"read"`
 }
 
 // inboxCap bounds the file; older entries fall off the end.

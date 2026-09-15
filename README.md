@@ -243,6 +243,14 @@ desktop** shortcuts, and posts an OS notification through the platform's own cen
 (Wails' notifications service), so it carries ClawHQ's name and icon rather than a
 script runner's. macOS asks once for permission.
 
+A notification addressed to one machine is copied to every other ClawHQ on the
+gateway. The gateway's `node.event` channel drops event names it does not know, and
+a node cannot address other nodes, but an operator can invoke any node, and every
+ClawHQ runs both roles. So the operator side of the machine that received the
+notification sends `system.notify` to each other connected ClawHQ node with a `relay`
+flag and the origin machine's name; a relayed copy is shown and stored but not
+forwarded again. Whichever node an agent addresses, you see it where you are.
+
 Every notification is also kept in `~/.openclaw/clawhq-notifications.json` (the last
 500) and listed under Settings → Notifications, newest first, with Open chat and
 delete. The bell in the sidebar header shows how many are unread; opening the page
