@@ -43,12 +43,12 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 6 | Command history: every `system.run` on this machine (agent, time, decision, exit code, output tail) in `clawhq-exec-log.json`, shown under Settings → Trust | v0.1.13 |
 | 7 | Health and logs page: the `health` snapshot (refreshed on the `health` event) and a cursor-following `logs.tail` with filter and level picker | v0.1.14 |
 | 8 | Per-agent command policy: an override per agent id (trusted, ask, off) beside the machine-wide mode; "Trust <agent>" on a banner | v0.1.15 |
+| 10 | Channels page: catalogue from the schema, live state from `channels.status`, enable/disable, log out, schema-driven settings and channel defaults | v0.1.16 |
 
 ## Now
 
 | # | Item | Size | Notes |
 | --- | --- | --- | --- |
-| 10 | **Channels page.** Telegram, Discord and the rest as status plus config, from the same schema as plugins. | S | promoted from Next |
 
 ## Next
 

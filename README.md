@@ -345,6 +345,14 @@ does, with a section nav on the left. Connection and This machine cover pairing 
 the node role; Departments is ClawHQ's own org chart; the Gateway group is the
 gateway's own config, edited over the wire.
 
+Channels (Telegram, Discord, Slack and the rest) are listed from the `channels`
+object of the schema, so a channel the gateway learns about tomorrow appears without
+a release. Set-up channels come first with their live state from `channels.status`
+(refreshed on every `health` event), an enable switch that patches
+`channels.<id>.enabled`, and Log out (`channels.logout`); the rest sit behind a
+"more channels" toggle. Each one opens the same schema-driven form as a plugin, and
+Channel defaults edits `channels.defaults`.
+
 ### Config is rendered from the gateway's schema
 
 The gateway publishes a JSON schema for its whole config (`config.schema`, with UI

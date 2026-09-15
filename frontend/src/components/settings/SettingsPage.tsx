@@ -9,6 +9,7 @@ import { PluginsPage } from './PluginsPage'
 import { McpServersPage } from './McpServersPage'
 import { AutomationsPage } from './AutomationsPage'
 import { HealthPage } from './HealthPage'
+import { ChannelsPage } from './ChannelsPage'
 import { NotificationsPage } from './NotificationsPage'
 import { CommandHistoryPage } from './CommandHistoryPage'
 
@@ -32,6 +33,7 @@ export type SettingsSection =
   | 'notifications'
   | 'commands'
   | 'health'
+  | 'channels'
   | 'service'
   | 'plugins'
   | 'mcp'
@@ -63,6 +65,7 @@ const NAV: NavGroup[] = [
       { id: 'service', label: 'Service' },
       { id: 'plugins', label: 'Plugins' },
       { id: 'mcp', label: 'MCP servers' },
+      { id: 'channels', label: 'Channels' },
       { id: 'automations', label: 'Automations' },
       { id: 'health', label: 'Health and logs' }
     ]
@@ -77,6 +80,7 @@ const TITLES: Record<SettingsSection, string> = {
   notifications: 'Notifications',
   commands: 'Command history',
   health: 'Health and logs',
+  channels: 'Channels',
   service: 'Gateway service',
   plugins: 'Plugins',
   mcp: 'MCP servers',
@@ -375,6 +379,7 @@ export function SettingsPage({
         {section === 'mcp' && <McpServersPage connected={connected} />}
         {section === 'automations' && <AutomationsPage connected={connected} />}
         {section === 'health' && <HealthPage connected={connected} />}
+        {section === 'channels' && <ChannelsPage connected={connected} />}
 
         {section === 'updates' && (
           <div className="settings-stack">
