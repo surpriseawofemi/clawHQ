@@ -23,8 +23,5 @@ func pressKeys(combo string) error                  { return errNoInput }
 func holdKeys(combo string, d time.Duration) error  { return errNoInput }
 func screenGeometry() (x, y, w, h int)              { return 0, 0, 0, 0 }
 
-// showNotification is a no-op here; the in-app banner is the reliable path.
-func showNotification(title, body string) error { return nil }
-
 func holdKeysBegin(combo string) error { return errNoInput }
 func holdKeysEnd(combo string)         {}

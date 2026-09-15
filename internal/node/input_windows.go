@@ -4,9 +4,7 @@ package node
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf16"
 	"unsafe"
@@ -343,24 +341,4 @@ func holdKeys(combo string, d time.Duration) error {
 func screenGeometry() (x, y, w, h int) {
 	return int(systemMetric(smXVirtualScreen)), int(systemMetric(smYVirtualScreen)),
 		int(systemMetric(smCXVirtualScreen)), int(systemMetric(smCYVirtualScreen))
-}
-
-// showNotification raises a toast through PowerShell. Best effort: a machine without
-// the WinRT toast surface just gets nothing, and the in-app banner still shows.
-func showNotification(title, body string) error {
-	script := fmt.Sprintf(`
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xml.LoadXml('<toast><visual><binding template="ToastGeneric"><text>%s</text><text>%s</text></binding></visual></toast>')
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('ClawHQ').Show([Windows.UI.Notifications.ToastNotification]::new($xml))
-`, xmlEscape(title), xmlEscape(body))
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	return cmd.Run()
-}
-
-func xmlEscape(s string) string {
-	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "'", "&apos;", `"`, "&quot;")
-	return r.Replace(s)
 }

@@ -44,6 +44,23 @@ func pluginTools() []map[string]any {
 			},
 		},
 		{
+			"pluginId": "clawhq",
+			"name":     "clawhq_ask_human",
+			"description": "Ask the person at this machine for help, e.g. to log in to a site, approve " +
+				"something, or answer a question. Shows a notification on their screen that names you. " +
+				"Always pass your own agent id.",
+			"command": CmdSystemNotify,
+			"parameters": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"title":   map[string]any{"type": "string", "description": "Short headline, e.g. Login needed"},
+					"body":    map[string]any{"type": "string", "description": "What you need the person to do"},
+					"agentId": map[string]any{"type": "string", "description": "Your agent id, e.g. main"},
+				},
+				"required": []string{"body", "agentId"},
+			},
+		},
+		{
 			"pluginId":    "clawhq",
 			"name":        "clawhq_agent_assign",
 			"description": "Put an agent into a ClawHQ department. An empty departmentId unassigns it.",

@@ -80,7 +80,6 @@ import "C"
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -563,11 +562,4 @@ func screenGeometry() (x, y, w, h int) {
 	var cx, cy, cw, ch C.double
 	C.clawMainDisplayBounds(&cx, &cy, &cw, &ch)
 	return int(cx), int(cy), int(cw), int(ch)
-}
-
-// showNotification uses Notification Center through osascript.
-func showNotification(title, body string) error {
-	esc := func(s string) string { return strings.ReplaceAll(s, `"`, `\"`) }
-	script := fmt.Sprintf(`display notification "%s" with title "%s" sound name "default"`, esc(body), esc(title))
-	return exec.Command("osascript", "-e", script).Run()
 }

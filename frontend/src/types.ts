@@ -159,6 +159,10 @@ export type GatewayExecApproval = {
 export type NodeNotification = {
   title: string
   body: string
+  agentId?: string
+  agentName?: string
+  agentEmoji?: string
+  sessionKey?: string
   atMs: number
 }
 

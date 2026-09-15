@@ -13,6 +13,7 @@ import (
 	"github.com/surpriseawofemi/clawhq/internal/node"
 	"github.com/surpriseawofemi/clawhq/internal/store"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
 
 //go:embed all:frontend/dist
@@ -39,7 +40,7 @@ func init() {
 	application.RegisterEvent[gateway.Event]("gateway:event")
 	application.RegisterEvent[gateway.Status]("gateway:status")
 	application.RegisterEvent[node.Status]("node:status")
-	application.RegisterEvent[node.Notification]("node:notify")
+	application.RegisterEvent[AgentNotification]("node:notify")
 	application.RegisterEvent[node.ExecRequest]("node:exec-request")
 	application.RegisterEvent[DesktopSelect]("desktop:select")
 }
@@ -73,6 +74,7 @@ func main() {
 	// are already being registered, so hold the pointer and fill it in afterwards.
 	updateSvc := &UpdateService{}
 	windowSvc := &WindowService{}
+	var notify *notifier
 
 	conn, err := gateway.New(
 		identityDir(),
@@ -99,10 +101,11 @@ func main() {
 				app.Event.Emit("node:status", st)
 			}
 		},
-		// system.notify from an agent: hand it to the UI for a banner.
+		// system.notify from an agent: an OS notification from ClawHQ plus a banner,
+		// both naming the agent. The notifier is wired just below.
 		func(n node.Notification) {
-			if app != nil {
-				app.Event.Emit("node:notify", n)
+			if notify != nil {
+				notify.deliver(n)
 			}
 		},
 		// Unimplemented commands are logged in full so the surface can be extended
@@ -118,6 +121,11 @@ func main() {
 	nodeHost.SetSharedFolders(startCfg.Node.SharedFolders)
 	nodeHost.SetDesktopControl(startCfg.Node.DesktopControl)
 	nodeHost.SetExecPolicy(startCfg.Node.Exec.Mode, startCfg.Node.Exec.Allow)
+
+	// OS notifications go through the platform's own centre under ClawHQ's name and
+	// icon, rather than through a script runner that gets the credit.
+	nativeNotifications := notifications.New()
+	notify = newNotifier(conn, nativeNotifications)
 
 	// The autopilot starts, pairs and approves the node role whenever the operator
 	// connection is up, so nothing below has to think about it.
@@ -154,6 +162,7 @@ func main() {
 			application.NewService(&NodeService{host: nodeHost, store: cfgStore, conn: conn, auto: auto}),
 			application.NewService(updateSvc),
 			application.NewService(windowSvc),
+			application.NewService(nativeNotifications),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -214,6 +223,7 @@ func main() {
 
 	updateSvc.app = app
 	windowSvc.app = app
+	notify.app = app
 
 	// Self-update from GitHub releases. Failing to wire this up is not fatal;
 	// the app simply will not offer updates.

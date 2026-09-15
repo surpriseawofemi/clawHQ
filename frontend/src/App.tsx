@@ -132,11 +132,28 @@ function App(): React.JSX.Element {
 
       {notice && (
         <div className="notice" role="status">
-          <span className="notice-icon">🔔</span>
+          <span className="notice-icon">{notice.agentEmoji || '🔔'}</span>
           <span className="notice-text">
-            <strong>{notice.title}</strong>
+            <strong>
+              {notice.agentName || notice.agentId
+                ? `${notice.agentName || notice.agentId}: ${notice.title}`
+                : notice.title}
+            </strong>
             {notice.body && <span>{notice.body}</span>}
           </span>
+          {notice.agentId && (
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                selectSession(null)
+                setSelectedAgentId(notice.agentId!)
+                setSettingsOpen(false)
+                setNotice(null)
+              }}
+            >
+              Open chat
+            </button>
+          )}
           {desktops.some((d) => d.connected) && (
             <button
               className="btn btn-sm btn-primary"

@@ -15,12 +15,18 @@ const (
 	CmdSystemNotify = "system.notify"
 )
 
-// Notification is a system.notify request an agent sent to this machine. It is
-// forwarded to the frontend so the app can show it, as well as to the OS.
+// Notification is a system.notify request an agent sent to this machine. The app
+// shows it in-app and through the OS notification centre, under its own name.
+//
+// The gateway's own notify action carries no sender, so AgentID is only set when
+// the agent used ClawHQ's ask-a-human tool (or passed it explicitly); the app fills
+// it in from the running session otherwise.
 type Notification struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	AtMs  int64  `json:"atMs"`
+	Title      string `json:"title"`
+	Body       string `json:"body"`
+	AgentID    string `json:"agentId,omitempty"`
+	SessionKey string `json:"sessionKey,omitempty"`
+	AtMs       int64  `json:"atMs"`
 }
 
 // frameGeometry remembers how the last screenshot maps onto the real screen, so
@@ -241,31 +247,43 @@ func (h *Host) computerAct(raw json.RawMessage) (any, string) {
 	}, ""
 }
 
-// systemNotify shows a notification on this machine and hands it to the app.
+// systemNotify hands a notification to the app, which shows it in-app and through
+// the OS under ClawHQ's own name.
 //
-// Params: {title, body} — a plain {message} is accepted too.
+// Params: {title, body} from the gateway's notify action; {message} is accepted
+// too, and {agentId, sessionKey} when the caller knows them.
 func (h *Host) systemNotify(raw json.RawMessage) (any, string) {
 	var p struct {
-		Title   string `json:"title"`
-		Body    string `json:"body"`
-		Message string `json:"message"`
+		Title      string `json:"title"`
+		Body       string `json:"body"`
+		Message    string `json:"message"`
+		AgentID    string `json:"agentId"`
+		Agent      string `json:"agent"`
+		SessionKey string `json:"sessionKey"`
 	}
 	_ = json.Unmarshal(raw, &p)
 	if p.Body == "" {
 		p.Body = p.Message
 	}
-	if p.Title == "" {
-		p.Title = "An agent needs you"
+	if p.AgentID == "" {
+		p.AgentID = p.Agent
 	}
 	if strings.TrimSpace(p.Body) == "" && strings.TrimSpace(p.Title) == "" {
 		return nil, "system.notify needs a title or body"
 	}
+	if p.Title == "" {
+		p.Title = "An agent needs you"
+	}
 
-	n := Notification{Title: p.Title, Body: p.Body, AtMs: time.Now().UnixMilli()}
+	n := Notification{
+		Title:      strings.TrimSpace(p.Title),
+		Body:       strings.TrimSpace(p.Body),
+		AgentID:    strings.TrimSpace(p.AgentID),
+		SessionKey: strings.TrimSpace(p.SessionKey),
+		AtMs:       time.Now().UnixMilli(),
+	}
 	if h.onNotify != nil {
 		h.onNotify(n)
 	}
-	// The OS notification is best effort: the in-app banner is the reliable path.
-	_ = showNotification(p.Title, p.Body)
 	return map[string]any{"ok": true}, ""
 }

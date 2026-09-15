@@ -231,8 +231,17 @@ needs an app restart. Screenshots are in Retina pixels and are mapped back to di
 points, so coordinates land where the screenshot shows them.
 
 When an agent needs you it can call `system.notify` on the node role of the machine you
-are sitting at. ClawHQ shows the message as a banner with an **Open desktop** shortcut,
-and macOS gets a Notification Center alert as well.
+are sitting at. ClawHQ shows the message as a banner with **Open chat** and **Open
+desktop** shortcuts, and posts an OS notification through the platform's own centre
+(Wails' notifications service), so it carries ClawHQ's name and icon rather than a
+script runner's. macOS asks once for permission.
+
+The gateway's own notify action does not say which agent sent it, so ClawHQ names the
+sender two ways. Agents get a `clawhq_ask_human` tool (published with the department
+tools) whose parameters include their agent id, and its description tells them to
+pass it. For plain notify calls, ClawHQ checks which agent has a run in flight at that
+moment via `sessions.list`; exactly one running agent means it was that one, otherwise
+the banner says "An agent".
 
 ### Node invokes are events, not frames
 
