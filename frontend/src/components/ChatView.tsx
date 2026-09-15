@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type { Agent, Attachment, ChatMessage, SessionInfo, StreamingReply } from '../types'
-import { agentEmoji, agentLabel, messageText } from '../types'
+import { agentLabel, messageText } from '../types'
+import { AgentHeader, type AgentTab } from './AgentHeader'
 
 type Props = {
   agent: Agent | null
   sessionKey: string | null
+  tab: AgentTab
+  onTab: (tab: AgentTab) => void
   sessions: SessionInfo[]
   onSelectSession: (key: string | null) => void
   onNewSession: (label?: string) => void
@@ -41,6 +44,8 @@ const chipIcon = (a: Attachment): string =>
 export function ChatView({
   agent,
   sessionKey,
+  tab,
+  onTab,
   sessions,
   onSelectSession,
   onNewSession,
@@ -121,18 +126,7 @@ export function ChatView({
 
   return (
     <main className="chat">
-      <header className="chat-head">
-        <span className="chat-avatar">{agentEmoji(agent)}</span>
-        <div className="chat-title">
-          <h1>
-            {agentLabel(agent)}
-            {stream && <i className="dot-active" title="Working" />}
-          </h1>
-          <p>
-            {agent.model?.primary ?? 'default model'}
-            {agent.identity?.theme ? ` · ${agent.identity.theme}` : ''}
-          </p>
-        </div>
+      <AgentHeader agent={agent} tab={tab} onTab={onTab} working={!!stream}>
         <div className="session-bar">
           <select
             value={sessionKey ?? ''}
@@ -158,7 +152,7 @@ export function ChatView({
         <button className="icon-btn" onClick={onSettings} title="Agent settings">
           ⚙
         </button>
-      </header>
+      </AgentHeader>
 
       <div className="messages" ref={scroller}>
         {loadingHistory && visible.length === 0 && (

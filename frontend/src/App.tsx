@@ -5,6 +5,9 @@ import { AgentSettingsDialog } from './components/AgentSettingsDialog'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { Onboarding } from './components/Onboarding'
 import { ApprovalBanners } from './components/ApprovalBanners'
+import { AgentDocuments } from './components/AgentDocuments'
+import { AgentCharter } from './components/AgentCharter'
+import type { AgentTab } from './components/AgentHeader'
 import { GatewaySwitcher } from './components/GatewaySwitcher'
 import type { SettingsSection } from './components/settings/SettingsPage'
 import { api } from './api'
@@ -25,6 +28,8 @@ function App(): React.JSX.Element {
   const [agentSettingsId, setAgentSettingsId] = useState<string | null>(null)
   const [notice, setNotice] = useState<NodeNotification | null>(null)
   const [unread, setUnread] = useState(0)
+  // Chat, Documents or Charter for the selected agent.
+  const [agentTab, setAgentTab] = useState<AgentTab>('chat')
 
   // An agent asked for a human through system.notify on this machine's node role.
   useEffect(() => {
@@ -117,9 +122,22 @@ function App(): React.JSX.Element {
           onReconnected={refreshFleet}
         />
       ) : (
+      selectedAgent && agentTab === 'documents' ? (
+        <AgentDocuments agent={selectedAgent} tab={agentTab} onTab={setAgentTab} connected={connected} />
+      ) : selectedAgent && agentTab === 'charter' ? (
+        <AgentCharter
+          agent={selectedAgent}
+          tab={agentTab}
+          onTab={setAgentTab}
+          connected={connected}
+          onSaved={refreshFleet}
+        />
+      ) : (
       <ChatView
         agent={selectedAgent}
         sessionKey={selectedKey}
+        tab={agentTab}
+        onTab={setAgentTab}
         sessions={agentSessions}
         onSelectSession={selectSession}
         onNewSession={newSession}
@@ -134,7 +152,7 @@ function App(): React.JSX.Element {
         onAbort={abortRun}
         onSettings={() => selectedAgentId && setAgentSettingsId(selectedAgentId)}
       />
-      )}
+      ))}
 
       <ApprovalBanners connected={connected} />
 

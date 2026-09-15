@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@wailsio/runtime": "latest",
+    "dompurify": "^3.4.15",
+    "marked": "^15.0.12",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

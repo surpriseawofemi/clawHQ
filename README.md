@@ -342,6 +342,17 @@ arrive redacted and are only sent back when you type a new value.
 - **Service** keeps the local start/stop/restart and adds a remote restart through
   `gateway.restart.request`, which works over a tunnel.
 
+## Documents and charter
+
+Each agent's pane has three tabs. **Chat** is the thread. **Documents** lists the
+markdown in the agent's workspace through `agents.workspace.list` and renders a file
+with `agents.workspace.get`; the charter files are hidden there, folders such as
+`memory/` open in place, and rendering is read-only because the gateway accepts
+writes only to the charter names. **Charter** edits AGENTS, SOUL, IDENTITY, USER and
+MEMORY through `agents.files.get` and `agents.files.set`, with a preview and Cmd-S;
+a save applies at the agent's next session start, and saving IDENTITY refreshes the
+sidebar.
+
 ## Departments
 
 OpenClaw has no department concept, so ClawHQ owns that data and keeps it in
