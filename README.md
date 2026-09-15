@@ -243,6 +243,11 @@ desktop** shortcuts, and posts an OS notification through the platform's own cen
 (Wails' notifications service), so it carries ClawHQ's name and icon rather than a
 script runner's. macOS asks once for permission.
 
+Every notification is also kept in `~/.openclaw/clawhq-notifications.json` (the last
+500) and listed under Settings → Notifications, newest first, with Open chat and
+delete. The bell in the sidebar header shows how many are unread; opening the page
+marks them read. So a request made while nobody was at the keyboard is still there.
+
 The gateway's own notify action does not say which agent sent it, so ClawHQ names the
 sender two ways. Agents get a `clawhq_ask_human` tool (published with the department
 tools) whose parameters include their agent id, and its description tells them to

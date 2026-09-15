@@ -224,6 +224,33 @@ func (s *ConfigService) RemoveDepartment(id string) (store.Config, error) {
 }
 
 // ---------------------------------------------------------------------------
+// InboxService — the history of what agents asked this machine.
+// ---------------------------------------------------------------------------
+
+type InboxService struct {
+	inbox *store.Inbox
+}
+
+// List returns every stored notice, newest first.
+func (s *InboxService) List() []store.Notice { return s.inbox.List() }
+
+// Unread counts notices not yet looked at, for the bell in the sidebar.
+func (s *InboxService) Unread() int { return s.inbox.Unread() }
+
+func (s *InboxService) MarkAllRead() ([]store.Notice, error) { return s.inbox.MarkAllRead() }
+
+func (s *InboxService) MarkRead(id string) ([]store.Notice, error) { return s.inbox.MarkRead(id) }
+
+func (s *InboxService) Delete(id string) ([]store.Notice, error) { return s.inbox.Delete(id) }
+
+func (s *InboxService) Clear() ([]store.Notice, error) {
+	if err := s.inbox.Clear(); err != nil {
+		return s.inbox.List(), err
+	}
+	return []store.Notice{}, nil
+}
+
+// ---------------------------------------------------------------------------
 // DaemonService — gateway process lifecycle.
 // ---------------------------------------------------------------------------
 

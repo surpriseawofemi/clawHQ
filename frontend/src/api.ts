@@ -3,6 +3,7 @@ import {
   ConfigService,
   DaemonService,
   GatewayService,
+  InboxService,
   NodeService,
   UpdateService,
   WindowService
@@ -106,6 +107,14 @@ export const api = {
   },
   shell: {
     openPath: (path: string): Promise<void> => DaemonService.OpenPath(path)
+  },
+  inbox: {
+    list: (): Promise<NodeNotification[]> => InboxService.List() as Promise<NodeNotification[]>,
+    unread: (): Promise<number> => InboxService.Unread(),
+    markAllRead: (): Promise<NodeNotification[]> => InboxService.MarkAllRead() as Promise<NodeNotification[]>,
+    markRead: (id: string): Promise<NodeNotification[]> => InboxService.MarkRead(id) as Promise<NodeNotification[]>,
+    remove: (id: string): Promise<NodeNotification[]> => InboxService.Delete(id) as Promise<NodeNotification[]>,
+    clear: (): Promise<NodeNotification[]> => InboxService.Clear() as Promise<NodeNotification[]>
   },
   window: {
     /** Open (or focus) the detached desktop window, pointed at a node. */

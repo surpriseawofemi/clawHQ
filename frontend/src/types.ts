@@ -158,6 +158,7 @@ export type GatewayExecApproval = {
 
 /** A system.notify an agent sent to this machine through the node role. */
 export type NodeNotification = {
+  id: string
   title: string
   body: string
   agentId?: string
@@ -165,6 +166,7 @@ export type NodeNotification = {
   agentEmoji?: string
   sessionKey?: string
   atMs: number
+  read: boolean
 }
 
 /** A node paired with the gateway, as reported by node.list. */

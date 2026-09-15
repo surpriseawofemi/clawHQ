@@ -11,17 +11,14 @@ import (
 
 	"github.com/surpriseawofemi/clawhq/internal/gateway"
 	"github.com/surpriseawofemi/clawhq/internal/node"
+	"github.com/surpriseawofemi/clawhq/internal/store"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
 
-// AgentNotification is what the UI gets for a banner: the agent's request plus the
-// display name looked up on the gateway.
-type AgentNotification struct {
-	node.Notification
-	AgentName  string `json:"agentName,omitempty"`
-	AgentEmoji string `json:"agentEmoji,omitempty"`
-}
+// AgentNotification is what the UI gets for a banner: the stored notice, which
+// carries the agent's request plus the display name looked up on the gateway.
+type AgentNotification = store.Notice
 
 // notifier turns a node-role system.notify into an OS notification from ClawHQ and
 // an in-app banner, both naming the agent that asked.
@@ -34,13 +31,14 @@ type notifier struct {
 	app     *application.App
 	conn    *gateway.Conn
 	native  *notifications.NotificationService
+	inbox   *store.Inbox
 	once    sync.Once
 	granted bool
 	seq     int
 }
 
-func newNotifier(conn *gateway.Conn, native *notifications.NotificationService) *notifier {
-	return &notifier{conn: conn, native: native}
+func newNotifier(conn *gateway.Conn, native *notifications.NotificationService, inbox *store.Inbox) *notifier {
+	return &notifier{conn: conn, native: native, inbox: inbox}
 }
 
 // authorize asks macOS once for permission to post notifications. Other platforms
@@ -61,12 +59,27 @@ func (n *notifier) authorize() {
 // deliver is the node's onNotify hook.
 func (n *notifier) deliver(raw node.Notification) {
 	go func() {
-		out := AgentNotification{Notification: raw}
+		out := store.Notice{
+			Title:      raw.Title,
+			Body:       raw.Body,
+			AgentID:    raw.AgentID,
+			SessionKey: raw.SessionKey,
+			AtMs:       raw.AtMs,
+		}
 		if out.AgentID == "" {
 			out.AgentID = n.guessAgent()
 		}
 		if out.AgentID != "" {
 			out.AgentName, out.AgentEmoji = n.agentIdentity(out.AgentID)
+		}
+		// Stored first, so a notice that arrives while nobody is looking is still
+		// there in the history page later.
+		if n.inbox != nil {
+			if saved, err := n.inbox.Append(out); err != nil {
+				log.Printf("notifications: save: %v", err)
+			} else {
+				out = saved
+			}
 		}
 		if n.app != nil {
 			n.app.Event.Emit("node:notify", out)

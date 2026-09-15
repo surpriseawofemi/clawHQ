@@ -18,6 +18,8 @@ type Props = {
   desktops: RemoteNode[]
   desktopsOpen: boolean
   onToggleDesktops: () => void
+  unreadNotices: number
+  onOpenNotifications: () => void
 }
 
 /** One line for the gateway link, one for this machine's node role. */
@@ -77,7 +79,9 @@ export function Sidebar({
   settingsOpen,
   desktops,
   desktopsOpen,
-  onToggleDesktops
+  onToggleDesktops,
+  unreadNotices,
+  onOpenNotifications
 }: Props): React.JSX.Element {
   const desktopsOnline = desktops.filter((d) => d.connected).length
   const connected = status.phase === 'connected'
@@ -157,6 +161,18 @@ export function Sidebar({
           <Logo size={22} className="brand-mark" />
           <span className="brand-name">ClawHQ</span>
         </span>
+        <button
+          className="desk-btn bell-btn"
+          onClick={onOpenNotifications}
+          title={unreadNotices > 0 ? `${unreadNotices} unread notification${unreadNotices === 1 ? '' : 's'}` : 'Notifications'}
+          aria-label="Notifications"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7" />
+            <path d="M10 20a2 2 0 0 0 4 0" />
+          </svg>
+          {unreadNotices > 0 && <i className="desk-badge is-online">{unreadNotices}</i>}
+        </button>
         <button
           className={`desk-btn${desktopsOpen ? ' is-active' : ''}`}
           onClick={onToggleDesktops}

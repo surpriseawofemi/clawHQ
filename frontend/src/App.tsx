@@ -18,14 +18,25 @@ function App(): React.JSX.Element {
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const openSettings = (section?: SettingsSection): void => {
     if (section) setSettingsSection(section)
+    if (section === 'notifications') setUnread(0)
     setSwitcherOpen(false)
     setSettingsOpen(true)
   }
   const [agentSettingsId, setAgentSettingsId] = useState<string | null>(null)
   const [notice, setNotice] = useState<NodeNotification | null>(null)
+  const [unread, setUnread] = useState(0)
 
   // An agent asked for a human through system.notify on this machine's node role.
-  useEffect(() => api.onNodeNotification(setNotice), [])
+  useEffect(() => {
+    api.inbox
+      .unread()
+      .then(setUnread)
+      .catch(() => undefined)
+    return api.onNodeNotification((n) => {
+      setNotice(n)
+      setUnread((u) => u + 1)
+    })
+  }, [])
 
   const {
     status,
@@ -79,6 +90,8 @@ function App(): React.JSX.Element {
         desktops={desktops}
         desktopsOpen={false}
         onToggleDesktops={() => void api.window.openDesktop(desktops.find((d) => d.connected)?.nodeId ?? '')}
+        unreadNotices={unread}
+        onOpenNotifications={() => openSettings('notifications')}
         onAgentSettings={setAgentSettingsId}
         onOpenSettings={() => openSettings()}
         onOpenSwitcher={() => setSwitcherOpen(true)}
@@ -93,6 +106,11 @@ function App(): React.JSX.Element {
           config={config}
           pendingCount={0}
           initialSection={settingsSection}
+          onOpenAgent={(agentId) => {
+            selectSession(null)
+            setSelectedAgentId(agentId)
+            setSettingsOpen(false)
+          }}
           onClose={() => setSettingsOpen(false)}
           onConfigChanged={setConfig}
           onDaemonChanged={setDaemon}

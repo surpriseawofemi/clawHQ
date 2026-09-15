@@ -1296,9 +1296,77 @@ html.is-mac .sidebar-head {
   overflow-y: auto;
 }
 
-/* ---- desktops button in the sidebar header ---- */
-.desk-btn {
+/* ---- notification history ---- */
+.inbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inbox-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.inbox-item.is-unread {
+  border-color: var(--accent);
+}
+
+.inbox-emoji {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.inbox-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inbox-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.inbox-time {
   margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.inbox-title {
+  font-weight: 500;
+}
+
+.inbox-text {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.inbox-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* ---- desktops button in the sidebar header ---- */
+.bell-btn {
+  margin-left: auto;
+}
+
+.desk-btn {
   position: relative;
   width: 32px;
   height: 32px;

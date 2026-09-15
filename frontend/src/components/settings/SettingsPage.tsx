@@ -8,6 +8,7 @@ import { UpdatePanel } from '../UpdatePanel'
 import { PluginsPage } from './PluginsPage'
 import { McpServersPage } from './McpServersPage'
 import { AutomationsPage } from './AutomationsPage'
+import { NotificationsPage } from './NotificationsPage'
 
 type Props = {
   status: ConnectionStatus
@@ -15,6 +16,7 @@ type Props = {
   config: ClawHQConfig | null
   pendingCount: number
   initialSection?: SettingsSection
+  onOpenAgent: (agentId: string) => void
   onClose: () => void
   onConfigChanged: (config: ClawHQConfig) => void
   onDaemonChanged: (daemon: DaemonStatus) => void
@@ -25,6 +27,7 @@ export type SettingsSection =
   | 'gateways'
   | 'machine'
   | 'departments'
+  | 'notifications'
   | 'service'
   | 'plugins'
   | 'mcp'
@@ -42,7 +45,13 @@ const NAV: NavGroup[] = [
       { id: 'machine', label: 'This machine' }
     ]
   },
-  { label: 'Organisation', items: [{ id: 'departments', label: 'Departments' }] },
+  {
+    label: 'Organisation',
+    items: [
+      { id: 'departments', label: 'Departments' },
+      { id: 'notifications', label: 'Notifications' }
+    ]
+  },
   {
     label: 'Gateway',
     items: [
@@ -59,6 +68,7 @@ const TITLES: Record<SettingsSection, string> = {
   gateways: 'Gateways',
   machine: 'This machine',
   departments: 'Departments',
+  notifications: 'Notifications',
   service: 'Gateway service',
   plugins: 'Plugins',
   mcp: 'MCP servers',
@@ -87,6 +97,7 @@ export function SettingsPage({
   config,
   pendingCount,
   initialSection,
+  onOpenAgent,
   onClose,
   onConfigChanged,
   onDaemonChanged,
@@ -350,6 +361,7 @@ export function SettingsPage({
           </div>
         )}
 
+        {section === 'notifications' && <NotificationsPage onOpenAgent={onOpenAgent} />}
         {section === 'plugins' && <PluginsPage connected={connected} />}
         {section === 'mcp' && <McpServersPage connected={connected} />}
         {section === 'automations' && <AutomationsPage connected={connected} />}

@@ -125,7 +125,11 @@ func main() {
 	// OS notifications go through the platform's own centre under ClawHQ's name and
 	// icon, rather than through a script runner that gets the credit.
 	nativeNotifications := notifications.New()
-	notify = newNotifier(conn, nativeNotifications)
+	inbox, err := store.NewInbox()
+	if err != nil {
+		log.Fatal(err)
+	}
+	notify = newNotifier(conn, nativeNotifications, inbox)
 
 	// The autopilot starts, pairs and approves the node role whenever the operator
 	// connection is up, so nothing below has to think about it.
@@ -163,6 +167,7 @@ func main() {
 			application.NewService(updateSvc),
 			application.NewService(windowSvc),
 			application.NewService(nativeNotifications),
+			application.NewService(&InboxService{inbox: inbox}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
