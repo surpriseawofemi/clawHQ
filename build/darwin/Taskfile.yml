@@ -179,10 +179,21 @@ tasks:
       - task: '{{if eq OS "darwin"}}codesign:adhoc{{else}}codesign:skip{{end}}'
 
   codesign:adhoc:
-    summary: Ad-hoc signs the app bundle (macOS only)
+    summary: Signs the app bundle (macOS only), with a stable local identity when one exists
     internal: true
+    # macOS keys Screen Recording and Accessibility grants to the signing identity.
+    # An ad-hoc signature changes with every build, so each rebuild looked like a new
+    # app and asked again. A self-signed "ClawHQ Dev" certificate in the login
+    # keychain keeps the identity constant; without one (CI, a fresh machine) this
+    # falls back to ad-hoc. Override with CODESIGN_IDENTITY=...
+    vars:
+      # grep -c reads the whole listing; grep -q would close the pipe early and Task's
+      # shell then treats the security tool's SIGPIPE exit as a failed pipeline.
+      IDENTITY:
+        sh: if [ -n "$CODESIGN_IDENTITY" ]; then echo "$CODESIGN_IDENTITY"; elif /usr/bin/security find-identity -v -p codesigning 2>/dev/null | /usr/bin/grep -c "ClawHQ Dev" | /usr/bin/grep -qv "^0$"; then echo "ClawHQ Dev"; else echo "-"; fi
     cmds:
-      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+      - 'echo "Signing with identity: {{.IDENTITY}}"'
+      - codesign --force --deep --sign "{{.IDENTITY}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app"
 
   codesign:skip:
     summary: Skips codesigning when cross-compiling
@@ -191,6 +202,9 @@ tasks:
       - 'echo "Skipping codesign (not available on {{OS}}). Sign the .app on macOS before distribution."'
 
   run:
+    vars:
+      IDENTITY:
+        sh: if [ -n "$CODESIGN_IDENTITY" ]; then echo "$CODESIGN_IDENTITY"; elif /usr/bin/security find-identity -v -p codesigning 2>/dev/null | /usr/bin/grep -c "ClawHQ Dev" | /usr/bin/grep -qv "^0$"; then echo "ClawHQ Dev"; else echo "-"; fi
     cmds:
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
@@ -201,7 +215,7 @@ tasks:
         fi
       - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
       - cp "build/darwin/Info.dev.plist" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Info.plist"
-      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
+      - codesign --force --deep --sign "{{.IDENTITY}}" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
       - '"{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS/{{.APP_NAME}}"'
 
   sign:
