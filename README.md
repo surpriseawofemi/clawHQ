@@ -255,6 +255,17 @@ granted per app in System Settings → Privacy & Security, and Screen Recording 
 needs an app restart. Screenshots are in Retina pixels and are mapped back to display
 points, so coordinates land where the screenshot shows them.
 
+A Mac with more than one display reports `screenCount` in every snapshot; the viewer
+shows a display picker, sends `screenIndex` with each capture and action, and the
+node maps coordinates against that display's own origin (CoreGraphics' active display
+list, the same order `screencapture -D` uses). Windows captures the whole virtual
+desktop as one image. The clipboard crosses too: `clawhq.clipboard.get` and
+`clawhq.clipboard.set` (pbpaste/pbcopy, PowerShell, wl-clipboard or xclip) are node
+commands behind the same desktop-control switch, exposed to agents as
+`clawhq_clipboard_get`/`_set` and to you as Send clipboard / Fetch clipboard while in
+control. Adding the commands changes the node surface, so the first launch after this
+release re-pairs the node once, by itself.
+
 When an agent needs you it can call `system.notify` on the node role of the machine you
 are sitting at. ClawHQ shows the message as a banner with **Open chat** and **Open
 desktop** shortcuts, and posts an OS notification through the platform's own centre

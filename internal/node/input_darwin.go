@@ -75,6 +75,28 @@ static void clawMainDisplayBounds(double *x, double *y, double *w, double *h) {
 	*w = r.size.width;
 	*h = r.size.height;
 }
+
+// Active displays in the order CoreGraphics lists them, which is also the order
+// screencapture -D numbers them (main display first).
+static int clawDisplayCount(void) {
+	uint32_t n = 0;
+	CGGetActiveDisplayList(0, NULL, &n);
+	return (int)n;
+}
+
+static int clawDisplayBounds(int index, double *x, double *y, double *w, double *h) {
+	CGDirectDisplayID ids[16];
+	uint32_t n = 0;
+	if (CGGetActiveDisplayList(16, ids, &n) != kCGErrorSuccess || index < 0 || (uint32_t)index >= n) {
+		return 0;
+	}
+	CGRect r = CGDisplayBounds(ids[index]);
+	*x = r.origin.x;
+	*y = r.origin.y;
+	*w = r.size.width;
+	*h = r.size.height;
+	return 1;
+}
 */
 import "C"
 
@@ -562,4 +584,16 @@ func screenGeometry() (x, y, w, h int) {
 	var cx, cy, cw, ch C.double
 	C.clawMainDisplayBounds(&cx, &cy, &cw, &ch)
 	return int(cx), int(cy), int(cw), int(ch)
+}
+
+// displayCount is how many displays are active right now.
+func displayCount() int { return int(C.clawDisplayCount()) }
+
+// displayGeometry is screenGeometry for one display by index (0 is the main one).
+func displayGeometry(index int) (x, y, w, h int, ok bool) {
+	var cx, cy, cw, ch C.double
+	if C.clawDisplayBounds(C.int(index), &cx, &cy, &cw, &ch) != 1 {
+		return 0, 0, 0, 0, false
+	}
+	return int(cx), int(cy), int(cw), int(ch), true
 }

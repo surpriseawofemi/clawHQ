@@ -62,6 +62,29 @@ func pluginTools() []map[string]any {
 		},
 		{
 			"pluginId":    "clawhq",
+			"name":        "clawhq_clipboard_get",
+			"description": "Read the text on this machine's clipboard. Needs desktop control switched on in ClawHQ.",
+			"command":     CmdClipboardGet,
+			"parameters": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+		},
+		{
+			"pluginId":    "clawhq",
+			"name":        "clawhq_clipboard_set",
+			"description": "Put text on this machine's clipboard, e.g. to paste it into an app with computer.act. Needs desktop control switched on in ClawHQ.",
+			"command":     CmdClipboardSet,
+			"parameters": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"text": map[string]any{"type": "string", "description": "Text to place on the clipboard"},
+				},
+				"required": []string{"text"},
+			},
+		},
+		{
+			"pluginId":    "clawhq",
 			"name":        "clawhq_agent_assign",
 			"description": "Put an agent into a ClawHQ department. An empty departmentId unassigns it.",
 			"command":     CmdAgentAssign,

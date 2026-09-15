@@ -59,6 +59,10 @@ export function DesktopView({ node, compact = false }: Props): React.JSX.Element
   const [control, setControl] = useState(false)
   const [typeBox, setTypeBox] = useState('')
   const [actError, setActError] = useState<string | null>(null)
+  const [screenIndex, setScreenIndex] = useState(0)
+  const [screenCount, setScreenCount] = useState(1)
+  const [clipBusy, setClipBusy] = useState<'copy' | 'paste' | null>(null)
+  const canClipboard = (node.commands ?? []).includes('clawhq.clipboard.get')
 
   const imgRef = useRef<HTMLImageElement | null>(null)
   const surfaceRef = useRef<HTMLDivElement | null>(null)
@@ -75,13 +79,13 @@ export function DesktopView({ node, compact = false }: Props): React.JSX.Element
     setLoading(true)
     try {
       const res = await api.rpc.request<{
-        payload?: { base64?: string; width?: number; height?: number; displayFrameId?: string }
+        payload?: { base64?: string; width?: number; height?: number; displayFrameId?: string; screenCount?: number }
       }>(
         'node.invoke',
         {
           nodeId: node.nodeId,
           command: 'screen.snapshot',
-          params: { screenIndex: 0, maxWidth: 1600 },
+          params: { screenIndex, maxWidth: 1600 },
           idempotencyKey: `clawhq-${Date.now()}`
         }
       )
@@ -90,6 +94,7 @@ export function DesktopView({ node, compact = false }: Props): React.JSX.Element
       setSrc(`data:image/png;base64,${payload.base64}`)
       if (payload.width && payload.height) setSize({ w: payload.width, h: payload.height })
       setFrameId(payload.displayFrameId ?? null)
+      if (payload.screenCount && payload.screenCount > 0) setScreenCount(payload.screenCount)
       setLastAt(Date.now())
       setError(null)
     } catch (err) {
@@ -98,7 +103,39 @@ export function DesktopView({ node, compact = false }: Props): React.JSX.Element
       inFlight.current = false
       setLoading(false)
     }
-  }, [node.nodeId, online])
+  }, [node.nodeId, online, screenIndex])
+
+  // Local clipboard ↔ remote clipboard, through ClawHQ's own node commands.
+  const clipboard = useCallback(
+    async (dir: 'copy' | 'paste') => {
+      setClipBusy(dir)
+      try {
+        if (dir === 'copy') {
+          const res = await api.rpc.request<{ payload?: { text?: string } }>('node.invoke', {
+            nodeId: node.nodeId,
+            command: 'clawhq.clipboard.get',
+            params: {},
+            idempotencyKey: `clawhq-clip-${Date.now()}`
+          })
+          await navigator.clipboard.writeText(res?.payload?.text ?? '')
+        } else {
+          const text = await navigator.clipboard.readText()
+          await api.rpc.request('node.invoke', {
+            nodeId: node.nodeId,
+            command: 'clawhq.clipboard.set',
+            params: { text },
+            idempotencyKey: `clawhq-clip-${Date.now()}`
+          })
+        }
+        setActError(null)
+      } catch (err) {
+        setActError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setClipBusy(null)
+      }
+    },
+    [node.nodeId]
+  )
 
   // A frame shortly after an action, so the result of a click is visible without
   // waiting for the next poll. Coalesced: ten keystrokes mean one refresh.
@@ -152,7 +189,7 @@ export function DesktopView({ node, compact = false }: Props): React.JSX.Element
     const x = Math.round(((e.clientX - rect.left) / rect.width) * size.w)
     const y = Math.round(((e.clientY - rect.top) / rect.height) * size.h)
     if (x < 0 || y < 0 || x >= size.w || y >= size.h) return null
-    return { x, y, refWidth: size.w, screenIndex: 0, ...(frameId ? { displayFrameId: frameId } : {}) }
+    return { x, y, refWidth: size.w, screenIndex, ...(frameId ? { displayFrameId: frameId } : {}) }
   }
 
   const onClick = (e: React.MouseEvent): void => {
@@ -289,6 +326,40 @@ export function DesktopView({ node, compact = false }: Props): React.JSX.Element
           </p>
         </div>
         <div className="desk-controls">
+          {online && screenCount > 1 && (
+            <select
+              value={screenIndex}
+              onChange={(e) => setScreenIndex(Number(e.target.value))}
+              title="Which display to show"
+              aria-label="Display"
+            >
+              {Array.from({ length: screenCount }, (_, i) => (
+                <option key={i} value={i}>
+                  Display {i + 1}
+                </option>
+              ))}
+            </select>
+          )}
+          {online && canControl && canClipboard && control && (
+            <>
+              <button
+                className="btn btn-sm"
+                disabled={clipBusy !== null}
+                onClick={() => void clipboard('paste')}
+                title="Put your clipboard on that machine's clipboard"
+              >
+                {clipBusy === 'paste' ? '…' : 'Send clipboard'}
+              </button>
+              <button
+                className="btn btn-sm"
+                disabled={clipBusy !== null}
+                onClick={() => void clipboard('copy')}
+                title="Copy that machine's clipboard to yours"
+              >
+                {clipBusy === 'copy' ? '…' : 'Fetch clipboard'}
+              </button>
+            </>
+          )}
           {online && canControl && (
             <button
               className={`btn btn-sm${control ? ' btn-danger' : ' btn-primary'}`}

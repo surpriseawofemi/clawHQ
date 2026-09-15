@@ -58,11 +58,16 @@ var commands = []string{
 	CmdDepartmentsList,
 	CmdDepartmentCreate,
 	CmdAgentAssign,
+	CmdClipboardGet,
+	CmdClipboardSet,
 }
 
 // CustomCommands are the verbs that are not in any gateway's default node allowlist.
 // The operator side adds them to the gateway config so the descriptors register.
-var CustomCommands = []string{CmdDepartmentsList, CmdDepartmentCreate, CmdAgentAssign, CmdFsListDir, CmdComputerAct}
+var CustomCommands = []string{
+	CmdDepartmentsList, CmdDepartmentCreate, CmdAgentAssign, CmdFsListDir, CmdComputerAct,
+	CmdClipboardGet, CmdClipboardSet,
+}
 
 // Caps ClawHQ claims. "file" covers directory browsing, "system" covers binary lookup
 // and shell commands.
@@ -539,6 +544,10 @@ func (h *Host) runInvoke(req invokeRequest) {
 		payload, failure = h.departmentCreate(params)
 	case CmdAgentAssign:
 		payload, failure = h.agentAssign(params)
+	case CmdClipboardGet:
+		payload, failure = h.clipboardGet()
+	case CmdClipboardSet:
+		payload, failure = h.clipboardSet(params)
 	default:
 		failure = fmt.Sprintf("ClawHQ does not implement %q", req.Command)
 		if h.logUnknown != nil {

@@ -22,6 +22,8 @@ func typeText(text string) error                    { return errNoInput }
 func pressKeys(combo string) error                  { return errNoInput }
 func holdKeys(combo string, d time.Duration) error  { return errNoInput }
 func screenGeometry() (x, y, w, h int)              { return 0, 0, 0, 0 }
+func displayCount() int                             { return 1 }
+func displayGeometry(int) (x, y, w, h int, ok bool) { return 0, 0, 0, 0, false }
 
 func holdKeysBegin(combo string) error { return errNoInput }
 func holdKeysEnd(combo string)         {}

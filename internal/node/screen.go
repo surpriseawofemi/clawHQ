@@ -37,8 +37,12 @@ func (h *Host) screenSnapshot(raw json.RawMessage) (any, string) {
 	}
 
 	// computer.act coordinates are pixels in the most recent screenshot, so record
-	// how this one maps back onto the screen.
-	sx, sy, sw, sh := screenGeometry()
+	// how this one maps back onto the screen: the chosen display's own origin, so a
+	// click on a second monitor lands on that monitor.
+	sx, sy, sw, sh, ok := displayGeometry(params.ScreenIndex)
+	if !ok {
+		sx, sy, sw, sh = screenGeometry()
+	}
 	if sw == 0 || sh == 0 {
 		sx, sy, sw, sh = 0, 0, fullW, fullH
 	}
@@ -60,6 +64,7 @@ func (h *Host) screenSnapshot(raw json.RawMessage) (any, string) {
 		"width":          img.Bounds().Dx(),
 		"height":         img.Bounds().Dy(),
 		"screenIndex":    params.ScreenIndex,
+		"screenCount":    displayCount(),
 		"displayFrameId": frameID,
 		"capturedAtMs":   time.Now().UnixMilli(),
 	}, ""

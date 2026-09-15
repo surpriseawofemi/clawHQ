@@ -342,3 +342,14 @@ func screenGeometry() (x, y, w, h int) {
 	return int(systemMetric(smXVirtualScreen)), int(systemMetric(smYVirtualScreen)),
 		int(systemMetric(smCXVirtualScreen)), int(systemMetric(smCYVirtualScreen))
 }
+
+// Windows captures the whole virtual desktop as one image, so there is one "display".
+func displayCount() int { return 1 }
+
+func displayGeometry(index int) (x, y, w, h int, ok bool) {
+	if index != 0 {
+		return 0, 0, 0, 0, false
+	}
+	x, y, w, h = screenGeometry()
+	return x, y, w, h, true
+}
