@@ -1296,6 +1296,132 @@ html.is-mac .sidebar-head {
   overflow-y: auto;
 }
 
+/* ---- desktops button in the sidebar header ---- */
+.desk-btn {
+  margin-left: auto;
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-dim);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.desk-btn:hover,
+.desk-btn.is-active {
+  background: var(--bg-raised);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.desk-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--text-faint);
+  color: var(--bg);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
+.desk-badge.is-online {
+  background: var(--ok);
+}
+
+/* ---- detached desktop window ---- */
+.desk-window {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.desk-window-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex: none;
+}
+
+.desk-window-error {
+  margin: 6px 10px 0;
+}
+
+.desk-panel-pick {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 3px 6px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  max-width: 220px;
+}
+
+.desk-panel-title {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.desk-panel-spacer {
+  flex: 1;
+}
+
+.desk-panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.desk-panel-body .chat {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.desk-compact .chat-head {
+  height: 38px;
+  padding: 0 10px;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.desk-compact .chat-title p {
+  margin: 0;
+  font-size: 11.5px;
+}
+
+.desk-compact .desk-controls {
+  margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.desk-compact .desk-stage {
+  padding: 8px;
+}
+
+.desk-compact .desk-image {
+  max-height: 100%;
+  object-fit: contain;
+}
+
 /* ---- desktop control ---- */
 .desk-surface {
   outline: none;

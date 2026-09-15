@@ -3,7 +3,6 @@ import { Sidebar } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
 import { AgentSettingsDialog } from './components/AgentSettingsDialog'
 import { SettingsPage } from './components/settings/SettingsPage'
-import { DesktopView } from './components/DesktopView'
 import { Onboarding } from './components/Onboarding'
 import { ApprovalBanners } from './components/ApprovalBanners'
 import { GatewaySwitcher } from './components/GatewaySwitcher'
@@ -23,8 +22,6 @@ function App(): React.JSX.Element {
     setSettingsOpen(true)
   }
   const [agentSettingsId, setAgentSettingsId] = useState<string | null>(null)
-  // Selecting a desktop takes over the main pane; selecting an agent gives it back.
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [notice, setNotice] = useState<NodeNotification | null>(null)
 
   // An agent asked for a human through system.notify on this machine's node role.
@@ -76,31 +73,12 @@ function App(): React.JSX.Element {
         config={config}
         selectedAgentId={selectedAgentId}
         onSelect={(id) => {
-          setSelectedNodeId(null)
           selectSession(null)
           setSelectedAgentId(id)
         }}
         desktops={desktops}
-        selectedNodeId={selectedNodeId}
-        onSelectDesktop={setSelectedNodeId}
-        onRemoveDesktop={(node) => {
-          // A node is a device with the node role, so the gateway keeps its pairing in
-          // the node queue; the device queue is the fallback for older gateways.
-          void (async () => {
-            try {
-              await api.rpc.request('node.pair.remove', { nodeId: node.nodeId })
-            } catch {
-              try {
-                await api.rpc.request('device.pair.remove', { deviceId: node.nodeId })
-              } catch (err) {
-                setError(err instanceof Error ? err.message : String(err))
-                return
-              }
-            }
-            if (selectedNodeId === node.nodeId) setSelectedNodeId(null)
-            void refreshFleet()
-          })()
-        }}
+        desktopsOpen={false}
+        onToggleDesktops={() => void api.window.openDesktop(desktops.find((d) => d.connected)?.nodeId ?? '')}
         onAgentSettings={setAgentSettingsId}
         onOpenSettings={() => openSettings()}
         onOpenSwitcher={() => setSwitcherOpen(true)}
@@ -120,8 +98,6 @@ function App(): React.JSX.Element {
           onDaemonChanged={setDaemon}
           onReconnected={refreshFleet}
         />
-      ) : selectedNodeId ? (
-        <DesktopView node={desktops.find((d) => d.nodeId === selectedNodeId)!} />
       ) : (
       <ChatView
         agent={selectedAgent}
@@ -166,7 +142,7 @@ function App(): React.JSX.Element {
               className="btn btn-sm btn-primary"
               onClick={() => {
                 const live = desktops.find((d) => d.connected)
-                if (live) setSelectedNodeId(live.nodeId)
+                void api.window.openDesktop(live?.nodeId ?? '')
                 setNotice(null)
               }}
             >

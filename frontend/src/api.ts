@@ -4,7 +4,8 @@ import {
   DaemonService,
   GatewayService,
   NodeService,
-  UpdateService
+  UpdateService,
+  WindowService
 } from '../bindings/github.com/surpriseawofemi/clawhq'
 import type {
   Attachment,
@@ -103,6 +104,19 @@ export const api = {
   },
   shell: {
     openPath: (path: string): Promise<void> => DaemonService.OpenPath(path)
+  },
+  window: {
+    /** Open (or focus) the detached desktop window, pointed at a node. */
+    openDesktop: (nodeId: string): Promise<void> => WindowService.OpenDesktop(nodeId),
+    setDesktopAlwaysOnTop: (on: boolean): Promise<void> => WindowService.SetDesktopAlwaysOnTop(on),
+    closeDesktop: (): Promise<void> => WindowService.CloseDesktop()
+  },
+  /** The main window asked the desktop window to show a different node. */
+  onDesktopSelect: (cb: (nodeId: string) => void): (() => void) => {
+    return Events.On('desktop:select', (raw: any) => {
+      const sel = eventPayload<{ nodeId: string }>(raw)
+      if (sel?.nodeId) cb(sel.nodeId)
+    })
   },
   rpc: {
     request: rpcRequest,

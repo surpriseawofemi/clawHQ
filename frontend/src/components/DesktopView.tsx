@@ -4,6 +4,8 @@ import type { RemoteNode } from '../types'
 
 type Props = {
   node: RemoteNode
+  /** Smaller header and controls, for the floating panel. */
+  compact?: boolean
 }
 
 const INTERVALS = [
@@ -39,7 +41,7 @@ const SPECIAL_KEYS: Record<string, string> = {
  * gateway round trip, so this is built for "log into that account for me", not for
  * gaming: typed characters are batched, and a fresh frame is pulled after each action.
  */
-export function DesktopView({ node }: Props): React.JSX.Element {
+export function DesktopView({ node, compact = false }: Props): React.JSX.Element {
   // `connected` comes from node.list. A paired node that is not connected has nowhere
   // for the gateway to forward the invoke, and the reply is a bare
   // "node.invoke: node not connected" — so say what is going on instead of asking.
@@ -269,18 +271,21 @@ export function DesktopView({ node }: Props): React.JSX.Element {
   }, [online, canControl])
 
   return (
-    <main className="chat">
+    <main className={`chat${compact ? ' desk-compact' : ''}`}>
       <header className="chat-head">
-        <span className="chat-avatar">🖥️</span>
+        {!compact && <span className="chat-avatar">🖥️</span>}
         <div className="chat-title">
-          <h1>
-            {node.displayName || node.platform || 'Desktop'}
-            {loading && <i className="dot-active" title="Capturing" />}
-          </h1>
+          {!compact && (
+            <h1>
+              {node.displayName || node.platform || 'Desktop'}
+              {loading && <i className="dot-active" title="Capturing" />}
+            </h1>
+          )}
           <p>
             {!online ? 'offline' : size ? `${size.w}×${size.h}` : 'no capture yet'}
-            {lastAt ? ` · updated ${new Date(lastAt).toLocaleTimeString()}` : ''}
+            {lastAt ? ` · ${new Date(lastAt).toLocaleTimeString()}` : ''}
             {control ? ' · you are in control' : ''}
+            {compact && loading && <i className="dot-active" title="Capturing" />}
           </p>
         </div>
         <div className="desk-controls">

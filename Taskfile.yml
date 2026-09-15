@@ -34,6 +34,32 @@ tasks:
     cmds:
       - task: "{{.GOOS}}:run"
 
+  release:
+    summary: Bumps the patch version, packages, commits, tags and pushes so CI ships the release
+    desc: |
+      One command per release. Bumps VERSION (or use VERSION=x.y.z), packages the app
+      for this machine, commits everything, tags vX.Y.Z and pushes main plus the tag.
+      CI builds the Windows and macOS releases from the tag; installs on other
+      machines update themselves from it. The bundle built here is the same version,
+      so this machine does not offer itself the update.
+    vars:
+      CURRENT:
+        sh: tr -d '[:space:]' < VERSION
+      NEXT: '{{.VERSION | default (printf "%s.%s.%d" (index (splitList "." .CURRENT) 0) (index (splitList "." .CURRENT) 1) (add (atoi (index (splitList "." .CURRENT) 2)) 1))}}'
+    preconditions:
+      - sh: git diff --quiet VERSION
+        msg: "VERSION has uncommitted changes; commit or revert them first."
+      - sh: '! git rev-parse -q --verify "refs/tags/v{{.NEXT}}" >/dev/null'
+        msg: "tag v{{.NEXT}} already exists; pass VERSION=x.y.z"
+    cmds:
+      - printf '%s\n' "{{.NEXT}}" > VERSION
+      - task: package
+      - git add -A
+      - git commit -m "Release v{{.NEXT}}"
+      - git tag "v{{.NEXT}}"
+      - git push origin HEAD "v{{.NEXT}}"
+      - 'echo "Released v{{.NEXT}}. CI is building the Windows and macOS packages."'
+
   dev:
     summary: Runs the application in development mode
     cmds:

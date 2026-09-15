@@ -41,6 +41,7 @@ func init() {
 	application.RegisterEvent[node.Status]("node:status")
 	application.RegisterEvent[node.Notification]("node:notify")
 	application.RegisterEvent[node.ExecRequest]("node:exec-request")
+	application.RegisterEvent[DesktopSelect]("desktop:select")
 }
 
 // identityDir is where the Ed25519 device identity and device token live. It is
@@ -71,6 +72,7 @@ func main() {
 	// The update service needs the App itself, which does not exist until services
 	// are already being registered, so hold the pointer and fill it in afterwards.
 	updateSvc := &UpdateService{}
+	windowSvc := &WindowService{}
 
 	conn, err := gateway.New(
 		identityDir(),
@@ -151,6 +153,7 @@ func main() {
 			application.NewService(&DaemonService{}),
 			application.NewService(&NodeService{host: nodeHost, store: cfgStore, conn: conn, auto: auto}),
 			application.NewService(updateSvc),
+			application.NewService(windowSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -210,6 +213,7 @@ func main() {
 	}()
 
 	updateSvc.app = app
+	windowSvc.app = app
 
 	// Self-update from GitHub releases. Failing to wire this up is not fatal;
 	// the app simply will not offer updates.

@@ -16,13 +16,9 @@ type Props = {
   status: ConnectionStatus
   settingsOpen: boolean
   desktops: RemoteNode[]
-  selectedNodeId: string | null
-  onSelectDesktop: (nodeId: string) => void
-  onRemoveDesktop: (node: RemoteNode) => void
+  desktopsOpen: boolean
+  onToggleDesktops: () => void
 }
-
-/** Group id for the desktops bucket in the collapsed set. */
-const DESKTOPS = '__desktops__'
 
 /** One line for the gateway link, one for this machine's node role. */
 function connectionLines(
@@ -80,10 +76,10 @@ export function Sidebar({
   status,
   settingsOpen,
   desktops,
-  selectedNodeId,
-  onSelectDesktop,
-  onRemoveDesktop
+  desktopsOpen,
+  onToggleDesktops
 }: Props): React.JSX.Element {
+  const desktopsOnline = desktops.filter((d) => d.connected).length
   const connected = status.phase === 'connected'
   const [node, setNode] = useState<NodeStatus | null>(null)
   useEffect(() => {
@@ -161,6 +157,24 @@ export function Sidebar({
           <Logo size={22} className="brand-mark" />
           <span className="brand-name">ClawHQ</span>
         </span>
+        <button
+          className={`desk-btn${desktopsOpen ? ' is-active' : ''}`}
+          onClick={onToggleDesktops}
+          title={
+            desktops.length === 0
+              ? 'No desktops paired yet'
+              : `${desktopsOnline} of ${desktops.length} desktop${desktops.length === 1 ? '' : 's'} online`
+          }
+          aria-label="Desktops"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="12" rx="2" />
+            <path d="M8 20h8M12 16v4" />
+          </svg>
+          {desktops.length > 0 && (
+            <i className={`desk-badge${desktopsOnline > 0 ? ' is-online' : ''}`}>{desktops.length}</i>
+          )}
+        </button>
       </header>
 
       <nav className="agent-list">
@@ -224,64 +238,6 @@ export function Sidebar({
             })}
           </section>
         ))}
-        {desktops.length > 0 && (
-          <section className={`dept${collapsed.has(DESKTOPS) ? ' is-collapsed' : ''}`}>
-            <h2 className="dept-title">
-              <button
-                className="dept-toggle"
-                onClick={() => toggleGroup(DESKTOPS)}
-                aria-expanded={!collapsed.has(DESKTOPS)}
-                title={collapsed.has(DESKTOPS) ? 'Expand' : 'Collapse'}
-              >
-                <span className="dept-emoji">🖥️</span>
-                Desktops
-                <span className="dept-count">{desktops.length}</span>
-                <span className="dept-chevron" aria-hidden="true">
-                  ›
-                </span>
-              </button>
-            </h2>
-            {!collapsed.has(DESKTOPS) &&
-              desktops.map((node) => (
-                <div
-                  key={node.nodeId}
-                  className={`agent-row${node.nodeId === selectedNodeId ? ' is-selected' : ''}${
-                    node.connected ? '' : ' is-offline'
-                  }`}
-                  title={node.connected ? undefined : 'Paired, but not connected right now'}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onSelectDesktop(node.nodeId)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') onSelectDesktop(node.nodeId)
-                  }}
-                >
-                  <span className="agent-emoji">🖥️</span>
-                  <span className="agent-meta">
-                    <span className="agent-name">
-                      {node.displayName || node.platform || 'desktop'}
-                      <i className={`dot ${node.connected ? 'dot-ok' : 'dot-off'}`} />
-                    </span>
-                    <span className="agent-sub">
-                      {node.connected ? node.nodeId.slice(0, 12) : `offline · ${node.nodeId.slice(0, 12)}`}
-                    </span>
-                  </span>
-                  {!node.connected && (
-                    <button
-                      className="icon-btn agent-gear"
-                      title="Forget this desktop"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onRemoveDesktop(node)
-                      }}
-                    >
-                      🗑
-                    </button>
-                  )}
-                </div>
-              ))}
-          </section>
-        )}
       </nav>
 
       <footer className="sidebar-foot">
