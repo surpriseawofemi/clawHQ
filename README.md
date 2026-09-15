@@ -350,9 +350,11 @@ arrive redacted and are only sent back when you type a new value.
 - **Service** keeps the local start/stop/restart and adds a remote restart through
   `gateway.restart.request`, which works over a tunnel.
 
-## Documents and charter
+## Documents, activity and charter
 
-Each agent's pane has three tabs. **Chat** is the thread. **Documents** lists the
+Each agent's pane has four tabs. **Chat** is the thread. **Activity** shows the
+agent's threads by recency and the files it changed most recently, from session
+timestamps and workspace modification times. **Documents** lists the
 markdown in the agent's workspace through `agents.workspace.list` and renders a file
 with `agents.workspace.get`; the charter files are hidden there, folders such as
 `memory/` open in place, and rendering is read-only because the gateway accepts
@@ -360,6 +362,12 @@ writes only to the charter names. **Charter** edits AGENTS, SOUL, IDENTITY, USER
 MEMORY through `agents.files.get` and `agents.files.set`, with a preview and Cmd-S;
 a save applies at the agent's next session start, and saving IDENTITY refreshes the
 sidebar.
+
+The Documents tab also holds the **daily update** control. Picking an hour creates a
+cron job on the gateway (`cron.add`, named `clawhq-daily-update-<agent>`, an isolated
+agent turn) that asks the agent to rewrite `DAILY-UPDATE.md` under fixed headings and
+append it to `updates/YYYY-MM-DD.md`, doing no other work. The file then sorts to the
+top of Documents. Off removes the job; "Write one now" runs it immediately.
 
 ## Departments
 

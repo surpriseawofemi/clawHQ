@@ -37,19 +37,19 @@ changes. Shipped items keep their number so discussions stay anchored.
 | – | Notification history page and unread bell | v0.1.7 |
 | 18 | Documents and Charter tabs per agent | v0.1.8 |
 | – | Stable local signing identity so macOS permission grants survive rebuilds | main |
+| 19 | Daily updates (a per-agent cron job that writes `DAILY-UPDATE.md`, set from the Documents tab) and an Activity tab (threads by recency, recently changed files) | v0.1.11 |
 | 20 | Notifications reach every ClawHQ: the receiving machine's operator side fans out `system.notify` to every other connected ClawHQ node (the gateway drops unknown `node.event` names, so that route was out) | v0.1.10 |
 
 ## Now
 
 | # | Item | Size | Notes |
 | --- | --- | --- | --- |
-| 19 | **Daily updates and Activity.** A per-agent automation that writes `DAILY-UPDATE.md` and posts a summary, shown at the top of the agent's pane; an Activity view built from session timestamps and file changes. | M | needs 18 |
+| 5 | **Tool calls in the chat thread.** Show each call and its result inline. | M | promoted from Next |
 
 ## Next
 
 | # | Item | Size | Notes |
 | --- | --- | --- | --- |
-| 5 | **Tool calls in the chat thread.** Show each call and its result inline. | M | |
 | 6 | **Approvals history.** Every command an agent ran on this machine: which agent, when, the decision, the output. | S | |
 | 7 | **Health and logs page.** Live log tail with filtering (`logs.tail`) and the health snapshot. | M | |
 | 8 | **Per-agent command policy.** A trusted agent runs without asking while a new one still asks. | S | |

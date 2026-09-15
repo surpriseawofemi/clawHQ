@@ -23,6 +23,38 @@ type FileBody = {
 /** The charter and housekeeping files that are not work product. */
 const NOT_DOCUMENTS = new Set(['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md', 'DREAMS.md', 'BOOTSTRAP.md'])
 
+/** The cron job ClawHQ creates for an agent's daily update. */
+type CronJob = {
+  id: string
+  name?: string
+  agentId?: string
+  enabled?: boolean
+  schedule?: { kind?: string; expr?: string; tz?: string }
+  state?: { lastRunAtMs?: number; lastRunStatus?: string; nextRunAtMs?: number }
+}
+
+const dailyJobName = (agentId: string): string => `clawhq-daily-update-${agentId}`
+
+const DAILY_PROMPT = [
+  'Daily update for the person who runs this org. Do exactly this and no other work:',
+  '',
+  '1. Write your update to DAILY-UPDATE.md at the root of your workspace, replacing the file.',
+  '   Keep it under 40 lines with these headings: Yesterday, Today, Blocked, Needs a decision.',
+  '   Base it on your memory notes and the files you changed; say plainly when there is nothing new.',
+  '2. Append the same text under a dated heading to updates/YYYY-MM-DD.md (create the folder if needed).',
+  '3. Do not start new tasks, and do not message anyone.'
+].join('\n')
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h)
+
+const hourLabel = (h: number): string => `${String(h).padStart(2, '0')}:00`
+
+/** Hour of a "0 H * * *" expression, or null when the schedule is something else. */
+const hourOf = (job: CronJob | null): number | null => {
+  const m = job?.schedule?.expr?.match(/^0 (\d{1,2}) \* \* \*$/)
+  return m ? Number(m[1]) : null
+}
+
 const when = (ms?: number): string => {
   if (!ms) return ''
   const diff = Date.now() - ms
@@ -53,6 +85,67 @@ export function AgentDocuments({ agent, tab, onTab, connected }: Props): React.J
   const [showSource, setShowSource] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [daily, setDaily] = useState<CronJob | null>(null)
+  const [dailyBusy, setDailyBusy] = useState(false)
+
+  // The daily-update job for this agent, if ClawHQ has set one up.
+  const loadDaily = useCallback(async () => {
+    if (!connected) return
+    try {
+      const res = await api.rpc.request<{ jobs?: CronJob[] }>('cron.list', { limit: 500 })
+      setDaily((res?.jobs ?? []).find((j) => j.name === dailyJobName(agent.id)) ?? null)
+    } catch {
+      setDaily(null)
+    }
+  }, [agent.id, connected])
+
+  useEffect(() => {
+    void loadDaily()
+  }, [loadDaily])
+
+  const setDailyHour = async (hour: number | null): Promise<void> => {
+    setDailyBusy(true)
+    setError(null)
+    try {
+      if (hour === null) {
+        if (daily) await api.rpc.request('cron.remove', { id: daily.id })
+      } else {
+        const schedule = { kind: 'cron', expr: `0 ${hour} * * *`, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }
+        if (daily) {
+          await api.rpc.request('cron.update', { id: daily.id, patch: { schedule, enabled: true } })
+        } else {
+          await api.rpc.request('cron.add', {
+            name: dailyJobName(agent.id),
+            agentId: agent.id,
+            sessionTarget: 'isolated',
+            wakeMode: 'now',
+            schedule,
+            payload: { kind: 'agentTurn', message: DAILY_PROMPT },
+            delivery: { mode: 'none' },
+            enabled: true
+          })
+        }
+      }
+      await loadDaily()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDailyBusy(false)
+    }
+  }
+
+  const runDailyNow = async (): Promise<void> => {
+    if (!daily) return
+    setDailyBusy(true)
+    setError(null)
+    try {
+      await api.rpc.request('cron.run', { id: daily.id })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDailyBusy(false)
+    }
+  }
 
   const listDir = useCallback(
     async (path: string) => {
@@ -159,6 +252,35 @@ export function AgentDocuments({ agent, tab, onTab, connected }: Props): React.J
           {loading && <p className="field-hint">Loading…</p>}
         </aside>
         <section className="docs-body">
+          <div className="daily-card">
+            <span>📝 Daily update</span>
+            <select
+              value={hourOf(daily) ?? ''}
+              disabled={dailyBusy || !connected}
+              onChange={(e) => void setDailyHour(e.target.value === '' ? null : Number(e.target.value))}
+              title="When the agent writes DAILY-UPDATE.md each day"
+            >
+              <option value="">off</option>
+              {HOURS.map((h) => (
+                <option key={h} value={h}>
+                  every day at {hourLabel(h)}
+                </option>
+              ))}
+            </select>
+            {daily && (
+              <>
+                <span>
+                  {daily.state?.lastRunAtMs
+                    ? `last ${when(daily.state.lastRunAtMs)}${daily.state.lastRunStatus ? ` (${daily.state.lastRunStatus})` : ''}`
+                    : 'not run yet'}
+                </span>
+                <button className="btn btn-sm" disabled={dailyBusy} onClick={() => void runDailyNow()}>
+                  Write one now
+                </button>
+              </>
+            )}
+            {!daily && <span>The agent writes DAILY-UPDATE.md here at that hour.</span>}
+          </div>
           {error && <p className="error-text">{error}</p>}
           {file ? (
             <>

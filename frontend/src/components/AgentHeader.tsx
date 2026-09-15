@@ -2,11 +2,12 @@ import type { ReactNode } from 'react'
 import type { Agent } from '../types'
 import { agentEmoji, agentLabel } from '../types'
 
-export type AgentTab = 'chat' | 'documents' | 'charter'
+export type AgentTab = 'chat' | 'documents' | 'activity' | 'charter'
 
 const TABS: { id: AgentTab; label: string }[] = [
   { id: 'chat', label: 'Chat' },
   { id: 'documents', label: 'Documents' },
+  { id: 'activity', label: 'Activity' },
   { id: 'charter', label: 'Charter' }
 ]
 

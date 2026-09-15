@@ -6,6 +6,7 @@ import { SettingsPage } from './components/settings/SettingsPage'
 import { Onboarding } from './components/Onboarding'
 import { ApprovalBanners } from './components/ApprovalBanners'
 import { AgentDocuments } from './components/AgentDocuments'
+import { AgentActivity } from './components/AgentActivity'
 import { AgentCharter } from './components/AgentCharter'
 import type { AgentTab } from './components/AgentHeader'
 import { GatewaySwitcher } from './components/GatewaySwitcher'
@@ -124,6 +125,18 @@ function App(): React.JSX.Element {
       ) : (
       selectedAgent && agentTab === 'documents' ? (
         <AgentDocuments agent={selectedAgent} tab={agentTab} onTab={setAgentTab} connected={connected} />
+      ) : selectedAgent && agentTab === 'activity' ? (
+        <AgentActivity
+          agent={selectedAgent}
+          tab={agentTab}
+          onTab={setAgentTab}
+          sessions={sessions}
+          connected={connected}
+          onOpenSession={(key) => {
+            selectSession(key)
+            setAgentTab('chat')
+          }}
+        />
       ) : selectedAgent && agentTab === 'charter' ? (
         <AgentCharter
           agent={selectedAgent}
