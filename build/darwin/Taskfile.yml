@@ -167,6 +167,15 @@ tasks:
         fi
       - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
       - cp build/darwin/Info.plist "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents"
+      # The VERSION file is the one source of truth (the updater embeds it); stamp
+      # the bundle so Finder and the About box agree with it.
+      - |
+        V=$(tr -d '[:space:]' < VERSION)
+        P="{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Info.plist"
+        if [ -x /usr/libexec/PlistBuddy ]; then
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $V" "$P"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $V" "$P"
+        fi
       - task: '{{if eq OS "darwin"}}codesign:adhoc{{else}}codesign:skip{{end}}'
 
   codesign:adhoc:
