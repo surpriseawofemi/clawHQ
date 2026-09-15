@@ -370,19 +370,18 @@ export function useFleet() {
     if (!connected || !gatewayId || agents.length === 0 || sessions.length === 0) return
     if (prefetched.current === gatewayId) return
     prefetched.current = gatewayId
-    let live = true
+    // Not cancelled on re-render: the roster refreshes often and the loop must
+    // outlive that. A disconnect resets the guard below, and loadHistory itself
+    // stops doing anything once the connection is gone.
+    const roster = agents.map((a) => a.id)
     void (async () => {
-      for (const a of agents) {
-        if (!live) return
-        const key = mainSessionKey(a.id)
+      for (const id of roster) {
+        const key = mainSessionKey(id)
         if (key === selectedKey) continue
         await loadHistory(key, HISTORY_TAIL)
         await new Promise((r) => setTimeout(r, 150))
       }
     })()
-    return () => {
-      live = false
-    }
     // selectedKey is read once at start on purpose; the open thread loads itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, gatewayId, agents, sessions.length > 0, loadHistory])
