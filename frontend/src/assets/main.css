@@ -1299,6 +1299,8 @@ html.is-mac .sidebar-head {
 /* ---- agent tabs and document views ---- */
 .agent-tabs {
   display: flex;
+  margin-left: auto;
+  flex: none;
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--border);

@@ -35,6 +35,8 @@ export function AgentHeader({ agent, tab, onTab, working, children }: Props): Re
           {agent.identity?.theme ? ` · ${agent.identity.theme}` : ''}
         </p>
       </div>
+      {children}
+      {/* Last, pinned to the right edge, so the tabs sit in the same place on every view. */}
       <nav className="agent-tabs" aria-label="Agent views">
         {TABS.map((t) => (
           <button key={t.id} className={`agent-tab${tab === t.id ? ' is-active' : ''}`} onClick={() => onTab(t.id)}>
@@ -42,7 +44,6 @@ export function AgentHeader({ agent, tab, onTab, working, children }: Props): Re
           </button>
         ))}
       </nav>
-      {children}
     </header>
   )
 }
