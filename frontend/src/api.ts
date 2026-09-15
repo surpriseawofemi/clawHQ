@@ -5,6 +5,7 @@ import {
   ExecLogService,
   GatewayService,
   InboxService,
+  LoginService,
   NodeService,
   UpdateService,
   WindowService
@@ -19,6 +20,7 @@ import type {
   ExecRecord,
   ExecRequest,
   GatewayProfile,
+  LoginStatus,
   NodeStatus,
   UpdateStatus,
   NodeNotification
@@ -121,6 +123,10 @@ export const api = {
     remove: (id: string): Promise<NodeNotification[]> => InboxService.Delete(id) as Promise<NodeNotification[]>,
     clear: (): Promise<NodeNotification[]> => InboxService.Clear() as Promise<NodeNotification[]>
   },
+  login: {
+    status: (): Promise<LoginStatus> => LoginService.Status() as Promise<LoginStatus>,
+    set: (on: boolean): Promise<LoginStatus> => LoginService.Set(on) as Promise<LoginStatus>
+  },
   execLog: {
     list: (): Promise<ExecRecord[]> => ExecLogService.List() as Promise<ExecRecord[]>,
     clear: (): Promise<ExecRecord[]> => ExecLogService.Clear() as Promise<ExecRecord[]>
@@ -163,6 +169,8 @@ export const api = {
     path: (): Promise<string> => ConfigService.Path(),
     setAutoConnect: (on: boolean): Promise<ClawHQConfig> =>
       ConfigService.SetAutoConnect(on) as Promise<ClawHQConfig>,
+    setMenuBar: (on: boolean): Promise<ClawHQConfig> =>
+      ConfigService.SetMenuBar(on) as Promise<ClawHQConfig>,
     assignAgent: (agentId: string, departmentId: string | null): Promise<ClawHQConfig> =>
       ConfigService.AssignAgent(agentId, departmentId ?? '') as Promise<ClawHQConfig>,
     upsertDepartment: (dept: Partial<Department>): Promise<ClawHQConfig> =>

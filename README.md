@@ -435,6 +435,17 @@ Windows, launchd on macOS, systemd on Linux). ClawHQ deliberately does not spawn
 own gateway process — that would fight the installed service for the port and the
 gateway lock file.
 
+## Menu bar and login
+
+ClawHQ keeps an icon in the menu bar (system tray elsewhere) with the node's state,
+Open ClawHQ, the desktop viewer, Launch at login, Keep running when the window closes,
+Check for updates and Quit. With "keep running" on (the default, in Settings → This
+app), closing the window hides it instead of quitting, so the node role,
+notifications and approvals keep working; the icon or the Dock brings the window
+back. Launch at login writes `~/Library/LaunchAgents/com.clawhq.app.plist`, which runs
+`open -a` on the bundle so it survives an update that replaces the app; on Windows it
+is the `HKCU\...\Run` key. Both are plain files or keys the user can remove by hand.
+
 ## Known gaps
 
 - **Wails v3 is beta** (`v3.0.0-beta.21`). The desktop API is stable enough to ship on,

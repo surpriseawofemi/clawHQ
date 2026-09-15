@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/surpriseawofemi/clawhq/internal/gateway"
@@ -33,6 +34,9 @@ var appIcon []byte
 //
 //go:embed VERSION
 var versionFile string
+
+// menuBarRef holds the menu bar once the app exists; node status arrives earlier.
+var menuBarRef atomic.Value
 
 // Events pushed to the frontend. Registering them gives the binding generator typed
 // JS/TS signatures.
@@ -99,6 +103,9 @@ func main() {
 		func(st node.Status) {
 			if app != nil {
 				app.Event.Emit("node:status", st)
+			}
+			if bar, ok := menuBarRef.Load().(*menuBar); ok && bar != nil {
+				bar.setNode(st)
 			}
 		},
 		// system.notify from an agent: an OS notification from ClawHQ plus a banner,
@@ -170,13 +177,17 @@ func main() {
 		},
 	})
 
+	configSvc := &ConfigService{store: cfgStore}
+	loginSvc := &LoginService{}
+
 	app = application.New(application.Options{
 		Name:        "ClawHQ",
 		Description: "Desktop command center for your OpenClaw agent org",
 		Icon:        appIcon,
 		Services: []application.Service{
 			application.NewService(&GatewayService{conn: conn, store: cfgStore}),
-			application.NewService(&ConfigService{store: cfgStore}),
+			application.NewService(configSvc),
+			application.NewService(loginSvc),
 			application.NewService(&DaemonService{}),
 			application.NewService(&NodeService{host: nodeHost, store: cfgStore, conn: conn, auto: auto}),
 			application.NewService(updateSvc),
@@ -189,11 +200,14 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			// The menu bar decides: closing the window hides it while "keep running"
+			// is on and quits otherwise (see menubar.go).
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	})
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	mainWin := app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:      mainWindowName,
 		Title:     "ClawHQ",
 		Width:     1280,
 		Height:    840,
@@ -245,6 +259,13 @@ func main() {
 	updateSvc.app = app
 	windowSvc.app = app
 	notify.app = app
+
+	// Menu bar presence: the node keeps serving after the window is closed.
+	bar := newMenuBar(app, cfgStore, loginSvc, updateSvc, windowSvc)
+	bar.hideOnClose(mainWin)
+	bar.setNode(nodeHost.Status())
+	menuBarRef.Store(bar)
+	configSvc.onPrefsChanged = bar.sync
 
 	// Self-update from GitHub releases. Failing to wire this up is not fatal;
 	// the app simply will not offer updates.

@@ -195,6 +195,8 @@ func (s *GatewayService) SendChat(ctx context.Context, sessionKey, message strin
 
 type ConfigService struct {
 	store *store.Store
+	// onPrefsChanged lets the menu bar mirror a switch flipped in Settings.
+	onPrefsChanged func()
 }
 
 func (s *ConfigService) Get() store.Config { return s.store.Read() }
@@ -209,6 +211,15 @@ func (s *ConfigService) SetAutoConnect(on bool) (store.Config, error) {
 // SetAutoUpdate decides whether a newer release installs itself when found.
 func (s *ConfigService) SetAutoUpdate(on bool) (store.Config, error) {
 	return s.store.SetAutoUpdate(on)
+}
+
+// SetMenuBar decides whether closing the window keeps ClawHQ in the menu bar.
+func (s *ConfigService) SetMenuBar(on bool) (store.Config, error) {
+	cfg, err := s.store.SetMenuBar(on)
+	if err == nil && s.onPrefsChanged != nil {
+		s.onPrefsChanged()
+	}
+	return cfg, err
 }
 
 func (s *ConfigService) AssignAgent(agentID, departmentID string) (store.Config, error) {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Agent, ClawHQConfig, ConnectionStatus, DaemonStatus, Department } from '../../types'
 import { UsagePage } from './UsagePage'
+import { AppPanel } from '../AppPanel'
 import { api } from '../../api'
 import { ConnectionPanel } from '../ConnectionPanel'
 import { NodePanel } from '../NodePanel'
@@ -74,7 +75,7 @@ const NAV: NavGroup[] = [
       { id: 'health', label: 'Health and logs' }
     ]
   },
-  { label: 'App', items: [{ id: 'updates', label: 'Updates and about' }] }
+  { label: 'App', items: [{ id: 'updates', label: 'This app and updates' }] }
 ]
 
 const TITLES: Record<SettingsSection, string> = {
@@ -90,7 +91,7 @@ const TITLES: Record<SettingsSection, string> = {
   plugins: 'Plugins',
   mcp: 'MCP servers',
   automations: 'Automations',
-  updates: 'Updates and about'
+  updates: 'This app and updates'
 }
 
 const formatUptime = (ms: number | null): string => {
@@ -390,6 +391,7 @@ export function SettingsPage({
 
         {section === 'updates' && (
           <div className="settings-stack">
+            <AppPanel config={config} onConfigChanged={onConfigChanged} />
             <UpdatePanel />
           </div>
         )}

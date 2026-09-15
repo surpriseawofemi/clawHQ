@@ -92,7 +92,7 @@ type NodeConfig struct {
 }
 
 // configVersion is bumped when a saved config needs migrating on read.
-const configVersion = 4
+const configVersion = 5
 
 type Config struct {
 	Version int `json:"version"`
@@ -104,7 +104,10 @@ type Config struct {
 	AutoConnect bool `json:"autoConnect"`
 	// AutoUpdate downloads and installs a newer release as soon as one is found,
 	// then relaunches. On by default.
-	AutoUpdate  bool         `json:"autoUpdate"`
+	AutoUpdate bool `json:"autoUpdate"`
+	// MenuBar keeps ClawHQ running in the menu bar (system tray) when its window is
+	// closed, so the node role stays up. On by default.
+	MenuBar     bool         `json:"menuBar"`
 	Node        NodeConfig   `json:"node"`
 	Departments []Department `json:"departments"`
 	// Assignments maps agentId to departmentId. Agents with no entry are "Unassigned".
@@ -117,6 +120,7 @@ func defaults() Config {
 		Gateways:    []GatewayProfile{},
 		AutoConnect: true,
 		AutoUpdate:  true,
+		MenuBar:     true,
 		Departments: []Department{
 			{ID: "executive", Name: "Executive", Emoji: "🏛️", Order: 0},
 			{ID: "marketing", Name: "Marketing", Emoji: "📣", Order: 1},
@@ -190,6 +194,9 @@ func (s *Store) readLocked() Config {
 	// Version 4 added the auto-update switch; older files never had it off.
 	if cfg.Version < 4 {
 		cfg.AutoUpdate = true
+	}
+	if cfg.Version < 5 {
+		cfg.MenuBar = true
 	}
 	if cfg.Version < configVersion {
 		cfg.Version = configVersion
@@ -339,6 +346,15 @@ func (s *Store) SetAutoUpdate(on bool) (Config, error) {
 	defer s.mu.Unlock()
 	cfg := s.readLocked()
 	cfg.AutoUpdate = on
+	return s.writeLocked(cfg)
+}
+
+// SetMenuBar stores whether ClawHQ stays in the menu bar when its window closes.
+func (s *Store) SetMenuBar(on bool) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	cfg.MenuBar = on
 	return s.writeLocked(cfg)
 }
 

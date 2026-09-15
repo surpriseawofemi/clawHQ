@@ -69,6 +69,8 @@ export type ClawHQConfig = {
   activeGatewayId: string
   autoConnect: boolean
   autoUpdate: boolean
+  /** Keep running in the menu bar (system tray) when the window closes. */
+  menuBar: boolean
   departments: Department[]
   assignments: Record<string, string>
 }
@@ -199,6 +201,13 @@ export type RemoteNode = {
   connected?: boolean
   caps?: string[]
   commands?: string[]
+}
+
+/** Whether ClawHQ starts with the user's session, and whether this OS supports it. */
+export type LoginStatus = {
+  enabled: boolean
+  supported: boolean
+  path: string
 }
 
 export type UpdateStatus = {

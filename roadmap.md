@@ -45,6 +45,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 8 | Per-agent command policy: an override per agent id (trusted, ask, off) beside the machine-wide mode; "Trust <agent>" on a banner | v0.1.15 |
 | 10 | Channels page: catalogue from the schema, live state from `channels.status`, enable/disable, log out, schema-driven settings and channel defaults | v0.1.16 |
 | 15 | Usage per agent and department: one `sessions.usage` call per agent for a 7/30/90-day window, totals rolled up along the org chart, unpriced calls counted rather than shown as free | v0.1.17 |
+| 12 | Menu bar presence and launch at login: tray icon with node state and a menu, closing the window hides it while "keep running" is on, launch agent (macOS) or Run key (Windows) | v0.1.18 |
 
 ## Now
 
@@ -60,7 +61,6 @@ changes. Shipped items keep their number so discussions stay anchored.
 
 | # | Item | Size | Notes |
 | --- | --- | --- | --- |
-| 12 | **Menu bar presence and launch at login.** The node role only helps while ClawHQ runs. | M | macOS |
 | 14 | **Desktop control gaps.** Secondary displays, non-US layouts, clipboard sync, file transfer. | L | |
 | 16 | **Session search and a light theme.** | M | |
 | 17 | **Linux capture and input.** | L | |
