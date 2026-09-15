@@ -142,6 +142,14 @@ ws://box.tail1234.ts.net:18789  # tailnet
 Note the gateway's own rule: public endpoints must be `wss://`; plaintext `ws://` is
 accepted only for loopback, private RFC 1918 ranges, and `.ts.net`.
 
+### Tool calls in the thread
+
+An assistant message's `toolcall` blocks render as compact rows under its text: a
+status mark, the tool name (the `mcp__openclaw__` prefix dropped), and a gist of the
+arguments. The matching `tool_result` block, which the gateway stores in a later
+user-role message keyed by `tool_use_id`, is paired by id; expanding a row shows the
+full arguments and the result text. A call with no recorded result shows as pending.
+
 ### Chat
 
 Three RPCs and one event stream:

@@ -1296,6 +1296,101 @@ html.is-mac .sidebar-head {
   overflow-y: auto;
 }
 
+/* ---- tool calls inside an agent message ---- */
+.tool-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.tool-call {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+
+.tool-call.is-error {
+  border-color: var(--danger);
+}
+
+.tool-call-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tool-call-row:hover {
+  color: var(--text);
+}
+
+.tool-call-icon {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--ok);
+}
+
+.tool-call.is-error .tool-call-icon {
+  color: var(--danger);
+}
+
+.tool-call.is-pending .tool-call-icon {
+  color: var(--warn);
+}
+
+.tool-call-name {
+  flex: none;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tool-call-gist {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+
+.tool-call-chev {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.tool-call-detail {
+  padding: 4px 10px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.tool-call-label {
+  margin: 8px 0 4px;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.tool-call-detail pre {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ---- agent tabs and document views ---- */
 .agent-tabs {
   display: flex;

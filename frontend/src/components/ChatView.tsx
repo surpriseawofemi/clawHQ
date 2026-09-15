@@ -3,6 +3,7 @@ import { api } from '../api'
 import type { Agent, Attachment, ChatMessage, SessionInfo, StreamingReply } from '../types'
 import { agentLabel, messageText } from '../types'
 import { AgentHeader, type AgentTab } from './AgentHeader'
+import { ToolCalls, indexToolResults, toolCallsOf } from './ToolCalls'
 
 type Props = {
   agent: Agent | null
@@ -118,6 +119,7 @@ export function ChatView({
   }
 
   const visible = messages.filter((m) => m.role === 'user' || m.role === 'assistant')
+  const toolResults = indexToolResults(messages)
   const placeholder = !connected
     ? 'Not connected to a gateway'
     : sendable.length > 0
@@ -173,11 +175,13 @@ export function ChatView({
 
         {visible.map((msg, i) => {
           const text = messageText(msg)
-          if (!text.trim()) return null
+          const calls = msg.role === 'assistant' ? toolCallsOf(msg, toolResults) : []
+          if (!text.trim() && calls.length === 0) return null
           const mine = msg.role === 'user'
           return (
             <article key={msg.__openclaw?.id ?? `${msg.timestamp}-${i}`} className={`msg ${mine ? 'msg-user' : 'msg-agent'}`}>
-              <div className="msg-body">{text}</div>
+              {text.trim() && <div className="msg-body">{text}</div>}
+              <ToolCalls calls={calls} />
               <div className="msg-meta">
                 {mine ? (msg.__openclaw?.senderName ?? 'You') : agentLabel(agent)}
                 {msg.timestamp ? ` · ${timeOf(msg.timestamp)}` : ''}

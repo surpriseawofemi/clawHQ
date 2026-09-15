@@ -37,6 +37,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | – | Notification history page and unread bell | v0.1.7 |
 | 18 | Documents and Charter tabs per agent | v0.1.8 |
 | – | Stable local signing identity so macOS permission grants survive rebuilds | main |
+| 5 | Tool calls in the chat thread: each `toolcall` block under the agent's message with its paired `tool_result`, collapsed to name plus a gist, expandable to arguments and output | v0.1.12 |
 | 19 | Daily updates (a per-agent cron job that writes `DAILY-UPDATE.md`, set from the Documents tab) and an Activity tab (threads by recency, recently changed files) | v0.1.11 |
 | 20 | Notifications reach every ClawHQ: the receiving machine's operator side fans out `system.notify` to every other connected ClawHQ node (the gateway drops unknown `node.event` names, so that route was out) | v0.1.10 |
 
@@ -44,13 +45,12 @@ changes. Shipped items keep their number so discussions stay anchored.
 
 | # | Item | Size | Notes |
 | --- | --- | --- | --- |
-| 5 | **Tool calls in the chat thread.** Show each call and its result inline. | M | promoted from Next |
+| 6 | **Approvals history.** Every command an agent ran on this machine: which agent, when, the decision, the output. | S | promoted from Next |
 
 ## Next
 
 | # | Item | Size | Notes |
 | --- | --- | --- | --- |
-| 6 | **Approvals history.** Every command an agent ran on this machine: which agent, when, the decision, the output. | S | |
 | 7 | **Health and logs page.** Live log tail with filtering (`logs.tail`) and the health snapshot. | M | |
 | 8 | **Per-agent command policy.** A trusted agent runs without asking while a new one still asks. | S | |
 | 10 | **Channels page.** Telegram, Discord and the rest as status plus config, from the same schema as plugins. | S | needs 2 |
