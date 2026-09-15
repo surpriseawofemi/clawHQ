@@ -18,10 +18,16 @@ export function AppPanel({ config, onConfigChanged }: Props): React.JSX.Element 
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const [cacheSize, setCacheSize] = useState<number | null>(null)
+
   useEffect(() => {
     api.login
       .status()
       .then(setLogin)
+      .catch(() => undefined)
+    api.cache
+      .size()
+      .then(setCacheSize)
       .catch(() => undefined)
   }, [])
 
@@ -91,6 +97,27 @@ export function AppPanel({ config, onConfigChanged }: Props): React.JSX.Element 
           ? `Registered as ${login.path}; remove that to undo it by hand.`
           : 'Not wired up on this platform yet.'}
       </p>
+      <div className="field">
+        <span>Thread cache</span>
+        <p className="field-hint">
+          Threads you have opened are kept on this machine so they show at once; the gateway
+          is asked only for what changed. {cacheSize !== null ? `${(cacheSize / 1024 / 1024).toFixed(1)} MB on disk.` : ''}
+        </p>
+        <div className="btn-row">
+          <button
+            className="btn btn-sm"
+            disabled={busy !== null}
+            onClick={() =>
+              void run('cache', async () => {
+                await api.cache.clear()
+                setCacheSize(await api.cache.size())
+              })
+            }
+          >
+            Clear cache
+          </button>
+        </div>
+      </div>
       {error && <p className="error-text">{error}</p>}
     </section>
   )

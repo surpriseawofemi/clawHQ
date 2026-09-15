@@ -203,6 +203,24 @@ export type RemoteNode = {
   commands?: string[]
 }
 
+/** A thread as kept in the on-disk cache: the messages as JSON plus the stamp they were fetched at. */
+export type CachedThread = {
+  gatewayId: string
+  key: string
+  json: string
+  updatedAtMs: number
+  full: boolean
+  count: number
+  storedAtMs: number
+}
+
+export type CacheStamp = {
+  key: string
+  updatedAtMs: number
+  count: number
+  full: boolean
+}
+
 /** Whether ClawHQ starts with the user's session, and whether this OS supports it. */
 export type LoginStatus = {
   enabled: boolean

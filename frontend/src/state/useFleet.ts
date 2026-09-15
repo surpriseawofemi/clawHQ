@@ -18,6 +18,24 @@ const api = (): typeof clawhqApi => clawhqApi
 /** The main session key for an agent — the conversation ClawHQ opens on click. */
 export const mainSessionKey = (agentId: string): string => `agent:${agentId}:main`
 
+/** A message's identity for merging: the gateway id when it has one, else its shape. */
+const messageId = (m: ChatMessage): string =>
+  m.__openclaw?.id ?? `${m.timestamp ?? 0}:${m.role}:${typeof m.content === 'string' ? m.content.length : m.content.length}`
+
+/**
+ * Puts a freshly fetched window on top of what was already held: older messages
+ * the window does not reach stay, anything the window also carries is taken from
+ * the window (the gateway's copy wins), and nothing appears twice.
+ */
+const mergeOlder = (have: ChatMessage[], fetched: ChatMessage[]): ChatMessage[] => {
+  if (have.length === 0) return fetched
+  if (fetched.length === 0) return have
+  const ids = new Set(fetched.map(messageId))
+  const firstTs = fetched[0].timestamp ?? 0
+  const older = have.filter((m) => !ids.has(messageId(m)) && (m.timestamp ?? 0) < firstTs)
+  return [...older, ...fetched]
+}
+
 export type Fleet = ReturnType<typeof useFleet>
 
 export function useFleet() {
@@ -172,6 +190,57 @@ export function useFleet() {
     })()
   }, [agents, config])
 
+  // ---- per-session history ---------------------------------------------
+  // A thread opens with its recent tail. Over a tunnel every message costs bytes on
+  // the wire and again crossing into the webview, so the first load stays small and
+  // the rest comes on request.
+  const HISTORY_TAIL = 60
+  const HISTORY_FULL = 1000
+  const [historyLoading, setHistoryLoading] = useState<string | null>(null)
+  const [historyFull, setHistoryFull] = useState<Record<string, boolean>>({})
+
+  // ---- the on-disk cache -------------------------------------------------
+  // Every thread this window fetches is written to SQLite on this machine, keyed by
+  // gateway and session. Opening a thread shows the cached copy at once; the gateway
+  // is asked only when the session's last-updated stamp has moved past what the
+  // cache was fetched at, and then only the recent window, merged by message id.
+  const gatewayId = status.gatewayId
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
+  const historyFullRef = useRef(historyFull)
+  historyFullRef.current = historyFull
+  /** The session stamp each in-memory thread was fetched (or cached) at. */
+  const fetchedAt = useRef<Record<string, number>>({})
+  const persistTimers = useRef<Record<string, number>>({})
+
+  const sessionStamp = (sessionKey: string): number => {
+    const s = sessionsRef.current.find((x) => x.key === sessionKey)
+    return s?.updatedAt ?? s?.lastActivityAt ?? 0
+  }
+
+  const persist = useCallback(
+    (sessionKey: string, list: ChatMessage[], stamp: number, full: boolean) => {
+      if (!gatewayId) return
+      if (persistTimers.current[sessionKey]) window.clearTimeout(persistTimers.current[sessionKey])
+      persistTimers.current[sessionKey] = window.setTimeout(() => {
+        delete persistTimers.current[sessionKey]
+        api()
+          .cache.put(gatewayId, sessionKey, JSON.stringify(list), stamp, full, list.length)
+          .catch(() => undefined)
+      }, 400)
+    },
+    [gatewayId]
+  )
+
+  const subscribe = async (sessionKey: string): Promise<void> => {
+    if (subscribed.current.has(sessionKey)) return
+    // The subscribe param is `key`, not `sessionKey` — the two RPCs disagree.
+    await api().rpc.request('sessions.messages.subscribe', { key: sessionKey })
+    subscribed.current.add(sessionKey)
+  }
+
   // ---- live events ------------------------------------------------------
   useEffect(() => {
     const off = api().onGatewayEvent(({ event, payload }) => {
@@ -208,7 +277,12 @@ export function useFleet() {
           const list = prev[key] ?? []
           const id = msg.__openclaw?.id
           if (id && list.some((m) => m.__openclaw?.id === id)) return prev
-          return { ...prev, [key]: [...list, msg] }
+          const next = [...list, msg]
+          // The live copy is as fresh as the session itself now; keep the disk copy up.
+          const at = Math.max(msg.timestamp ?? 0, Date.now())
+          fetchedAt.current[key] = at
+          persist(key, next, at, historyFullRef.current[key] ?? false)
+          return { ...prev, [key]: next }
         })
         return
       }
@@ -223,35 +297,61 @@ export function useFleet() {
       }
     })
     return () => off()
-  }, [refreshFleet, refreshDesktops])
-
-  // ---- per-session history ---------------------------------------------
-  // A thread opens with its recent tail. Over a tunnel every message costs bytes on
-  // the wire and again crossing into the webview, so the first load stays small and
-  // the rest comes on request.
-  const HISTORY_TAIL = 60
-  const HISTORY_FULL = 1000
-  const [historyLoading, setHistoryLoading] = useState<string | null>(null)
-  const [historyFull, setHistoryFull] = useState<Record<string, boolean>>({})
+  }, [refreshFleet, refreshDesktops, persist])
 
   const loadHistory = useCallback(
     async (sessionKey: string, limit: number) => {
       if (!connected) return
-      setHistoryLoading(sessionKey)
+      let have = messagesRef.current[sessionKey]
+
+      // Nothing in memory: the disk copy is the first thing on screen.
+      if (!have && gatewayId) {
+        try {
+          const cached = await api().cache.get(gatewayId, sessionKey)
+          if (cached?.json) {
+            const list = JSON.parse(cached.json) as ChatMessage[]
+            if (Array.isArray(list) && list.length > 0 && !messagesRef.current[sessionKey]) {
+              have = list
+              fetchedAt.current[sessionKey] = cached.updatedAtMs
+              setMessages((prev) => (prev[sessionKey] ? prev : { ...prev, [sessionKey]: list }))
+              setHistoryFull((prev) => ({ ...prev, [sessionKey]: cached.full }))
+            }
+          }
+        } catch {
+          // A bad cache row is just a slower open.
+        }
+      }
+
+      // Fresh enough: the session has not changed since this copy was fetched, and
+      // the copy covers what was asked for.
+      const stamp = sessionStamp(sessionKey)
+      const fetchedStamp = fetchedAt.current[sessionKey] ?? 0
+      const covers = limit <= HISTORY_TAIL || historyFullRef.current[sessionKey]
+      if (have && stamp > 0 && fetchedStamp >= stamp && covers) {
+        try {
+          await subscribe(sessionKey)
+        } catch {
+          /* the next load retries */
+        }
+        return
+      }
+
+      if (!have || have.length === 0) setHistoryLoading(sessionKey)
       try {
         const history = await api().rpc.request<{ messages?: ChatMessage[] }>('chat.history', {
           sessionKey,
           limit
         })
-        const list = history?.messages ?? []
-        setMessages((prev) => ({ ...prev, [sessionKey]: list }))
-        // Fewer than asked for means there is nothing older to fetch.
-        setHistoryFull((prev) => ({ ...prev, [sessionKey]: limit >= HISTORY_FULL || list.length < limit }))
-        if (!subscribed.current.has(sessionKey)) {
-          // The subscribe param is `key`, not `sessionKey` — the two RPCs disagree.
-          await api().rpc.request('sessions.messages.subscribe', { key: sessionKey })
-          subscribed.current.add(sessionKey)
-        }
+        const fetched = history?.messages ?? []
+        // Fewer than asked for means the gateway sent the whole thread.
+        const full = limit >= HISTORY_FULL || fetched.length < limit
+        const merged = full ? fetched : mergeOlder(have ?? [], fetched)
+        const at = Math.max(stamp, Date.now())
+        fetchedAt.current[sessionKey] = at
+        setMessages((prev) => ({ ...prev, [sessionKey]: merged }))
+        setHistoryFull((prev) => ({ ...prev, [sessionKey]: full || (have ? historyFullRef.current[sessionKey] ?? false : false) }))
+        persist(sessionKey, merged, at, full)
+        await subscribe(sessionKey)
         setError(null)
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
@@ -259,8 +359,37 @@ export function useFleet() {
         setHistoryLoading((cur) => (cur === sessionKey ? null : cur))
       }
     },
-    [connected]
+    [connected, gatewayId, persist]
   )
+
+  // Warm every agent's main thread after connecting, one at a time, so the first
+  // click on any agent finds its thread already here. The cache makes most of these
+  // a disk read; only threads that moved cost a gateway call.
+  const prefetched = useRef<string | null>(null)
+  useEffect(() => {
+    if (!connected || !gatewayId || agents.length === 0 || sessions.length === 0) return
+    if (prefetched.current === gatewayId) return
+    prefetched.current = gatewayId
+    let live = true
+    void (async () => {
+      for (const a of agents) {
+        if (!live) return
+        const key = mainSessionKey(a.id)
+        if (key === selectedKey) continue
+        await loadHistory(key, HISTORY_TAIL)
+        await new Promise((r) => setTimeout(r, 150))
+      }
+    })()
+    return () => {
+      live = false
+    }
+    // selectedKey is read once at start on purpose; the open thread loads itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, gatewayId, agents, sessions.length > 0, loadHistory])
+
+  useEffect(() => {
+    if (!connected) prefetched.current = null
+  }, [connected])
 
   const openSession = useCallback((sessionKey: string) => loadHistory(sessionKey, HISTORY_TAIL), [loadHistory])
 

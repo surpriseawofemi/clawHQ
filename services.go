@@ -262,6 +262,32 @@ func (s *InboxService) Clear() ([]store.Notice, error) {
 }
 
 // ---------------------------------------------------------------------------
+// CacheService — threads kept on disk so they open at once.
+// ---------------------------------------------------------------------------
+
+type CacheService struct {
+	cache *store.ThreadCache
+}
+
+// Get returns the cached thread or nil.
+func (s *CacheService) Get(gatewayID, key string) (*store.CachedThread, error) {
+	return s.cache.Get(gatewayID, key)
+}
+
+// Put stores a thread's messages as JSON with the session's last-updated stamp.
+func (s *CacheService) Put(gatewayID, key, messagesJSON string, updatedAtMs int64, full bool, count int) error {
+	return s.cache.Put(store.CachedThread{GatewayID: gatewayID, Key: key, JSON: messagesJSON, UpdatedAtMs: updatedAtMs, Full: full, Count: count})
+}
+
+func (s *CacheService) Stamps(gatewayID string) ([]store.CacheStamp, error) {
+	return s.cache.Stamps(gatewayID)
+}
+
+func (s *CacheService) Clear() error { return s.cache.Clear() }
+
+func (s *CacheService) Size() int64 { return s.cache.Size() }
+
+// ---------------------------------------------------------------------------
 // ExecLogService — every command an agent asked this machine to run.
 // ---------------------------------------------------------------------------
 

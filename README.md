@@ -152,6 +152,17 @@ full arguments and the result text. A call with no recorded result shows as pend
 
 ### Chat
 
+Threads are cached on disk. Every thread this ClawHQ fetches is written to
+`~/.openclaw/clawhq-cache.sqlite` (pure-Go SQLite, one row per gateway and session
+holding the tail as JSON plus the session's last-updated stamp). Opening a thread
+shows the cached copy at once. The gateway is asked only when `sessions.list` says
+the session moved past the stamp the copy was fetched at, and then for the recent
+window, which is merged by message id on top of the older cached messages. Live
+messages from the subscription go into the cache too. After connecting, every
+agent's main thread is warmed one at a time, so the first click on any agent finds
+its thread ready. Settings → This app shows the cache size and clears it; the
+gateway keeps the truth, so clearing costs only the next load.
+
 Three RPCs and one event stream:
 
 | Purpose | Call |

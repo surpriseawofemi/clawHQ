@@ -48,6 +48,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 12 | Menu bar presence and launch at login: tray icon with node state and a menu, closing the window hides it while "keep running" is on, launch agent (macOS) or Run key (Windows) | v0.1.18 |
 | 16 | ⌘K search palette (agents, thread labels, loaded message text) and an appearance switch (system, dark, light) | v0.1.19 |
 | 14a | Secondary displays (display picker, per-display coordinate mapping on macOS) and clipboard sync (`clawhq.clipboard.get/set`, agent tools, Send/Fetch clipboard while in control) | v0.1.20 |
+| 24 | Thread cache: SQLite on each machine, instant open from disk, gateway asked only when the session stamp moved, main threads warmed after connect | v0.1.22 |
 
 ## Now
 

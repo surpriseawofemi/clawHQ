@@ -1,5 +1,6 @@
 import { Events } from '@wailsio/runtime'
 import {
+  CacheService,
   ConfigService,
   DaemonService,
   ExecLogService,
@@ -12,6 +13,8 @@ import {
 } from '../bindings/github.com/surpriseawofemi/clawhq'
 import type {
   Attachment,
+  CachedThread,
+  CacheStamp,
   ClawHQConfig,
   ConnectionStatus,
   DaemonStatus,
@@ -122,6 +125,15 @@ export const api = {
     markRead: (id: string): Promise<NodeNotification[]> => InboxService.MarkRead(id) as Promise<NodeNotification[]>,
     remove: (id: string): Promise<NodeNotification[]> => InboxService.Delete(id) as Promise<NodeNotification[]>,
     clear: (): Promise<NodeNotification[]> => InboxService.Clear() as Promise<NodeNotification[]>
+  },
+  cache: {
+    get: (gatewayId: string, key: string): Promise<CachedThread | null> =>
+      CacheService.Get(gatewayId, key) as Promise<CachedThread | null>,
+    put: (gatewayId: string, key: string, messagesJson: string, updatedAtMs: number, full: boolean, count: number): Promise<void> =>
+      CacheService.Put(gatewayId, key, messagesJson, updatedAtMs, full, count),
+    stamps: (gatewayId: string): Promise<CacheStamp[]> => CacheService.Stamps(gatewayId) as Promise<CacheStamp[]>,
+    clear: (): Promise<void> => CacheService.Clear(),
+    size: (): Promise<number> => CacheService.Size()
   },
   login: {
     status: (): Promise<LoginStatus> => LoginService.Status() as Promise<LoginStatus>,

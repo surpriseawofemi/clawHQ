@@ -140,6 +140,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	threadCache, err := store.NewThreadCache()
+	if err != nil {
+		log.Fatal(err)
+	}
 	notify = newNotifier(conn, nodeHost, nativeNotifications, inbox)
 
 	// The autopilot starts, pairs and approves the node role whenever the operator
@@ -197,6 +201,7 @@ func main() {
 			application.NewService(nativeNotifications),
 			application.NewService(&InboxService{inbox: inbox}),
 			application.NewService(&ExecLogService{log: execLog}),
+			application.NewService(&CacheService{cache: threadCache}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
