@@ -48,6 +48,13 @@ change to `.github/workflows/build.yml`.
 
 ## Updating
 
+ClawHQ checks GitHub releases every hour. With "Download and install updates
+automatically" on (the default, in Settings → Updates and about) a newer release is
+downloaded, swapped in and relaunched by itself; off, the panel shows what is
+available and waits for Install. Check now behaves the same way as the hourly check.
+A machine that builds ClawHQ itself runs the same version as the tag it pushed, so it
+never offers itself the update.
+
 The app checks GitHub releases every six hours and can update itself in place —
 Settings shows the running version and a Check now button. On macOS the downloaded
 artifact is a whole signed `.app` and the updater swaps the bundle wholesale, so the

@@ -69,7 +69,7 @@ type NodeConfig struct {
 }
 
 // configVersion is bumped when a saved config needs migrating on read.
-const configVersion = 3
+const configVersion = 4
 
 type Config struct {
 	Version int `json:"version"`
@@ -78,7 +78,10 @@ type Config struct {
 	Gateways        []GatewayProfile `json:"gateways"`
 	ActiveGatewayID string           `json:"activeGatewayId"`
 	// AutoConnect reconnects to the last used gateway at launch. On by default.
-	AutoConnect bool         `json:"autoConnect"`
+	AutoConnect bool `json:"autoConnect"`
+	// AutoUpdate downloads and installs a newer release as soon as one is found,
+	// then relaunches. On by default.
+	AutoUpdate  bool         `json:"autoUpdate"`
 	Node        NodeConfig   `json:"node"`
 	Departments []Department `json:"departments"`
 	// Assignments maps agentId to departmentId. Agents with no entry are "Unassigned".
@@ -90,6 +93,7 @@ func defaults() Config {
 		Version:     configVersion,
 		Gateways:    []GatewayProfile{},
 		AutoConnect: true,
+		AutoUpdate:  true,
 		Departments: []Department{
 			{ID: "executive", Name: "Executive", Emoji: "🏛️", Order: 0},
 			{ID: "marketing", Name: "Marketing", Emoji: "📣", Order: 1},
@@ -166,6 +170,10 @@ func (s *Store) readLocked() Config {
 	// Version 3 added the auto-connect switch; older files never had it off.
 	if cfg.Version < 3 {
 		cfg.AutoConnect = true
+	}
+	// Version 4 added the auto-update switch; older files never had it off.
+	if cfg.Version < 4 {
+		cfg.AutoUpdate = true
 	}
 	if cfg.Version < configVersion {
 		cfg.Version = configVersion
@@ -307,6 +315,15 @@ func (s *Store) RenameGateway(id, name string) (Config, error) {
 		}
 	}
 	return cfg, fmt.Errorf("no saved gateway with id %q", id)
+}
+
+// SetAutoUpdate stores whether new releases install themselves.
+func (s *Store) SetAutoUpdate(on bool) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	cfg.AutoUpdate = on
+	return s.writeLocked(cfg)
 }
 
 // SetAutoConnect stores whether ClawHQ reconnects to the last gateway at launch.

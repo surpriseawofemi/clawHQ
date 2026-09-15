@@ -206,6 +206,11 @@ func (s *ConfigService) SetAutoConnect(on bool) (store.Config, error) {
 	return s.store.SetAutoConnect(on)
 }
 
+// SetAutoUpdate decides whether a newer release installs itself when found.
+func (s *ConfigService) SetAutoUpdate(on bool) (store.Config, error) {
+	return s.store.SetAutoUpdate(on)
+}
+
 func (s *ConfigService) AssignAgent(agentID, departmentID string) (store.Config, error) {
 	return s.store.AssignAgent(agentID, departmentID)
 }

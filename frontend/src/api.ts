@@ -100,7 +100,9 @@ export const api = {
   update: {
     status: (): Promise<UpdateStatus> => UpdateService.Status() as Promise<UpdateStatus>,
     check: (): Promise<UpdateStatus> => UpdateService.Check() as Promise<UpdateStatus>,
-    install: (): Promise<void> => UpdateService.Install()
+    install: (): Promise<void> => UpdateService.Install(),
+    setAutoUpdate: (on: boolean): Promise<UpdateStatus> =>
+      UpdateService.SetAutoUpdate(on) as Promise<UpdateStatus>
   },
   shell: {
     openPath: (path: string): Promise<void> => DaemonService.OpenPath(path)

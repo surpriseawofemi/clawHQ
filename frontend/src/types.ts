@@ -68,6 +68,7 @@ export type ClawHQConfig = {
   gateways: GatewayProfile[]
   activeGatewayId: string
   autoConnect: boolean
+  autoUpdate: boolean
   departments: Department[]
   assignments: Record<string, string>
 }
@@ -183,6 +184,8 @@ export type UpdateStatus = {
   latestVersion: string
   notes: string
   error: string
+  autoUpdate: boolean
+  lastCheckedAtMs: number
 }
 
 export const UNASSIGNED = '__unassigned__'

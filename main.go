@@ -72,7 +72,7 @@ func main() {
 
 	// The update service needs the App itself, which does not exist until services
 	// are already being registered, so hold the pointer and fill it in afterwards.
-	updateSvc := &UpdateService{}
+	updateSvc := &UpdateService{store: cfgStore}
 	windowSvc := &WindowService{}
 	var notify *notifier
 
@@ -229,6 +229,8 @@ func main() {
 	// the app simply will not offer updates.
 	if err := initUpdater(app, strings.TrimSpace(versionFile)); err != nil {
 		log.Printf("updater unavailable: %v", err)
+	} else {
+		go updateSvc.runLoop()
 	}
 
 	if err := app.Run(); err != nil {
