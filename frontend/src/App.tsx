@@ -110,6 +110,7 @@ function App(): React.JSX.Element {
           status={status}
           daemon={daemon}
           config={config}
+          agents={agents}
           pendingCount={0}
           initialSection={settingsSection}
           onOpenAgent={(agentId) => {

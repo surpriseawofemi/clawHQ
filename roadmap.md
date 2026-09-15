@@ -44,6 +44,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 7 | Health and logs page: the `health` snapshot (refreshed on the `health` event) and a cursor-following `logs.tail` with filter and level picker | v0.1.14 |
 | 8 | Per-agent command policy: an override per agent id (trusted, ask, off) beside the machine-wide mode; "Trust <agent>" on a banner | v0.1.15 |
 | 10 | Channels page: catalogue from the schema, live state from `channels.status`, enable/disable, log out, schema-driven settings and channel defaults | v0.1.16 |
+| 15 | Usage per agent and department: one `sessions.usage` call per agent for a 7/30/90-day window, totals rolled up along the org chart, unpriced calls counted rather than shown as free | v0.1.17 |
 
 ## Now
 
@@ -61,7 +62,6 @@ changes. Shipped items keep their number so discussions stay anchored.
 | --- | --- | --- | --- |
 | 12 | **Menu bar presence and launch at login.** The node role only helps while ClawHQ runs. | M | macOS |
 | 14 | **Desktop control gaps.** Secondary displays, non-US layouts, clipboard sync, file transfer. | L | |
-| 15 | **Usage and cost per agent and department.** | S | |
 | 16 | **Session search and a light theme.** | M | |
 | 17 | **Linux capture and input.** | L | |
 | 21 | **A `clawhq` gateway plugin.** OpenClaw's plugin SDK on the gateway: tools that know which agent called them, departments and notification history stored once on the gateway, lifecycle hooks, ClawHQ's own RPC methods. Installed from Settings via `plugins.install` once published as a package. Replaces the old item 11 (departments on the gateway). Plugin API moves between gateway versions. | L | to consider |

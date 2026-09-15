@@ -407,6 +407,15 @@ Agent settings *do* write real OpenClaw config, via `agents.update`: identity (n
 emoji, theme), model, thinking level, and `subagents.allowAgents` — the reporting line
 that decides who each agent may delegate to.
 
+## Usage
+
+Settings → Usage shows tokens and cost per agent, added up by department, for the
+last 7, 30 or 90 days. A multi-agent gateway refuses an unscoped `sessions.usage`, so
+the page sends one call per agent with `agentId`, `startDate` and `endDate` (the two
+dates must travel together) and sums the `totals`. Cost is whatever the gateway can
+price; calls it cannot price, such as a CLI-backed model, are counted as "without a
+price" instead of showing as free. Opening an agent lists its five heaviest sessions.
+
 ## Health and logs
 
 Settings → Health and logs reads the gateway's `health` snapshot (event loop load,

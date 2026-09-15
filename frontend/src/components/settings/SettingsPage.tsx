@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { ClawHQConfig, ConnectionStatus, DaemonStatus, Department } from '../../types'
+import type { Agent, ClawHQConfig, ConnectionStatus, DaemonStatus, Department } from '../../types'
+import { UsagePage } from './UsagePage'
 import { api } from '../../api'
 import { ConnectionPanel } from '../ConnectionPanel'
 import { NodePanel } from '../NodePanel'
@@ -17,6 +18,7 @@ type Props = {
   status: ConnectionStatus
   daemon: DaemonStatus | null
   config: ClawHQConfig | null
+  agents?: Agent[]
   pendingCount: number
   initialSection?: SettingsSection
   onOpenAgent: (agentId: string) => void
@@ -34,6 +36,7 @@ export type SettingsSection =
   | 'commands'
   | 'health'
   | 'channels'
+  | 'usage'
   | 'service'
   | 'plugins'
   | 'mcp'
@@ -55,6 +58,7 @@ const NAV: NavGroup[] = [
     label: 'Organisation',
     items: [
       { id: 'departments', label: 'Departments' },
+      { id: 'usage', label: 'Usage' },
       { id: 'notifications', label: 'Notifications' }
     ]
   },
@@ -81,6 +85,7 @@ const TITLES: Record<SettingsSection, string> = {
   commands: 'Command history',
   health: 'Health and logs',
   channels: 'Channels',
+  usage: 'Usage',
   service: 'Gateway service',
   plugins: 'Plugins',
   mcp: 'MCP servers',
@@ -107,6 +112,7 @@ export function SettingsPage({
   status,
   daemon,
   config,
+  agents,
   pendingCount,
   initialSection,
   onOpenAgent,
@@ -380,6 +386,7 @@ export function SettingsPage({
         {section === 'automations' && <AutomationsPage connected={connected} />}
         {section === 'health' && <HealthPage connected={connected} />}
         {section === 'channels' && <ChannelsPage connected={connected} />}
+        {section === 'usage' && <UsagePage connected={connected} config={config} agents={agents ?? []} />}
 
         {section === 'updates' && (
           <div className="settings-stack">
