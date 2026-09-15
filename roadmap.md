@@ -41,18 +41,18 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 19 | Daily updates (a per-agent cron job that writes `DAILY-UPDATE.md`, set from the Documents tab) and an Activity tab (threads by recency, recently changed files) | v0.1.11 |
 | 20 | Notifications reach every ClawHQ: the receiving machine's operator side fans out `system.notify` to every other connected ClawHQ node (the gateway drops unknown `node.event` names, so that route was out) | v0.1.10 |
 | 6 | Command history: every `system.run` on this machine (agent, time, decision, exit code, output tail) in `clawhq-exec-log.json`, shown under Settings → Trust | v0.1.13 |
+| 7 | Health and logs page: the `health` snapshot (refreshed on the `health` event) and a cursor-following `logs.tail` with filter and level picker | v0.1.14 |
 
 ## Now
 
 | # | Item | Size | Notes |
 | --- | --- | --- | --- |
-| 7 | **Health and logs page.** Live log tail with filtering (`logs.tail`) and the health snapshot. | M | promoted from Next |
+| 8 | **Per-agent command policy.** A trusted agent runs without asking while a new one still asks. | S | promoted from Next |
 
 ## Next
 
 | # | Item | Size | Notes |
 | --- | --- | --- | --- |
-| 8 | **Per-agent command policy.** A trusted agent runs without asking while a new one still asks. | S | |
 | 10 | **Channels page.** Telegram, Discord and the rest as status plus config, from the same schema as plugins. | S | needs 2 |
 
 ## Later

@@ -396,6 +396,17 @@ Agent settings *do* write real OpenClaw config, via `agents.update`: identity (n
 emoji, theme), model, thinking level, and `subagents.allowAgents` — the reporting line
 that decides who each agent may delegate to.
 
+## Health and logs
+
+Settings → Health and logs reads the gateway's `health` snapshot (event loop load,
+config hot reload, heartbeat, plugins, channels, one row per agent) and refreshes it
+whenever the gateway pushes a `health` event. Below it the gateway's own log file is
+tailed with `logs.tail`: the first call takes the last 300 lines, later calls pass the
+returned cursor so only new lines cross the wire, every three seconds while Follow is
+on. Lines are parsed when they are JSON (time, level, subsystem, message) and shown raw
+otherwise; the filter box and the level picker work on what is already loaded, up to
+2000 lines.
+
 ## Gateway control
 
 The Settings pane can start, stop and restart the gateway. It shells out to

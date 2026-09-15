@@ -8,6 +8,7 @@ import { UpdatePanel } from '../UpdatePanel'
 import { PluginsPage } from './PluginsPage'
 import { McpServersPage } from './McpServersPage'
 import { AutomationsPage } from './AutomationsPage'
+import { HealthPage } from './HealthPage'
 import { NotificationsPage } from './NotificationsPage'
 import { CommandHistoryPage } from './CommandHistoryPage'
 
@@ -30,6 +31,7 @@ export type SettingsSection =
   | 'departments'
   | 'notifications'
   | 'commands'
+  | 'health'
   | 'service'
   | 'plugins'
   | 'mcp'
@@ -61,7 +63,8 @@ const NAV: NavGroup[] = [
       { id: 'service', label: 'Service' },
       { id: 'plugins', label: 'Plugins' },
       { id: 'mcp', label: 'MCP servers' },
-      { id: 'automations', label: 'Automations' }
+      { id: 'automations', label: 'Automations' },
+      { id: 'health', label: 'Health and logs' }
     ]
   },
   { label: 'App', items: [{ id: 'updates', label: 'Updates and about' }] }
@@ -73,6 +76,7 @@ const TITLES: Record<SettingsSection, string> = {
   departments: 'Departments',
   notifications: 'Notifications',
   commands: 'Command history',
+  health: 'Health and logs',
   service: 'Gateway service',
   plugins: 'Plugins',
   mcp: 'MCP servers',
@@ -370,6 +374,7 @@ export function SettingsPage({
         {section === 'plugins' && <PluginsPage connected={connected} />}
         {section === 'mcp' && <McpServersPage connected={connected} />}
         {section === 'automations' && <AutomationsPage connected={connected} />}
+        {section === 'health' && <HealthPage connected={connected} />}
 
         {section === 'updates' && (
           <div className="settings-stack">
