@@ -57,10 +57,13 @@ export function DesktopWindow({ initialNodeId }: Props): React.JSX.Element {
   useEffect(() => api.onDesktopSelect(setSelected), [])
 
   const sorted = [...desktops].sort((a, b) => Number(b.connected === true) - Number(a.connected === true))
-  const node = sorted.find((d) => d.nodeId === selected) ?? sorted[0]
+  // Nothing is shown until a desktop is chosen; the list is the front page.
+  const node = selected ? sorted.find((d) => d.nodeId === selected) : undefined
 
   useEffect(() => {
-    if (node) document.title = `${node.displayName || node.platform || 'Desktop'}${node.connected ? '' : ' (offline)'}`
+    document.title = node
+      ? `${node.displayName || node.platform || 'Desktop'}${node.connected ? '' : ' (offline)'}`
+      : 'Desktops'
   }, [node])
 
   const remove = async (target: RemoteNode): Promise<void> => {
@@ -87,26 +90,19 @@ export function DesktopWindow({ initialNodeId }: Props): React.JSX.Element {
   return (
     <div className="desk-window">
       <div className="desk-window-bar">
-        {sorted.length > 0 ? (
-          <select
-            className="desk-panel-pick"
-            value={node?.nodeId ?? ''}
-            onChange={(e) => setSelected(e.target.value)}
-            title="Choose a desktop"
-          >
-            {sorted.map((d) => (
-              <option key={d.nodeId} value={d.nodeId}>
-                {(d.displayName || d.platform || 'desktop') + (d.connected ? '' : ' (offline)')}
-              </option>
-            ))}
-          </select>
+        {node ? (
+          <>
+            <button className="btn btn-sm btn-ghost" onClick={() => setSelected(null)} title="Back to the list">
+              ‹ Desktops
+            </button>
+            <span className="desk-panel-title">
+              {(node.displayName || node.platform || 'desktop') + (node.connected ? '' : ' (offline)')}
+            </span>
+          </>
         ) : (
-          <span className="desk-panel-title">{connected ? 'No desktops paired' : 'Not connected to a gateway'}</span>
-        )}
-        {node && !node.connected && (
-          <button className="icon-btn" title="Forget this desktop" onClick={() => void remove(node)}>
-            🗑
-          </button>
+          <span className="desk-panel-title">
+            {!connected ? 'Not connected to a gateway' : sorted.length === 0 ? 'No desktops paired' : `${sorted.length} desktop${sorted.length === 1 ? '' : 's'}`}
+          </span>
         )}
         <span className="desk-panel-spacer" />
         <button
@@ -122,7 +118,36 @@ export function DesktopWindow({ initialNodeId }: Props): React.JSX.Element {
         {node ? (
           <DesktopView key={node.nodeId} node={node} compact />
         ) : (
-          <p className="thread-empty">Pair a machine with its node role on and it shows up here.</p>
+          <div className="desk-list">
+            {sorted.length === 0 && (
+              <p className="thread-empty">Pair a machine with its node role on and it shows up here.</p>
+            )}
+            {sorted.map((d) => (
+              <div key={d.nodeId} className="gw-row">
+                <i className={`dot ${d.connected ? 'dot-ok' : 'dot-off'}`} />
+                <span className="gw-meta">
+                  <span className="gw-name">{d.displayName || d.platform || 'desktop'}</span>
+                  <span className="gw-url mono">
+                    {d.platform ?? ''}
+                    {d.platform ? ' · ' : ''}
+                    {d.connected ? 'online' : 'offline'} · {d.nodeId.slice(0, 12)}
+                  </span>
+                </span>
+                {!d.connected && (
+                  <button className="btn btn-sm btn-ghost" title="Forget this desktop" onClick={() => void remove(d)}>
+                    Forget
+                  </button>
+                )}
+                <button
+                  className={`btn btn-sm${d.connected ? ' btn-primary' : ''}`}
+                  disabled={!d.connected}
+                  onClick={() => setSelected(d.nodeId)}
+                >
+                  Connect
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

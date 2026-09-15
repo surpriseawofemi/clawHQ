@@ -144,6 +144,8 @@ type Host struct {
 	// Hooks below are optional and set by the app; see Hooks.
 	onPending         func(gatewayID, deviceID string)
 	onConnected       func(gatewayID, deviceID string)
+	onStalePairing    func(gatewayID, oldDeviceID string)
+	localToken        func() string
 	onExecRequest     func(ExecRequest)
 	onExecRecord      func(ExecRecord)
 	onAllowAlways     func(commandText string)
@@ -159,6 +161,12 @@ type Hooks struct {
 	OnPending func(gatewayID, deviceID string)
 	// OnConnected fires after each successful connect.
 	OnConnected func(gatewayID, deviceID string)
+	// OnStalePairing fires when a changed command surface forced a fresh identity;
+	// the operator side removes the old node from the gateway.
+	OnStalePairing func(gatewayID, oldDeviceID string)
+	// LocalToken returns the gateway's shared token when the gateway runs on this
+	// machine and its config is readable, else "". Used only when the gateway asks.
+	LocalToken func() string
 	// OnExecRequest fires when a command needs the user's decision.
 	OnExecRequest func(ExecRequest)
 	// OnExecRecord fires after every system.run, ran or refused, for the audit log.
@@ -189,6 +197,8 @@ func (h *Host) SetHooks(hooks Hooks) {
 	defer h.mu.Unlock()
 	h.onPending = hooks.OnPending
 	h.onConnected = hooks.OnConnected
+	h.onStalePairing = hooks.OnStalePairing
+	h.localToken = hooks.LocalToken
 	h.onExecRequest = hooks.OnExecRequest
 	h.onExecRecord = hooks.OnExecRecord
 	h.onAllowAlways = hooks.OnAllowAlways
@@ -292,14 +302,22 @@ func (h *Host) start(ctx context.Context, gatewayID, url, token, phase string) (
 		return h.Status(), fmt.Errorf("node identity store: %w", err)
 	}
 	dir := filepath.Join(h.identityRoot, gatewayIDOrDefault(gatewayID)+"-node")
+	staleID := ""
 	if strings.TrimSpace(store.LoadDeviceToken()) != "" && surfaceChanged(dir) {
 		// The gateway serves a node's command surface from its approved pairing
-		// record, and nothing can rewrite that in place. Pair afresh.
+		// record, and nothing can rewrite that in place. Pair afresh, and hand the
+		// old node id to the operator side so it does not linger as a ghost desktop.
+		if old, err := store.LoadOrGenerate(); err == nil {
+			staleID = old.DeviceID
+		}
 		_ = store.Reset()
 	}
 	id, err := store.LoadOrGenerate()
 	if err != nil {
 		return h.Status(), fmt.Errorf("node identity: %w", err)
+	}
+	if staleID != "" && staleID != id.DeviceID && h.onStalePairing != nil {
+		go h.onStalePairing(gatewayID, staleID)
 	}
 
 	h.setStatus(func(s *Status) {
@@ -343,6 +361,14 @@ func (h *Host) start(ctx context.Context, gatewayID, url, token, phase string) (
 
 	client := ocgateway.NewClient(opts...)
 	if err := client.Connect(ctx, url); err != nil {
+		// A gateway on this same machine skips device pairing for local clients and
+		// wants its shared token instead. When ClawHQ can read that token from the
+		// local OpenClaw config, use it once; the gateway answers with a device token.
+		if strings.TrimSpace(token) == "" && isTokenMissing(err) && h.localToken != nil && h.currentGeneration() == gen {
+			if t := strings.TrimSpace(h.localToken()); t != "" {
+				return h.start(ctx, gatewayID, url, t, phase)
+			}
+		}
 		if h.Status().Enabled && h.currentGeneration() == gen {
 			if isAwaitingApproval(err) {
 				h.setStatus(func(s *Status) {
@@ -383,6 +409,16 @@ func (h *Host) start(ctx context.Context, gatewayID, url, token, phase string) (
 		go h.onConnected(gatewayID, id.DeviceID)
 	}
 	return h.Status(), nil
+}
+
+// isTokenMissing spots the gateway refusing a local client that brought no shared
+// token: "unauthorized: gateway token missing (provide gateway auth token)".
+func isTokenMissing(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "token missing") || strings.Contains(msg, "provide gateway auth token")
 }
 
 func gatewayIDOrDefault(id string) string {
@@ -855,7 +891,11 @@ func (h *Host) isShared(target string) bool {
 // ForgetPairing clears this node's device identity for the active gateway, so the next
 // Start pairs anew and re-declares its command surface.
 func (h *Host) ForgetPairing() error {
-	gatewayID := h.Status().GatewayID
+	st := h.Status()
+	gatewayID := st.GatewayID
+	if st.DeviceID != "" && h.onStalePairing != nil {
+		go h.onStalePairing(gatewayID, st.DeviceID)
+	}
 	h.Stop()
 	store, err := h.identityStore(gatewayID)
 	if err != nil {

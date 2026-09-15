@@ -111,7 +111,7 @@ function App(): React.JSX.Element {
         }}
         desktops={desktops}
         desktopsOpen={false}
-        onToggleDesktops={() => void api.window.openDesktop(desktops.find((d) => d.connected)?.nodeId ?? '')}
+        onToggleDesktops={() => void api.window.openDesktop('')}
         unreadNotices={unread}
         onOpenNotifications={() => openSettings('notifications')}
         onAgentSettings={setAgentSettingsId}

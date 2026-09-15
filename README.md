@@ -193,6 +193,15 @@ policy. Commands advertised:
 
 ### Pairing is automatic
 
+Two special cases are handled without you. A gateway does not device-pair clients
+on its own machine; it wants its shared token, and answers "gateway token missing".
+When the node role hits that, ClawHQ reads the token from the local
+`~/.openclaw/openclaw.json` (or `OPENCLAW_GATEWAY_TOKEN`) and connects once with it;
+the gateway then issues a device token as usual. And when a release changes the
+node's command surface, the fresh identity that pairing needs would leave the old
+one behind as a ghost desktop, so the operator side removes the old node pairing
+from the gateway as part of the re-pair.
+
 A node needs no credential to ask for pairing: it presents its device identity, the
 gateway parks it as a pending request, and an operator approves it. ClawHQ is both
 sides of that. As soon as the operator connection is up it starts the node role,
@@ -242,7 +251,9 @@ that run on the gateway host are in the gateway's own logs.
 
 ### Seeing and driving a remote desktop
 
-Pick a desktop in the sidebar to watch it. **Take control** sends your clicks, scroll,
+The desktops button opens the viewer window on a list of paired machines with
+Connect and Forget; nothing is captured until you connect. A desktop picked in the
+sidebar opens straight to it. **Take control** sends your clicks, scroll,
 keystrokes and pastes to that machine as `computer.act` actions and pulls a fresh frame
 after each one. Cmd on a Mac keyboard is sent as Ctrl to a Windows desktop and as Cmd to
 a Mac. The text box at the bottom sends a string verbatim, which is the reliable way to

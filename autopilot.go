@@ -364,6 +364,33 @@ func (a *nodeAutopilot) verifySurface(gatewayID, deviceID string) {
 	a.ensure()
 }
 
+// forgetNode removes an old pairing of this machine from the gateway, so a node
+// that re-paired under a fresh identity does not leave a ghost in the desktops list.
+// It waits for the operator connection when it has to.
+func (a *nodeAutopilot) forgetNode(gatewayID, oldID string) {
+	if oldID == "" {
+		return
+	}
+	for attempt := 0; attempt < 12; attempt++ {
+		st := a.conn.Status()
+		if st.Phase == gateway.PhaseConnected && st.GatewayID == gatewayID {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			_, err := a.conn.Request(ctx, "node.pair.remove", map[string]any{"nodeId": oldID})
+			if err != nil {
+				_, err = a.conn.Request(ctx, "device.pair.remove", map[string]any{"deviceId": oldID})
+			}
+			cancel()
+			if err == nil {
+				log.Printf("autopilot: removed this machine's old node pairing %s", oldID[:min(12, len(oldID))])
+			} else {
+				log.Printf("autopilot: old node pairing %s not removed: %v", oldID[:min(12, len(oldID))], err)
+			}
+			return
+		}
+		time.Sleep(5 * time.Second)
+	}
+}
+
 // rePair drops the node identity and pairs again, keeping the role on.
 func (a *nodeAutopilot) rePair() error {
 	if err := a.host.ForgetPairing(); err != nil {

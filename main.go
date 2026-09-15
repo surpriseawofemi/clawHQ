@@ -146,8 +146,10 @@ func main() {
 	// connection is up, so nothing below has to think about it.
 	auto := newNodeAutopilot(conn, nodeHost, cfgStore)
 	nodeHost.SetHooks(node.Hooks{
-		OnPending:   auto.approvePairing,
-		OnConnected: auto.verifySurface,
+		OnPending:      auto.approvePairing,
+		OnConnected:    auto.verifySurface,
+		OnStalePairing: auto.forgetNode,
+		LocalToken:     localGatewayToken,
 		// A command waiting on the user: the UI shows it as a banner.
 		OnExecRequest: func(req node.ExecRequest) {
 			if app != nil {

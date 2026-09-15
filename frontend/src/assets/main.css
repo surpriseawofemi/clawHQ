@@ -2143,6 +2143,15 @@ html.is-mac .sidebar-head {
   display: flex;
 }
 
+.desk-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  overflow: auto;
+}
+
 .desk-panel-body .chat {
   flex: 1;
   min-height: 0;
