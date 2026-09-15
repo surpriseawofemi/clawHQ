@@ -33,7 +33,9 @@ const (
 const (
 	ExecDecisionAllow  = "allow"
 	ExecDecisionAlways = "always"
-	ExecDecisionDeny   = "deny"
+	// ExecDecisionTrust runs this command and sets the agent to run without asking.
+	ExecDecisionTrust = "trust"
+	ExecDecisionDeny  = "deny"
 )
 
 // ExecRequest is a command waiting for the user's decision. It is pushed to the
@@ -58,6 +60,7 @@ const (
 	recAllowlisted = "allowlisted"
 	recAllowed     = "allowed"
 	recAlways      = "always"
+	recTrusted     = "trusted-agent"
 	recGateway     = "approved-by-gateway"
 	recNoAsk       = "run-without-asking"
 	recDenied      = "denied"
@@ -71,6 +74,7 @@ type execGate struct {
 	mu      sync.Mutex
 	mode    string
 	allow   []string
+	agents  map[string]string
 	pending map[string]chan string
 	seq     int
 }
@@ -84,8 +88,15 @@ const (
 	execAskTimeout     = 2 * time.Minute
 )
 
-// SetExecPolicy replaces the exec mode and allowlist.
-func (h *Host) SetExecPolicy(mode string, allow []string) {
+// SetExecPolicy replaces the exec mode, the allowlist and the per-agent overrides.
+func (h *Host) SetExecPolicy(mode string, allow []string, agents map[string]string) {
+	agentModes := map[string]string{}
+	for id, m := range agents {
+		switch m {
+		case store.ExecOff, store.ExecAsk, store.ExecAllow:
+			agentModes[id] = m
+		}
+	}
 	h.exec.mu.Lock()
 	switch mode {
 	case store.ExecOff, store.ExecAsk, store.ExecAllow:
@@ -94,11 +105,24 @@ func (h *Host) SetExecPolicy(mode string, allow []string) {
 		h.exec.mode = store.ExecAsk
 	}
 	h.exec.allow = append([]string(nil), allow...)
+	h.exec.agents = agentModes
 	h.exec.mu.Unlock()
 	h.setStatus(func(s *Status) {
 		s.ExecMode = mode
 		s.ExecAllow = append([]string(nil), allow...)
+		s.ExecAgents = agentModes
 	})
+}
+
+// modeFor is the mode that applies to one agent: its override when it has one,
+// the machine-wide mode otherwise.
+func (h *Host) modeFor(agentID string) (mode string, overridden bool) {
+	h.exec.mu.Lock()
+	defer h.exec.mu.Unlock()
+	if m, ok := h.exec.agents[agentID]; ok && agentID != "" {
+		return m, true
+	}
+	return h.exec.mode, false
 }
 
 // PendingExec lists commands still waiting for a decision, oldest first, so a
@@ -126,11 +150,18 @@ func (h *Host) ResolveExec(id, decision string) error {
 	}
 	switch decision {
 	case ExecDecisionAllow, ExecDecisionAlways, ExecDecisionDeny:
+	case ExecDecisionTrust:
+		if req.AgentID == "" {
+			return errors.New("this request does not say which agent sent it, so it cannot be trusted by agent")
+		}
 	default:
 		return fmt.Errorf("unknown decision %q", decision)
 	}
 	if decision == ExecDecisionAlways && h.onAllowAlways != nil {
 		h.onAllowAlways(req.Command)
+	}
+	if decision == ExecDecisionTrust && h.onTrustAgent != nil {
+		h.onTrustAgent(req.AgentID)
 	}
 	select {
 	case ch <- decision:
@@ -286,9 +317,7 @@ func (h *Host) systemRun(raw json.RawMessage) (any, string) {
 	}
 	cwd = resolveCwd(cwd)
 
-	h.exec.mu.Lock()
-	mode := h.exec.mode
-	h.exec.mu.Unlock()
+	mode, perAgent := h.modeFor(p.AgentID)
 
 	rec := ExecRecord{
 		AtMs: time.Now().UnixMilli(), AgentID: p.AgentID, SessionKey: p.SessionKey,
@@ -305,6 +334,8 @@ func (h *Host) systemRun(raw json.RawMessage) (any, string) {
 		return refuse(recOff, "agent commands are switched off on this machine — turn them on in ClawHQ → Settings → node")
 	case p.Approved:
 		rec.Decision = recGateway
+	case mode == store.ExecAllow && perAgent:
+		rec.Decision = recTrusted
 	case mode == store.ExecAllow:
 		rec.Decision = recNoAsk
 	case h.allowlisted(text):
@@ -319,6 +350,8 @@ func (h *Host) systemRun(raw json.RawMessage) (any, string) {
 			return refuse(recDenied, "the user declined to run this command")
 		case ExecDecisionAlways:
 			rec.Decision = recAlways
+		case ExecDecisionTrust:
+			rec.Decision = recTrusted
 		default:
 			rec.Decision = recAllowed
 		}

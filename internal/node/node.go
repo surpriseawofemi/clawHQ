@@ -95,6 +95,8 @@ type Status struct {
 	// Exec policy, mirrored so the settings panel has one source of truth.
 	ExecMode  string   `json:"execMode"`
 	ExecAllow []string `json:"execAllow"`
+	// ExecAgents holds per-agent mode overrides, by agent id.
+	ExecAgents map[string]string `json:"execAgents"`
 	// PendingExec are commands waiting for the user to allow or deny them.
 	PendingExec []ExecRequest `json:"pendingExec"`
 }
@@ -140,6 +142,7 @@ type Host struct {
 	onExecRequest     func(ExecRequest)
 	onExecRecord      func(ExecRecord)
 	onAllowAlways     func(commandText string)
+	onTrustAgent      func(agentID string)
 	onExecModeChanged func(mode string)
 }
 
@@ -157,6 +160,8 @@ type Hooks struct {
 	OnExecRecord func(ExecRecord)
 	// OnAllowAlways fires when the user picked "always" for a command.
 	OnAllowAlways func(commandText string)
+	// OnTrustAgent fires when the user answers a banner with "trust this agent".
+	OnTrustAgent func(agentID string)
 	// OnExecModeChanged fires when the gateway pushes a new exec policy.
 	OnExecModeChanged func(mode string)
 }
@@ -168,7 +173,7 @@ func New(identityRoot string, st DepartmentStore, emitStatus func(Status), onNot
 		emitStatus:   emitStatus,
 		onNotify:     onNotify,
 		logUnknown:   logUnknown,
-		status:       Status{Commands: commands, ExecMode: store.ExecAsk, ExecAllow: []string{}, PendingExec: []ExecRequest{}},
+		status:       Status{Commands: commands, ExecMode: store.ExecAsk, ExecAllow: []string{}, ExecAgents: map[string]string{}, PendingExec: []ExecRequest{}},
 		exec:         execGate{mode: store.ExecAsk},
 	}
 }
@@ -182,6 +187,7 @@ func (h *Host) SetHooks(hooks Hooks) {
 	h.onExecRequest = hooks.OnExecRequest
 	h.onExecRecord = hooks.OnExecRecord
 	h.onAllowAlways = hooks.OnAllowAlways
+	h.onTrustAgent = hooks.OnTrustAgent
 	h.onExecModeChanged = hooks.OnExecModeChanged
 }
 

@@ -326,6 +326,7 @@ func (s *NodeService) Status() node.Status {
 	if status.ExecMode == "" {
 		status.ExecMode = cfg.Node.Exec.Mode
 		status.ExecAllow = cfg.Node.Exec.Allow
+		status.ExecAgents = cfg.Node.Exec.Agents
 	}
 	return status
 }
@@ -382,17 +383,34 @@ func (s *NodeService) SetExecPolicy(mode string, allow []string) (node.Status, e
 	if allow == nil {
 		allow = []string{}
 	}
-	if _, err := s.store.UpdateNode(func(n *store.NodeConfig) {
+	cfg, err := s.store.UpdateNode(func(n *store.NodeConfig) {
 		n.Exec.Mode = mode
 		n.Exec.Allow = allow
-	}); err != nil {
+	})
+	if err != nil {
 		return s.Status(), err
 	}
-	s.host.SetExecPolicy(mode, allow)
+	s.host.SetExecPolicy(mode, allow, cfg.Node.Exec.Agents)
 	return s.Status(), nil
 }
 
-// ResolveExec answers a command waiting for approval: allow, always, or deny.
+// SetAgentExecMode overrides the exec mode for one agent (off, ask, allow); an empty
+// mode removes the override so the machine-wide mode applies again.
+func (s *NodeService) SetAgentExecMode(agentID, mode string) (node.Status, error) {
+	switch mode {
+	case "", store.ExecOff, store.ExecAsk, store.ExecAllow:
+	default:
+		return s.Status(), fmt.Errorf("unknown exec mode %q", mode)
+	}
+	cfg, err := s.store.SetAgentExecMode(agentID, mode)
+	if err != nil {
+		return s.Status(), err
+	}
+	s.host.SetExecPolicy(cfg.Node.Exec.Mode, cfg.Node.Exec.Allow, cfg.Node.Exec.Agents)
+	return s.Status(), nil
+}
+
+// ResolveExec answers a command waiting for approval: allow, always, trust, or deny.
 func (s *NodeService) ResolveExec(id, decision string) (node.Status, error) {
 	if err := s.host.ResolveExec(id, decision); err != nil {
 		return s.Status(), err

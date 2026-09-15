@@ -222,7 +222,10 @@ top, in Settings → node:
 
 The allowlist takes an exact command, a bare program name (`git`), or a prefix ending
 in `*` (`npm run *`). When the gateway's own policy already asked an operator and got a
-yes, it sends `approved: true` and ClawHQ does not ask again. Gateway-side approval
+yes, it sends `approved: true` and ClawHQ does not ask again. The mode can be
+overridden per agent (Settings → This machine, or "Trust <agent>" on a banner), so a
+trusted agent runs without asking while a new one still asks; the agent id comes from
+the exec plan the gateway sends. Gateway-side approval
 requests (`exec.approval.requested`) show up as the same banners, because ClawHQ holds
 the `operator.admin` scope; they are answered with `exec.approval.resolve`.
 

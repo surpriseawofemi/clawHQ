@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import type { ExecMode, NodeStatus } from '../types'
+import type { Agent, AgentsList, ExecMode, NodeStatus } from '../types'
+import { agentLabel } from '../types'
 
 /**
  * The node role: this machine exposed to agents running on the gateway.
@@ -16,10 +17,16 @@ export function NodePanel(): React.JSX.Element {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const [roster, setRoster] = useState<Agent[]>([])
+
   useEffect(() => {
     api.node
       .status()
       .then(setStatus)
+      .catch(() => undefined)
+    api.rpc
+      .request<AgentsList>('agents.list')
+      .then((res) => setRoster(res?.agents ?? []))
       .catch(() => undefined)
     return api.onNodeStatus(setStatus)
   }, [])
@@ -63,6 +70,13 @@ export function NodePanel(): React.JSX.Element {
 
   const removeAllow = (entry: string): Promise<void> =>
     run(`allow-rm-${entry}`, () => api.node.setExecPolicy(mode, allow.filter((a) => a !== entry)))
+
+  // Per-agent overrides need the roster; without a gateway the overrides already set
+  // are still listed by id.
+  const agentModes = status?.execAgents ?? {}
+  const agentIds = [...new Set([...roster.map((a) => a.id), ...Object.keys(agentModes)])].sort()
+  const setAgentMode = (agentId: string, next: ExecMode | ''): Promise<void> =>
+    run(`agent-${agentId}`, () => api.node.setAgentExecMode(agentId, next))
 
   const statusLine = ((): { dot: string; text: string } => {
     if (!status?.enabled) return { dot: 'dot-off', text: 'off' }
@@ -211,6 +225,38 @@ export function NodePanel(): React.JSX.Element {
               <button className="btn" disabled={!allowEntry.trim() || busy !== null} onClick={addAllow}>
                 Allow
               </button>
+            </div>
+          </>
+        )}
+        {agentIds.length > 0 && (
+          <>
+            <p className="field-hint">
+              Per agent: a trusted agent runs without asking while a new one still asks.
+              &ldquo;Trust&rdquo; on a banner sets this too.
+            </p>
+            <div className="dept-editor">
+              {agentIds.map((id) => {
+                const agent = roster.find((a) => a.id === id)
+                const override = agentModes[id] ?? ''
+                return (
+                  <div key={id} className={`dept-edit-row agent-policy-row${override ? ' is-set' : ''}`}>
+                    <span className="agent-policy-name">
+                      {agent ? agentLabel(agent) : id}
+                      {agent && agentLabel(agent) !== id && <span className="plugin-desc"> {id}</span>}
+                    </span>
+                    <select
+                      value={override}
+                      disabled={busy !== null}
+                      onChange={(e) => void setAgentMode(id, e.target.value as ExecMode | '')}
+                    >
+                      <option value="">Same as this machine</option>
+                      <option value="allow">Trusted, runs without asking</option>
+                      <option value="ask">Ask me</option>
+                      <option value="off">Off</option>
+                    </select>
+                  </div>
+                )
+              })}
             </div>
           </>
         )}

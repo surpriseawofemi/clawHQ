@@ -17,9 +17,10 @@ type Ask = {
   resolve: (decision: string) => Promise<void>
 }
 
-const NODE_DECISIONS: Ask['decisions'] = [
+const nodeDecisions = (agentId: string): Ask['decisions'] => [
   { label: 'Allow once', value: 'allow', primary: true },
   { label: 'Always', value: 'always' },
+  ...(agentId ? [{ label: `Trust ${agentId}`, value: 'trust' }] : []),
   { label: 'Deny', value: 'deny', danger: true }
 ]
 
@@ -81,9 +82,9 @@ export function ApprovalBanners({ connected }: Props): React.JSX.Element | null 
       title: `${req.agentId || 'An agent'} wants to run a command on this Mac`,
       command: req.command,
       detail: req.cwd ? `in ${req.cwd}` : '',
-      decisions: NODE_DECISIONS,
+      decisions: nodeDecisions(req.agentId),
       resolve: async (decision) => {
-        await api.node.resolveExec(req.id, decision as 'allow' | 'always' | 'deny')
+        await api.node.resolveExec(req.id, decision as 'allow' | 'always' | 'trust' | 'deny')
         setNodeAsks((prev) => prev.filter((r) => r.id !== req.id))
       }
     })),

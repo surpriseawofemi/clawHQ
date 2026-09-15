@@ -120,7 +120,7 @@ func main() {
 	startCfg := cfgStore.Read()
 	nodeHost.SetSharedFolders(startCfg.Node.SharedFolders)
 	nodeHost.SetDesktopControl(startCfg.Node.DesktopControl)
-	nodeHost.SetExecPolicy(startCfg.Node.Exec.Mode, startCfg.Node.Exec.Allow)
+	nodeHost.SetExecPolicy(startCfg.Node.Exec.Mode, startCfg.Node.Exec.Allow, startCfg.Node.Exec.Agents)
 
 	// OS notifications go through the platform's own centre under ClawHQ's name and
 	// icon, rather than through a script runner that gets the credit.
@@ -155,12 +155,17 @@ func main() {
 		},
 		OnAllowAlways: func(commandText string) {
 			if cfg, err := cfgStore.AllowExecCommand(commandText); err == nil {
-				nodeHost.SetExecPolicy(cfg.Node.Exec.Mode, cfg.Node.Exec.Allow)
+				nodeHost.SetExecPolicy(cfg.Node.Exec.Mode, cfg.Node.Exec.Allow, cfg.Node.Exec.Agents)
+			}
+		},
+		OnTrustAgent: func(agentID string) {
+			if cfg, err := cfgStore.SetAgentExecMode(agentID, store.ExecAllow); err == nil {
+				nodeHost.SetExecPolicy(cfg.Node.Exec.Mode, cfg.Node.Exec.Allow, cfg.Node.Exec.Agents)
 			}
 		},
 		OnExecModeChanged: func(mode string) {
 			if cfg, err := cfgStore.UpdateNode(func(n *store.NodeConfig) { n.Exec.Mode = mode }); err == nil {
-				nodeHost.SetExecPolicy(cfg.Node.Exec.Mode, cfg.Node.Exec.Allow)
+				nodeHost.SetExecPolicy(cfg.Node.Exec.Mode, cfg.Node.Exec.Allow, cfg.Node.Exec.Agents)
 			}
 		},
 	})

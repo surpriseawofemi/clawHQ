@@ -95,8 +95,11 @@ export const api = {
       NodeService.SetDesktopControl(on) as Promise<NodeStatus>,
     setExecPolicy: (mode: ExecMode, allow: string[]): Promise<NodeStatus> =>
       NodeService.SetExecPolicy(mode, allow) as Promise<NodeStatus>,
-    resolveExec: (id: string, decision: 'allow' | 'always' | 'deny'): Promise<NodeStatus> =>
+    resolveExec: (id: string, decision: 'allow' | 'always' | 'trust' | 'deny'): Promise<NodeStatus> =>
       NodeService.ResolveExec(id, decision) as Promise<NodeStatus>,
+    /** Override the exec mode for one agent; an empty mode goes back to the machine-wide one. */
+    setAgentExecMode: (agentId: string, mode: ExecMode | ''): Promise<NodeStatus> =>
+      NodeService.SetAgentExecMode(agentId, mode) as Promise<NodeStatus>,
     /** Drop the node identity and pair again with the current command list. */
     rePair: (): Promise<NodeStatus> => NodeService.RePair() as Promise<NodeStatus>
   },

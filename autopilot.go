@@ -82,7 +82,7 @@ func (a *nodeAutopilot) ensure() {
 	}
 	a.host.SetSharedFolders(cfg.Node.SharedFolders)
 	a.host.SetDesktopControl(cfg.Node.DesktopControl)
-	a.host.SetExecPolicy(cfg.Node.Exec.Mode, cfg.Node.Exec.Allow)
+	a.host.SetExecPolicy(cfg.Node.Exec.Mode, cfg.Node.Exec.Allow, cfg.Node.Exec.Agents)
 	if _, err := a.host.Start(ctx, profile.ID, profile.URL, ""); err != nil {
 		// Pending approval and transient failures are handled by the host's own
 		// retry loop; this is just for the log.

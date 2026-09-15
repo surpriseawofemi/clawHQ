@@ -1642,6 +1642,29 @@ html.is-mac .sidebar-head {
   line-height: 1.5;
 }
 
+/* ---- per-agent command policy ---- */
+.agent-policy-row {
+  align-items: center;
+}
+
+.agent-policy-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.agent-policy-row select {
+  flex: none;
+  max-width: 55%;
+}
+
+.agent-policy-row.is-set .agent-policy-name {
+  font-weight: 550;
+}
+
 /* ---- health and logs ---- */
 .health-line {
   display: flex;

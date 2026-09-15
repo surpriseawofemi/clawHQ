@@ -53,6 +53,29 @@ type ExecConfig struct {
 	// command text, a prefix when it ends in "*", or the command's first word when
 	// the entry is a bare program name such as "git".
 	Allow []string `json:"allow"`
+	// Agents overrides Mode for particular agents, by agent id: a trusted agent runs
+	// without asking while a new one still asks. Absent means Mode applies.
+	Agents map[string]string `json:"agents"`
+}
+
+// NormalizeExec fills defaults and drops overrides that are not a known mode.
+func (e *ExecConfig) Normalize() {
+	if e.Allow == nil {
+		e.Allow = []string{}
+	}
+	switch e.Mode {
+	case ExecOff, ExecAsk, ExecAllow:
+	default:
+		e.Mode = ExecAsk
+	}
+	agents := map[string]string{}
+	for id, mode := range e.Agents {
+		switch mode {
+		case ExecOff, ExecAsk, ExecAllow:
+			agents[id] = mode
+		}
+	}
+	e.Agents = agents
 }
 
 // NodeConfig controls ClawHQ's node role: whether this machine exposes itself to
@@ -153,14 +176,7 @@ func (s *Store) readLocked() Config {
 	if cfg.Node.SharedFolders == nil {
 		cfg.Node.SharedFolders = []string{}
 	}
-	if cfg.Node.Exec.Allow == nil {
-		cfg.Node.Exec.Allow = []string{}
-	}
-	switch cfg.Node.Exec.Mode {
-	case ExecOff, ExecAsk, ExecAllow:
-	default:
-		cfg.Node.Exec.Mode = ExecAsk
-	}
+	cfg.Node.Exec.Normalize()
 	// Version 1 configs pre-date automatic node pairing, when the role stayed off
 	// until the user pasted a token. Now that ClawHQ pairs itself, turn it on once;
 	// the switch in Settings still turns it off for good.
@@ -388,13 +404,27 @@ func (s *Store) UpdateNode(mutate func(*NodeConfig)) (Config, error) {
 	if cfg.Node.SharedFolders == nil {
 		cfg.Node.SharedFolders = []string{}
 	}
-	if cfg.Node.Exec.Allow == nil {
-		cfg.Node.Exec.Allow = []string{}
-	}
-	if cfg.Node.Exec.Mode == "" {
-		cfg.Node.Exec.Mode = ExecAsk
-	}
+	cfg.Node.Exec.Normalize()
 	return s.writeLocked(cfg)
+}
+
+// SetAgentExecMode overrides the exec mode for one agent; an empty mode removes the
+// override so the machine-wide mode applies again.
+func (s *Store) SetAgentExecMode(agentID, mode string) (Config, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return s.Read(), nil
+	}
+	return s.UpdateNode(func(n *NodeConfig) {
+		if n.Exec.Agents == nil {
+			n.Exec.Agents = map[string]string{}
+		}
+		if mode == "" {
+			delete(n.Exec.Agents, agentID)
+		} else {
+			n.Exec.Agents[agentID] = mode
+		}
+	})
 }
 
 // AllowExecCommand adds an entry to the exec allowlist, ignoring duplicates.

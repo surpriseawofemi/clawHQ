@@ -63,19 +63,19 @@ func TestSystemRunPolicy(t *testing.T) {
 		return out, failure
 	}
 
-	h.SetExecPolicy(store.ExecOff, nil)
+	h.SetExecPolicy(store.ExecOff, nil, nil)
 	if _, failure := run(false); !strings.Contains(failure, "switched off") {
 		t.Fatalf("off mode should refuse, got %q", failure)
 	}
 
-	h.SetExecPolicy(store.ExecAllow, nil)
+	h.SetExecPolicy(store.ExecAllow, nil, nil)
 	res, failure := run(false)
 	if failure != "" || res["exit"] != 3 || !strings.Contains(res["stdout"].(string), "out") || !strings.Contains(res["stderr"].(string), "err") {
 		t.Fatalf("allow mode should run: res=%v failure=%q", res, failure)
 	}
 
 	// Ask mode with nobody listening denies rather than runs.
-	h.SetExecPolicy(store.ExecAsk, nil)
+	h.SetExecPolicy(store.ExecAsk, nil, nil)
 	if _, failure := run(false); failure == "" {
 		t.Fatalf("ask mode with no approver should fail")
 	}
@@ -84,13 +84,27 @@ func TestSystemRunPolicy(t *testing.T) {
 		t.Fatalf("approved command should run, got %q", failure)
 	}
 	// Allowlisted runs silently.
-	h.SetExecPolicy(store.ExecAsk, []string{"echo out"})
+	h.SetExecPolicy(store.ExecAsk, []string{"echo out"}, nil)
 	if _, failure := run(false); failure != "" {
 		t.Fatalf("allowlisted command should run, got %q", failure)
 	}
 
+	// A per-agent override wins over the machine-wide mode, both ways.
+	h.SetExecPolicy(store.ExecAsk, nil, map[string]string{"main": store.ExecAllow})
+	trusted := json.RawMessage(`{"command":["/bin/sh","-c","echo out"],"rawCommand":"echo out","agentId":"main"}`)
+	if _, failure := h.systemRun(trusted); failure != "" {
+		t.Fatalf("trusted agent should run without asking, got %q", failure)
+	}
+	h.SetExecPolicy(store.ExecAllow, nil, map[string]string{"main": store.ExecOff})
+	if _, failure := h.systemRun(trusted); !strings.Contains(failure, "switched off") {
+		t.Fatalf("agent switched off should be refused, got %q", failure)
+	}
+	if _, failure := run(false); failure != "" {
+		t.Fatalf("other agents still follow the machine-wide mode, got %q", failure)
+	}
+
 	// Ask mode with an approver: the decision flows back through ResolveExec.
-	h.SetExecPolicy(store.ExecAsk, nil)
+	h.SetExecPolicy(store.ExecAsk, nil, nil)
 	asked := make(chan ExecRequest, 1)
 	h.SetHooks(Hooks{OnExecRequest: func(r ExecRequest) { asked <- r }})
 	done := make(chan string, 1)

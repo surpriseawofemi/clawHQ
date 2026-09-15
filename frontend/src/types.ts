@@ -156,6 +156,8 @@ export type NodeStatus = {
   lastInvoke: string
   execMode: ExecMode
   execAllow: string[]
+  /** Per-agent overrides of execMode, by agent id. */
+  execAgents: Record<string, ExecMode>
   pendingExec: ExecRequest[]
 }
 

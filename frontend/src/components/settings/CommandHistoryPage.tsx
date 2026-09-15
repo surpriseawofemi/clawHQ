@@ -15,6 +15,7 @@ const DECISION: Record<string, { label: string; tone: 'ok' | 'warn' | 'bad' | 'o
   allowlisted: { label: 'allowlisted', tone: 'ok' },
   allowed: { label: 'you allowed', tone: 'ok' },
   always: { label: 'you allowed, always', tone: 'ok' },
+  'trusted-agent': { label: 'trusted agent', tone: 'ok' },
   'approved-by-gateway': { label: 'approved on the gateway', tone: 'ok' },
   'run-without-asking': { label: 'run without asking', tone: 'warn' },
   denied: { label: 'you denied', tone: 'bad' },
