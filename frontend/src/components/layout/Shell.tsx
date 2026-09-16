@@ -83,6 +83,14 @@ const Icon = {
       <path d="M8 20h8M12 16v4" />
     </svg>
   ),
+  /** Two boxes joined: this machine is a node of the gateway. */
+  node: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      <path d="M10 6.5h4v7.5" />
+    </svg>
+  ),
   gear: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="3" />
@@ -120,11 +128,19 @@ export function TopBar({ shell, title }: { shell: ShellProps; title: string | nu
         </>
       )}
       <span className="topbar-spacer" />
-      <button className="conn-pill" onClick={shell.onOpenSwitcher} title="Switch or rename gateway">
+      <button
+        className="conn-pill"
+        onClick={shell.onOpenSwitcher}
+        title={`Switch or rename gateway${lines.sub ? ` · ${lines.sub}` : ''}`}
+      >
         <i className={`dot ${lines.dot}`} />
+        {node?.enabled && (
+          <span className={`node-mark${node.connected ? ' is-on' : ''}`} aria-label={lines.sub} title={lines.sub}>
+            {Icon.node}
+          </span>
+        )}
         <span className="conn-lines">
           <span>{lines.main}</span>
-          {lines.sub && <span className="conn-sub">{lines.sub}</span>}
         </span>
       </button>
       <button className="desk-btn" onClick={shell.onOpenSearch} title="Search (⌘K)" aria-label="Search">

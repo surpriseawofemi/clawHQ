@@ -135,8 +135,18 @@ html.is-mac .topbar {
 .topbar .conn-pill {
   width: auto;
   max-width: 260px;
-  padding: 4px 10px;
+  padding: 5px 10px;
   margin-right: 4px;
+}
+
+/* The node mark: this machine is a node of that gateway. Dim until connected. */
+.node-mark {
+  display: inline-flex;
+  color: var(--text-faint);
+}
+
+.node-mark.is-on {
+  color: var(--ok);
 }
 
 .shell-body {
