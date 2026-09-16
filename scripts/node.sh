@@ -11,16 +11,20 @@
 #   --mode auto|semi|manual auto: agents run anything here without asking;
 #                           semi (default): safe reads run, the rest asks you in ClawHQ;
 #                           manual: every command asks
+#   --node-path <dir>       use the Node.js under <dir>/bin instead of installing one
 #
-# What it does: checks Node.js 24, installs the OpenClaw CLI, writes the exec policy
-# for the chosen mode, then
-# pairs with the gateway and installs the node host as a system service.
+# What it does: makes sure a Node.js 24 is available (the system one if it is 24,
+# otherwise an official build unpacked into /opt/node24 that leaves the system Node
+# and anything running on it alone), installs the OpenClaw CLI under that Node,
+# writes the exec policy for the chosen mode, then pairs with the gateway and
+# installs the node host as a system service using that Node's absolute path.
 set -euo pipefail
 
 CODE=""
 VERSION="2026.9.4"
 NAME="$(hostname -s 2>/dev/null || hostname)"
 MODE="semi"
+NODE_PATH_DIR=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --code) CODE="$2"; shift 2 ;;
@@ -28,6 +32,7 @@ while [ $# -gt 0 ]; do
     --name) NAME="$2"; shift 2 ;;
     --mode) MODE="$2"; shift 2 ;;
     --allow-writes) MODE="manual"; shift ;;
+    --node-path) NODE_PATH_DIR="$2"; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -40,18 +45,49 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # ---- Node.js ----------------------------------------------------------------
-if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js is not installed. OpenClaw $VERSION needs Node.js 24 (not 25). Install it first, for example:" >&2
-  echo "  curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash - && sudo apt-get install -y nodejs" >&2
-  exit 1
+# OpenClaw needs Node.js 24 (or 26.1+); 25 is refused. A production box often runs
+# its apps on an older system Node, so that one is never replaced: if it will not
+# do, an official build goes to /opt/node24 and only OpenClaw uses it.
+node_ok() { # $1 = node binary
+  local major
+  major="$("$1" -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+  [ "$major" -ge 24 ] && [ "$major" -ne 25 ]
+}
+NODE_BIN=""
+if [ -n "$NODE_PATH_DIR" ]; then
+  node_ok "$NODE_PATH_DIR/bin/node" || { echo "$NODE_PATH_DIR/bin/node is not a usable Node.js 24" >&2; exit 1; }
+  NODE_BIN="$NODE_PATH_DIR/bin"
+elif command -v node >/dev/null 2>&1 && node_ok "$(command -v node)"; then
+  NODE_BIN="$(dirname "$(command -v node)")"
+elif [ -x /opt/node24/bin/node ] && node_ok /opt/node24/bin/node; then
+  NODE_BIN="/opt/node24/bin"
+else
+  if command -v node >/dev/null 2>&1; then
+    say "System Node.js $(node -v) stays as it is; installing Node.js 24 beside it in /opt/node24"
+  else
+    say "No Node.js found; installing Node.js 24 in /opt/node24"
+  fi
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    x86_64) NARCH="x64" ;;
+    aarch64|arm64) NARCH="arm64" ;;
+    *) echo "unsupported CPU: $ARCH" >&2; exit 1 ;;
+  esac
+  # Latest 24.x from the official index, so no third-party apt repo is involved.
+  NVER="$(curl -fsSL https://nodejs.org/dist/index.json | grep -o '"version":"v24\.[0-9]*\.[0-9]*"' | head -1 | cut -d'"' -f4)"
+  [ -n "$NVER" ] || { echo "could not read the Node.js release list from nodejs.org (DNS or network?)" >&2; exit 1; }
+  TARBALL="node-$NVER-linux-$NARCH.tar.xz"
+  TMP="$(mktemp -d)"
+  curl -fsSL "https://nodejs.org/dist/$NVER/$TARBALL" -o "$TMP/$TARBALL"
+  curl -fsSL "https://nodejs.org/dist/$NVER/SHASUMS256.txt" -o "$TMP/SHASUMS256.txt"
+  (cd "$TMP" && grep " $TARBALL\$" SHASUMS256.txt | sha256sum -c - >/dev/null) || { echo "checksum mismatch for $TARBALL" >&2; exit 1; }
+  $SUDO mkdir -p /opt/node24
+  $SUDO tar -xJf "$TMP/$TARBALL" -C /opt/node24 --strip-components=1
+  rm -rf "$TMP"
+  NODE_BIN="/opt/node24/bin"
 fi
-NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-if [ "$NODE_MAJOR" -lt 24 ] || [ "$NODE_MAJOR" -eq 25 ]; then
-  echo "Node.js $(node -v) will not do; OpenClaw $VERSION needs Node.js 24 (or 26.1+). On Ubuntu:" >&2
-  echo "  curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash - && sudo apt-get install -y nodejs" >&2
-  exit 1
-fi
-say "Node.js $(node -v)"
+export PATH="$NODE_BIN:$PATH"
+say "Node.js $(node -v) at $NODE_BIN"
 
 # ---- OpenClaw CLI --------------------------------------------------------------
 CURRENT="$(openclaw --version 2>/dev/null | sed -nE 's/^OpenClaw ([0-9.]+).*/\1/p' || true)"
@@ -63,10 +99,10 @@ else
   if [ -w "$PREFIX/lib" ] 2>/dev/null; then
     npm install -g "openclaw@$VERSION"
   else
-    $SUDO npm install -g "openclaw@$VERSION"
+    $SUDO env PATH="$PATH" npm install -g "openclaw@$VERSION"
   fi
 fi
-command -v openclaw >/dev/null 2>&1 || { echo "openclaw is not on PATH after install; open a new shell and rerun" >&2; exit 1; }
+command -v openclaw >/dev/null 2>&1 || { echo "openclaw is not on PATH after install; expected it under $NODE_BIN" >&2; exit 1; }
 
 # ---- exec policy: auto, semi-auto or manual ---------------------------------------
 # The same file the gateway pushes with `exec.approvals.node.set`; ClawHQ's
@@ -115,3 +151,6 @@ fi
 say "Pairing with the gateway as \"$NAME\" and installing the node service"
 openclaw connect --service --display-name "$NAME" "$CODE"
 say "Done. Approve the pairing in ClawHQ (Settings → Machines) if it is not approved already."
+if [ "$NODE_BIN" = "/opt/node24/bin" ]; then
+  say "The node service runs on /opt/node24; to use the CLI yourself: export PATH=/opt/node24/bin:\$PATH"
+fi

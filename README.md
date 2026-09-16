@@ -231,6 +231,20 @@ land in the shared history through the plugin. The machine must reach the gatewa
 so it sits on the same tailnet or the gateway is published with Tailscale Funnel.
 ClawHQ itself is not needed on it.
 
+The script never replaces the machine's system Node.js. If the one on PATH is not 24
+(or 26.1+), it unpacks an official Node.js 24 build into `/opt/node24`, installs the
+OpenClaw CLI under it, and the node service records that absolute path. Apps on an
+older system Node keep running untouched. `--node-path <dir>` points it at a Node you
+already have.
+
+Machines lists every paired node with a glyph in front of the name: 🦞 for a ClawHQ
+desktop, ⚙️ for OpenClaw's own node host. Both can run on one machine (the gateway
+box usually does) and each is its own node. Node hosts get the auto / semi-auto /
+manual selector; ClawHQ desktops show their Trust setting instead, which is changed
+under Settings → Trust on that ClawHQ. ClawHQ desktops report the app version to
+the gateway, so the list also shows which release each one runs.
+
+
 ### Pairing is automatic
 
 Two special cases are handled without you. A gateway does not device-pair clients

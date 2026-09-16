@@ -3259,3 +3259,6 @@ html.is-mac .topbar {
   gap: 6px;
   align-items: center;
 }
+
+/* Host role glyph: ClawHQ desktop vs OpenClaw node host, in front of a node's name. */
+.host-glyph { font-size: 0.95em; margin-right: 2px; cursor: help; }

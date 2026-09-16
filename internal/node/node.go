@@ -181,6 +181,10 @@ type Hooks struct {
 	OnExecModeChanged func(mode string)
 }
 
+// AppVersion is what this node reports to the gateway in its hello; main sets it
+// from the VERSION file so node.list shows which ClawHQ release each desktop runs.
+var AppVersion = "0.0.0"
+
 func New(identityRoot string, st DepartmentStore, emitStatus func(Status), onNotify func(Notification), logUnknown func(string, string)) *Host {
 	return &Host{
 		identityRoot: identityRoot,
@@ -333,7 +337,7 @@ func (h *Host) start(ctx context.Context, gatewayID, url, token, phase string) (
 	opts := []ocgateway.Option{
 		ocgateway.WithClientInfo(protocol.ClientInfo{
 			ID:       protocol.ClientIDNodeHost,
-			Version:  "0.2.0",
+			Version:  AppVersion,
 			Mode:     "node",
 			Platform: platform(),
 		}),

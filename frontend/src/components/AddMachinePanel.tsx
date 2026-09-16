@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { JoinCommand, RemoteNode } from '../types'
 import { PairingApprovals } from './PairingApprovals'
-import { readMode, setMode, type MachineMode } from '../state/execPolicy'
+import { readMode, setMode, readTrust, hostKind, hostGlyph, hostLabel, TRUST_LABEL, type MachineMode, type TrustMode } from '../state/execPolicy'
 
 type Props = { connected: boolean }
 
@@ -21,6 +21,7 @@ export function AddMachinePanel({ connected }: Props): React.JSX.Element {
   const [tick, setTick] = useState(0)
 
   const [modes, setModes] = useState<Record<string, MachineMode | 'custom' | 'unknown'>>({})
+  const [trust, setTrust] = useState<Record<string, TrustMode>>({})
   const [modeBusy, setModeBusy] = useState<string | null>(null)
 
   const refreshNodes = async (): Promise<void> => {
@@ -29,9 +30,18 @@ export function AddMachinePanel({ connected }: Props): React.JSX.Element {
       const res = await api.rpc.request<{ paired?: RemoteNode[]; nodes?: RemoteNode[] }>('node.list')
       const list = res?.paired ?? res?.nodes ?? []
       setNodes(list)
-      // Each connected node reports its own policy file; read the mode out of it.
-      const entries = await Promise.all(list.filter((n) => n.connected).map(async (n) => [n.nodeId, await readMode(n.nodeId)] as const))
-      setModes((prev) => ({ ...prev, ...Object.fromEntries(entries) }))
+      // Each connected node reports its own policy file. OpenClaw node hosts get a
+      // mode read out of it; ClawHQ desktops have their own Trust page, so only
+      // their setting is shown.
+      const online = list.filter((n) => n.connected)
+      const hosts = online.filter((n) => hostKind(n) === 'openclaw')
+      const desktops = online.filter((n) => hostKind(n) === 'clawhq')
+      const [m, t] = await Promise.all([
+        Promise.all(hosts.map(async (n) => [n.nodeId, await readMode(n.nodeId)] as const)),
+        Promise.all(desktops.map(async (n) => [n.nodeId, await readTrust(n.nodeId)] as const)),
+      ])
+      setModes((prev) => ({ ...prev, ...Object.fromEntries(m) }))
+      setTrust((prev) => ({ ...prev, ...Object.fromEntries(t) }))
     } catch {
       /* keep what we have */
     }
@@ -182,15 +192,23 @@ export function AddMachinePanel({ connected }: Props): React.JSX.Element {
               <i className={`dot ${n.connected ? 'dot-ok' : 'dot-off'}`} />
               <span className="gw-meta">
                 <span className="gw-name">
+                  <span className="host-glyph" title={hostLabel(hostKind(n))}>
+                    {hostGlyph(hostKind(n))}
+                  </span>{' '}
                   {n.displayName || n.platform || n.nodeId.slice(0, 8)}
                   <span className="plugin-desc"> · {n.platform ?? '?'} · {n.connected ? 'online' : 'offline'}</span>
                 </span>
                 <span className="gw-url mono">
-                  {(n.commands ?? []).includes('screen.snapshot') ? 'desktop · ' : ''}
-                  {(n.commands ?? []).length} commands · {n.nodeId.slice(0, 12)}
+                  {hostLabel(hostKind(n))}
+                  {n.version ? ` ${n.version}` : ''} · {(n.commands ?? []).length} commands · {n.nodeId.slice(0, 12)}
                 </span>
               </span>
-              {n.connected && (
+              {n.connected && hostKind(n) === 'clawhq' && (
+                <span className="plugin-desc" title="Change it under Settings → Trust on that ClawHQ">
+                  {TRUST_LABEL[trust[n.nodeId] ?? 'unknown']}
+                </span>
+              )}
+              {n.connected && hostKind(n) === 'openclaw' && (
                 <select
                   value={modes[n.nodeId] === 'semi' || modes[n.nodeId] === 'auto' || modes[n.nodeId] === 'manual' ? modes[n.nodeId] : ''}
                   onChange={(e) => void changeMode(n.nodeId, e.target.value as MachineMode)}

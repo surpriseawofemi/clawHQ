@@ -537,7 +537,9 @@ func (h *Host) execApprovalsGet() any {
 		},
 		"agents": map[string]any{},
 	}
-	return map[string]any{"file": file, "hash": mode}
+	// The gateway validates this against its node-snapshot schema, which requires
+	// path, exists, hash and file together; leaving any out is "invalid payload".
+	return map[string]any{"path": "clawhq://exec-policy", "exists": true, "file": file, "hash": "clawhq-" + mode}
 }
 
 // execApprovalsSet accepts a policy pushed from the gateway's Control UI and maps its

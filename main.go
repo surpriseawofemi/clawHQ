@@ -99,6 +99,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	node.AppVersion = strings.TrimSpace(versionFile)
 	nodeHost := node.New(
 		identityDir(),
 		cfgStore,

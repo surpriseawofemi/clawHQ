@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
+import { hostKind, hostGlyph, hostLabel } from '../state/execPolicy'
 import { plugin } from '../state/plugin'
 import { ContentHead, Shell, type ShellProps } from './layout/Shell'
 import type { ActivityRecord, Agent, ClawHQConfig, Delegation, NodeNotification, Presence, RemoteNode, SessionInfo, Task } from '../types'
@@ -262,10 +263,12 @@ export function Office({ shell, agents, sessions, config, connected, onOpenAgent
                       {m.platform === 'linux' ? '🐧' : m.platform === 'windows' ? '🪟' : m.platform === 'macos' || m.platform === 'darwin' ? '🍎' : '🖥️'}
                       <i className={`desk-dot ${m.connected ? 'is-online' : 'is-idle'}`} />
                     </span>
-                    <span className="desk-name">{m.displayName || m.platform || m.nodeId.slice(0, 8)}</span>
+                    <span className="desk-name">
+                      <span className="host-glyph" title={hostLabel(hostKind(m))}>{hostGlyph(hostKind(m))}</span>{' '}
+                      {m.displayName || m.platform || m.nodeId.slice(0, 8)}
+                    </span>
                     <span className="desk-meta">
-                      {m.connected ? 'online' : 'offline'} · {(m.commands ?? []).length} commands
-                      {(m.commands ?? []).includes('screen.snapshot') ? ' · desktop' : ''}
+                      {hostLabel(hostKind(m))} · {m.connected ? 'online' : 'offline'} · {(m.commands ?? []).length} commands
                     </span>
                   </div>
                 ))}

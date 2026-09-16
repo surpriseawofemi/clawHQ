@@ -201,6 +201,8 @@ export type RemoteNode = {
   connected?: boolean
   caps?: string[]
   commands?: string[]
+  clientId?: string
+  version?: string
 }
 
 /** Live state of one agent, from the gateway plugin's hooks. */

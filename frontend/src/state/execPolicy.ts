@@ -57,3 +57,35 @@ export async function readMode(nodeId: string): Promise<MachineMode | 'custom' |
 export async function setMode(nodeId: string, mode: MachineMode): Promise<void> {
   await api.rpc.request('exec.approvals.node.set', { nodeId, file: policyFile(mode) })
 }
+
+/** Which program a paired node is: ClawHQ itself, or OpenClaw's own node host. */
+export type HostKind = 'clawhq' | 'openclaw'
+export function hostKind(n: { commands?: string[] }): HostKind {
+  const c = n.commands ?? []
+  return c.includes('screen.snapshot') || c.some((x) => x.startsWith('clawhq.')) ? 'clawhq' : 'openclaw'
+}
+/** Glyph shown in front of a node's name so two hosts on one machine read apart. */
+export function hostGlyph(kind: HostKind): string {
+  return kind === 'clawhq' ? '🦞' : '⚙️'
+}
+export function hostLabel(kind: HostKind): string {
+  return kind === 'clawhq' ? 'ClawHQ desktop' : 'OpenClaw node host'
+}
+
+/** A ClawHQ desktop's Trust setting, as it reports it through exec approvals. */
+export type TrustMode = 'allow' | 'ask' | 'off' | 'unknown'
+export async function readTrust(nodeId: string): Promise<TrustMode> {
+  try {
+    const res = await api.rpc.request<{ file?: { defaults?: { security?: string } } }>('exec.approvals.node.get', { nodeId })
+    const sec = res?.file?.defaults?.security
+    return sec === 'full' ? 'allow' : sec === 'allowlist' ? 'ask' : sec === 'deny' ? 'off' : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+export const TRUST_LABEL: Record<TrustMode, string> = {
+  allow: 'Trust: runs anything',
+  ask: 'Trust: asks',
+  off: 'Trust: commands off',
+  unknown: 'Trust: set on that ClawHQ',
+}

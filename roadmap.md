@@ -55,6 +55,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 28 | Office (floor plan with live presence, delegation lines, agent card with context and memory health), Tasks board (plugin-kept, agent tools, run in a fresh thread, closes with the run), Daily digest (runs, tasks, asks, commands, cron runs, cost; Markdown copy), cron run history in Automations; plugin 0.2.0 | v0.1.30 |
 | 22 | Enrol any Linux machine as a node: Settings → Machines mints a one-time code and one paste-able command; `scripts/node.sh` installs the OpenClaw CLI, a read-only exec policy and the node service; Machines room in Office | v0.1.32 |
 | 22b | Join command carries a reachable gateway address: editable field, prefilled from a non-loopback saved gateway, loopback refused (a ClawHQ on the gateway host minted `ws://127.0.0.1` codes) | v0.1.34 |
+| 22c | Machines: host glyph (ClawHQ desktop vs OpenClaw node host), Trust label for desktops, app version in the node hello, valid exec-approvals snapshot (path/exists/hash/file), enrol script installs Node 24 side by side in `/opt/node24` | v0.1.35 |
 
 ## Now
 
