@@ -12,6 +12,7 @@ import type { AgentTab } from './components/AgentHeader'
 import { GatewaySwitcher } from './components/GatewaySwitcher'
 import { SearchPalette } from './components/SearchPalette'
 import { HomePage } from './components/HomePage'
+import { MainMenu, type Page } from './components/MainMenu'
 import type { SettingsSection } from './components/settings/SettingsPage'
 import { api } from './api'
 import { useFleet } from './state/useFleet'
@@ -19,12 +20,10 @@ import type { NodeNotification } from './types'
 
 function App(): React.JSX.Element {
   const fleet = useFleet()
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [page, setPage] = useState<Page>('menu')
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('gateways')
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-  // The app lands on Activity; Chat is where the agents live.
-  const [view, setView] = useState<'home' | 'chat'>('home')
 
   // Cmd-K (Ctrl-K elsewhere) opens the search palette from anywhere.
   useEffect(() => {
@@ -41,7 +40,7 @@ function App(): React.JSX.Element {
     if (section) setSettingsSection(section)
     if (section === 'notifications') setUnread(0)
     setSwitcherOpen(false)
-    setSettingsOpen(true)
+    setPage('settings')
   }
   const [agentSettingsId, setAgentSettingsId] = useState<string | null>(null)
   const [notice, setNotice] = useState<NodeNotification | null>(null)
@@ -109,41 +108,43 @@ function App(): React.JSX.Element {
   const agentForSettings = agents.find((a) => a.id === agentSettingsId) ?? null
 
   return (
-    <div className="app">
-      <Sidebar
-        agents={agents}
-        sessions={sessions}
-        config={config}
-        onOpenSearch={() => setSearchOpen(true)}
-        selectedAgentId={selectedAgentId}
-        onSelect={(id) => {
-          selectSession(null)
-          setSelectedAgentId(id)
-          setSettingsOpen(false)
-          setView('chat')
-        }}
-        view={settingsOpen ? 'settings' : view}
-        onHome={() => {
-          setSettingsOpen(false)
-          setView('home')
-        }}
-        onChat={() => {
-          setSettingsOpen(false)
-          setView('chat')
-        }}
-        desktops={desktops}
-        desktopsOpen={false}
-        onToggleDesktops={() => void api.window.openDesktop('')}
-        unreadNotices={unread}
-        onOpenNotifications={() => openSettings('notifications')}
-        onAgentSettings={setAgentSettingsId}
-        onOpenSettings={() => openSettings()}
-        onOpenSwitcher={() => setSwitcherOpen(true)}
-        status={status}
-        settingsOpen={settingsOpen}
-      />
+    <div className={page === 'chat' ? 'app' : 'app app-single'}>
+      {page === 'chat' && (
+        <Sidebar
+          agents={agents}
+          sessions={sessions}
+          config={config}
+          onOpenSearch={() => setSearchOpen(true)}
+          selectedAgentId={selectedAgentId}
+          onSelect={(id) => {
+            selectSession(null)
+            setSelectedAgentId(id)
+          }}
+          onBack={() => setPage('menu')}
+          desktops={desktops}
+          desktopsOpen={false}
+          onToggleDesktops={() => void api.window.openDesktop('')}
+          unreadNotices={unread}
+          onOpenNotifications={() => openSettings('notifications')}
+          onAgentSettings={setAgentSettingsId}
+          onOpenSettings={() => openSettings()}
+          onOpenSwitcher={() => setSwitcherOpen(true)}
+          status={status}
+          settingsOpen={false}
+        />
+      )}
 
-      {settingsOpen ? (
+      {page === 'menu' ? (
+        <MainMenu
+          status={status}
+          config={config}
+          agents={agents}
+          sessions={sessions}
+          unreadNotices={unread}
+          onOpen={(next) => (next === 'settings' ? openSettings() : setPage(next))}
+          onOpenSwitcher={() => setSwitcherOpen(true)}
+        />
+      ) : page === 'settings' ? (
         <SettingsPage
           status={status}
           daemon={daemon}
@@ -154,15 +155,14 @@ function App(): React.JSX.Element {
           onOpenAgent={(agentId) => {
             selectSession(null)
             setSelectedAgentId(agentId)
-            setSettingsOpen(false)
-            setView('chat')
+            setPage('chat')
           }}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => setPage('menu')}
           onConfigChanged={setConfig}
           onDaemonChanged={setDaemon}
           onReconnected={refreshFleet}
         />
-      ) : view === 'home' ? (
+      ) : page === 'activity' ? (
         <HomePage
           agents={agents}
           sessions={sessions}
@@ -172,10 +172,11 @@ function App(): React.JSX.Element {
             setSelectedAgentId(agentId)
             selectSession(key ?? null)
             setAgentTab('chat')
-            setView('chat')
+            setPage('chat')
           }}
           onOpenNotifications={() => openSettings('notifications')}
           onOpenCommands={() => openSettings('commands')}
+          onBack={() => setPage('menu')}
         />
       ) : (
       selectedAgent && agentTab === 'documents' ? (
@@ -232,11 +233,10 @@ function App(): React.JSX.Element {
           onClose={() => setSearchOpen(false)}
           onPick={(agentId, key) => {
             setSearchOpen(false)
-            setSettingsOpen(false)
             setSelectedAgentId(agentId)
             selectSession(key)
             setAgentTab('chat')
-            setView('chat')
+            setPage('chat')
           }}
         />
       )}
@@ -268,8 +268,7 @@ function App(): React.JSX.Element {
               onClick={() => {
                 selectSession(null)
                 setSelectedAgentId(notice.agentId!)
-                setView('chat')
-                setSettingsOpen(false)
+                setPage('chat')
                 setNotice(null)
               }}
             >

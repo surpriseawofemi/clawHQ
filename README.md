@@ -465,12 +465,14 @@ and installs it from ClawHub. The plugin needs
 `plugins.entries.clawhq.hooks.allowConversationAccess` and `allowPromptInjection` set
 to true for its hooks; ClawHQ patches those when it installs the plugin.
 
-## Activity, the landing page
+## The main menu and its pages
 
-ClawHQ opens on Activity: one timeline for every agent, so you can see what they did
-and whether anything needs you without opening them one by one. The sidebar's nav
-strip switches between Activity, Chat (the agent threads) and Settings. Rows come
-from three places: agent runs recorded by the gateway plugin (`clawhq.activity.list`,
+ClawHQ opens on a main menu: a left column with Chat, Activity, Office (coming) and
+Settings, and a glance at the org on the right (what needs you, who is working,
+agents, departments). Each entry is its own full page with a "‹ Menu" button at the
+top left to come back. Chat is the agent view, with the agent sidebar; Activity is
+one timeline for every agent, so you can see what they did and whether anything
+needs you without opening them one by one. Rows on Activity come from three places: agent runs recorded by the gateway plugin (`clawhq.activity.list`,
 refreshed on the `clawhq.activity` event, with the last thing the agent said), the
 notification history, and the command history. Without the plugin, thread updates
 from `sessions.list` stand in for runs. "Needs you" collects unread notices and

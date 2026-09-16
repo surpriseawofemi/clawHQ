@@ -11,6 +11,7 @@ type Props = {
   onOpenAgent: (agentId: string, sessionKey?: string) => void
   onOpenNotifications: () => void
   onOpenCommands: () => void
+  onBack: () => void
 }
 
 /** One agent run, as the gateway plugin records it on agent_end. */
@@ -68,7 +69,7 @@ const agentOfSession = (key: string): string => key.split(':')[1] ?? ''
  * session list says what is live. Everything is one timeline, filterable by
  * department and agent; a row opens that agent's thread.
  */
-export function HomePage({ agents, sessions, config, connected, onOpenAgent, onOpenNotifications, onOpenCommands }: Props): React.JSX.Element {
+export function HomePage({ agents, sessions, config, connected, onOpenAgent, onOpenNotifications, onOpenCommands, onBack }: Props): React.JSX.Element {
   const [runs, setRuns] = useState<Activity[]>([])
   const [notices, setNotices] = useState<NodeNotification[]>([])
   const [commands, setCommands] = useState<ExecRecord[]>([])
@@ -210,6 +211,9 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
     <main className="home">
       <header className="home-head">
         <div>
+          <button className="back-btn" onClick={onBack} title="Back to the main menu">
+            ‹ Menu
+          </button>
           <h1>Activity</h1>
           <p>
             {!connected

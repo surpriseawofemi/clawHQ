@@ -21,10 +21,8 @@ type Props = {
   unreadNotices: number
   onOpenNotifications: () => void
   onOpenSearch: () => void
-  /** Which main pane is showing; the nav strip highlights it. */
-  view: 'home' | 'chat' | 'settings'
-  onHome: () => void
-  onChat: () => void
+  /** Back to the main menu. */
+  onBack: () => void
 }
 
 /** One line for the gateway link, one for this machine's node role. */
@@ -88,9 +86,7 @@ export function Sidebar({
   unreadNotices,
   onOpenNotifications,
   onOpenSearch,
-  view,
-  onHome,
-  onChat
+  onBack
 }: Props): React.JSX.Element {
   const desktopsOnline = desktops.filter((d) => d.connected).length
   const connected = status.phase === 'connected'
@@ -208,18 +204,12 @@ export function Sidebar({
         </button>
       </header>
 
-      <nav className="side-nav" aria-label="Main">
-        <button className={view === 'home' ? 'is-active' : ''} onClick={onHome}>
-          Activity
-          {unreadNotices > 0 && view !== 'home' && <span className="badge">{unreadNotices}</span>}
+      <div className="page-back-bar">
+        <button className="back-btn" onClick={onBack} title="Back to the main menu">
+          ‹ Menu
         </button>
-        <button className={view === 'chat' ? 'is-active' : ''} onClick={onChat}>
-          Chat
-        </button>
-        <button className={view === 'settings' ? 'is-active' : ''} onClick={onOpenSettings}>
-          Settings
-        </button>
-      </nav>
+        <span className="plugin-desc">Chat</span>
+      </div>
 
       <nav className="agent-list">
         {groups.length === 0 && (

@@ -208,8 +208,8 @@ export function SettingsPage({
     <div className="settings">
       <nav className="settings-nav" aria-label="Settings sections">
         <div className="settings-nav-head">
-          <button className="icon-btn" title="Back to chat" onClick={onClose}>
-            ←
+          <button className="back-btn" title="Back to the main menu" onClick={onClose}>
+            ‹ Menu
           </button>
           <h2>Settings</h2>
         </div>
