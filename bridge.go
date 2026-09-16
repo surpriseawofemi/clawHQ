@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"sync"
 	"time"
@@ -271,6 +272,53 @@ func (b *pluginBridge) appendExec(rec store.ExecRecord) {
 			log.Printf("plugin: exec append: %v", err)
 		}
 	}()
+}
+
+// install puts the plugin on the gateway from ClawHub. The gateway asks for consent
+// to the plugin's declared capabilities with a review token in the error details;
+// installing again with that token is the consent. The hook policy the plugin
+// needs is patched into the gateway config first, and the gateway restarts itself
+// to load the plugin; detect runs again on the reconnect.
+func (b *pluginBridge) install() (PluginStatus, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	if err := b.patchHookPolicy(ctx); err != nil {
+		return b.Status(), err
+	}
+	params := map[string]any{"source": "clawhub", "packageName": pluginPackage}
+	_, err := b.request(ctx, "plugins.install", params)
+	var rpcErr *gateway.RPCError
+	if errors.As(err, &rpcErr) {
+		if token := rpcErr.DetailString("reviewToken"); token != "" {
+			params["acknowledgeCapabilities"] = map[string]any{"reviewToken": token}
+			_, err = b.request(ctx, "plugins.install", params)
+		}
+	}
+	if err != nil {
+		return b.Status(), err
+	}
+	log.Printf("plugin: installed %s on the gateway; it restarts to load it", pluginPackage)
+	return b.Status(), nil
+}
+
+// patchHookPolicy lets a non-bundled plugin use the conversation and prompt hooks.
+func (b *pluginBridge) patchHookPolicy(ctx context.Context) error {
+	raw, err := b.request(ctx, "config.get", map[string]any{})
+	if err != nil {
+		return err
+	}
+	var cur struct {
+		Hash string `json:"hash"`
+	}
+	_ = json.Unmarshal(raw, &cur)
+	patch := map[string]any{"plugins": map[string]any{"entries": map[string]any{"clawhq": map[string]any{
+		"enabled": true,
+		"hooks":   map[string]any{"allowConversationAccess": true, "allowPromptInjection": true},
+	}}}}
+	rawPatch, _ := json.Marshal(patch)
+	_, err = b.request(ctx, "config.patch", map[string]any{"raw": string(rawPatch), "baseHash": cur.Hash, "note": "ClawHQ: plugin hook policy"})
+	return err
 }
 
 // onGatewayEvent handles what the plugin broadcasts.

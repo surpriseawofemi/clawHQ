@@ -258,6 +258,10 @@ type PluginService struct {
 
 func (s *PluginService) Status() PluginStatus { return s.bridge.Status() }
 
+// Install puts the plugin on the gateway from ClawHub, consenting to its declared
+// capabilities and letting it use the hooks it needs.
+func (s *PluginService) Install() (PluginStatus, error) { return s.bridge.install() }
+
 // Recheck looks again, for instance right after installing the plugin.
 func (s *PluginService) Recheck() PluginStatus {
 	s.bridge.detect(s.bridge.conn.Status())

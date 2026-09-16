@@ -634,13 +634,63 @@ func (c *Conn) Request(ctx context.Context, method string, params any) (json.Raw
 	}
 	if !resp.OK {
 		// Surface the gateway's own message; its validation errors name the exact
-		// offending property and are far more useful than a generic failure.
+		// offending property and are far more useful than a generic failure. The
+		// details ride along for callers that need them (a consent review token, say).
 		if resp.Error != nil && resp.Error.Message != "" {
-			return nil, fmt.Errorf("%s: %s", method, resp.Error.Message)
+			rpcErr := &RPCError{Method: method, Code: resp.Error.Code, Message: resp.Error.Message}
+			if resp.Error.Details != nil {
+				if raw, err := json.Marshal(resp.Error.Details); err == nil {
+					rpcErr.Details = raw
+				}
+			}
+			return nil, rpcErr
 		}
 		return nil, fmt.Errorf("%s failed", method)
 	}
 	return resp.Payload, nil
+}
+
+// RPCError is a gateway's refusal of a request, with whatever details it attached.
+type RPCError struct {
+	Method  string
+	Code    string
+	Message string
+	Details json.RawMessage
+}
+
+func (e *RPCError) Error() string { return e.Method + ": " + e.Message }
+
+// DetailString finds a string value by key anywhere inside the error details.
+func (e *RPCError) DetailString(key string) string {
+	if e == nil || len(e.Details) == 0 {
+		return ""
+	}
+	var walk func(v any) string
+	walk = func(v any) string {
+		switch t := v.(type) {
+		case map[string]any:
+			if s, ok := t[key].(string); ok && s != "" {
+				return s
+			}
+			for _, child := range t {
+				if s := walk(child); s != "" {
+					return s
+				}
+			}
+		case []any:
+			for _, child := range t {
+				if s := walk(child); s != "" {
+					return s
+				}
+			}
+		}
+		return ""
+	}
+	var v any
+	if err := json.Unmarshal(e.Details, &v); err != nil {
+		return ""
+	}
+	return walk(v)
 }
 
 // SendChat posts a message into a session. The reply arrives as `chat` stream events,

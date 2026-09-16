@@ -70,11 +70,10 @@ function ClawHQPluginCard({ connected, onInstalled }: { connected: boolean; onIn
     setBusy(true)
     setError(null)
     try {
-      await api.rpc.request('plugins.install', { source: 'clawhub', packageName: status.package })
-      // Non-bundled plugins must be let in to the conversation and prompt hooks.
-      await gatewayConfig.load()
-      await gatewayConfig.set(['plugins', 'entries', 'clawhq', 'hooks'], { allowConversationAccess: true, allowPromptInjection: true }, 'ClawHQ: plugin hooks')
-      setStatus(await api.plugin.recheck())
+      // The Go side consents to the plugin's capabilities and patches its hook policy;
+      // the gateway then restarts itself to load the plugin, and ClawHQ re-detects it
+      // when the connection comes back.
+      setStatus(await api.plugin.install())
       onInstalled()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

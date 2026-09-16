@@ -139,7 +139,9 @@ export const api = {
   },
   plugin: {
     status: (): Promise<PluginStatus> => PluginService.Status() as Promise<PluginStatus>,
-    recheck: (): Promise<PluginStatus> => PluginService.Recheck() as Promise<PluginStatus>
+    recheck: (): Promise<PluginStatus> => PluginService.Recheck() as Promise<PluginStatus>,
+    /** Install from ClawHub with capability consent and the hook policy the plugin needs. */
+    install: (): Promise<PluginStatus> => PluginService.Install() as Promise<PluginStatus>
   },
   /** The gateway plugin appeared, vanished or changed version. */
   onPluginStatus: (cb: (status: PluginStatus) => void): (() => void) => {

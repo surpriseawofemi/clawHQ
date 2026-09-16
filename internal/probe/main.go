@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,6 +60,10 @@ func main() {
 	raw, err := conn.Request(ctx, os.Args[1], params)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
+		var rpcErr *gateway.RPCError
+		if errors.As(err, &rpcErr) && len(rpcErr.Details) > 0 {
+			fmt.Fprintln(os.Stderr, "details:", string(rpcErr.Details))
+		}
 		os.Exit(1)
 	}
 	os.Stdout.Write(raw)
