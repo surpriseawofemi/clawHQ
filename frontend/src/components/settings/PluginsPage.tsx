@@ -92,15 +92,28 @@ function ClawHQPluginCard({ connected, onInstalled }: { connected: boolean; onIn
             {busy ? 'Installing…' : 'Install'}
           </button>
         )}
+        {connected && present && status?.updateAvailable && !status.upgrading && (
+          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => void api.plugin.update().then(setStatus)}>
+            Update to {status.latest}
+          </button>
+        )}
         {connected && (
-          <button className="btn btn-sm" disabled={busy} onClick={() => void api.plugin.recheck().then(setStatus)}>
+          <button className="btn btn-sm" disabled={busy || !!status?.upgrading} onClick={() => void api.plugin.recheck().then(setStatus)}>
             Recheck
           </button>
         )}
       </div>
       <p className="health-line">
-        <i className={`dot ${present ? 'dot-ok' : 'dot-off'}`} />
-        {!connected ? 'Not connected' : !status?.checked ? 'Checking…' : present ? `Installed, version ${status.version}` : 'Not installed'}
+        <i className={`dot ${status?.upgrading ? 'dot-warn' : present ? 'dot-ok' : 'dot-off'}`} />
+        {!connected
+          ? 'Not connected'
+          : status?.upgrading
+            ? `Updating to ${status.latest}: ${status.upgrading}… the gateway restarts along the way`
+            : !status?.checked
+              ? 'Checking…'
+              : present
+                ? `Installed, version ${status.version}${status.updateAvailable ? ` · ${status.latest} is on ClawHub` : status.latest ? ' · up to date' : ''}`
+                : 'Not installed'}
       </p>
       <p className="field-hint">
         {present

@@ -79,7 +79,7 @@ func (s *UpdateService) SetAutoUpdate(ctx context.Context, on bool) (UpdateStatu
 // runLoop checks on the hour and installs when the setting says so. The first
 // check waits a minute so launch is not competing with GitHub for the network.
 func (s *UpdateService) runLoop() {
-	time.Sleep(time.Minute)
+	time.Sleep(15 * time.Second)
 	for {
 		s.checkAndMaybeInstall(context.Background())
 		time.Sleep(checkInterval)

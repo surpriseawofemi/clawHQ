@@ -262,6 +262,13 @@ func (s *PluginService) Status() PluginStatus { return s.bridge.Status() }
 // capabilities and letting it use the hooks it needs.
 func (s *PluginService) Install() (PluginStatus, error) { return s.bridge.install() }
 
+// Update replaces the plugin with the newest ClawHub version; the gateway restarts
+// twice along the way and the status reports each step.
+func (s *PluginService) Update() (PluginStatus, error) {
+	go func() { _ = s.bridge.upgrade() }()
+	return s.bridge.Status(), nil
+}
+
 // Recheck looks again, for instance right after installing the plugin.
 func (s *PluginService) Recheck() PluginStatus {
 	s.bridge.detect(s.bridge.conn.Status())

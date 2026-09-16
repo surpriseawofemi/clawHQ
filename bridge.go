@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +27,11 @@ type PluginStatus struct {
 	// Package is what to install on a gateway that lacks it.
 	Package string `json:"package"`
 	Error   string `json:"error"`
+	// Latest is the newest version on ClawHub, once looked up.
+	Latest          string `json:"latest"`
+	UpdateAvailable bool   `json:"updateAvailable"`
+	// Upgrading names the step in flight: uninstalling, installing, enabling; "" when idle.
+	Upgrading string `json:"upgrading"`
 }
 
 // pluginPackage is the ClawHub / npm name of the gateway plugin.
@@ -50,6 +57,9 @@ type pluginBridge struct {
 	status PluginStatus
 	// gatewayID the status was checked against; a switch resets it.
 	gatewayID string
+	// latest is the newest ClawHub version seen; upgrading is the step in flight.
+	latest    string
+	upgrading string
 }
 
 func newPluginBridge(conn *gateway.Conn, st *store.Store, inbox *store.Inbox, host *node.Host, notify *notifier) *pluginBridge {
@@ -61,7 +71,16 @@ func newPluginBridge(conn *gateway.Conn, st *store.Store, inbox *store.Inbox, ho
 func (b *pluginBridge) Status() PluginStatus {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.status
+	return b.compose(b.status)
+}
+
+// compose adds the update bookkeeping to a status snapshot. Caller holds b.mu.
+func (b *pluginBridge) compose(st PluginStatus) PluginStatus {
+	st.Package = pluginPackage
+	st.Latest = b.latest
+	st.UpdateAvailable = st.Present && b.latest != "" && semverLess(st.Version, b.latest)
+	st.Upgrading = b.upgrading
+	return st
 }
 
 func (b *pluginBridge) present() bool {
@@ -71,13 +90,41 @@ func (b *pluginBridge) present() bool {
 }
 
 func (b *pluginBridge) set(st PluginStatus) {
-	st.Package = pluginPackage
 	b.mu.Lock()
 	b.status = st
+	out := b.compose(st)
 	b.mu.Unlock()
 	if b.app != nil {
-		b.app.Event.Emit("plugin:status", st)
+		b.app.Event.Emit("plugin:status", out)
 	}
+}
+
+// announce re-emits the status after the update bookkeeping changed.
+func (b *pluginBridge) announce() {
+	b.mu.Lock()
+	out := b.compose(b.status)
+	b.mu.Unlock()
+	if b.app != nil {
+		b.app.Event.Emit("plugin:status", out)
+	}
+}
+
+// semverLess reports whether a is an older version than b (x.y.z, numeric parts).
+func semverLess(a, b string) bool {
+	pa, pb := strings.Split(strings.TrimPrefix(a, "v"), "."), strings.Split(strings.TrimPrefix(b, "v"), ".")
+	for i := 0; i < 3; i++ {
+		var x, y int
+		if i < len(pa) {
+			x, _ = strconv.Atoi(strings.TrimSpace(pa[i]))
+		}
+		if i < len(pb) {
+			y, _ = strconv.Atoi(strings.TrimSpace(pb[i]))
+		}
+		if x != y {
+			return x < y
+		}
+	}
+	return false
 }
 
 func (b *pluginBridge) request(ctx context.Context, method string, params any) (json.RawMessage, error) {
@@ -87,6 +134,13 @@ func (b *pluginBridge) request(ctx context.Context, method string, params any) (
 // detect runs after every operator connect: is the plugin there, and if so, bring
 // the local mirror up to date.
 func (b *pluginBridge) detect(st gateway.Status) {
+	b.mu.Lock()
+	busy := b.upgrading != ""
+	b.mu.Unlock()
+	if busy {
+		// The upgrade goroutine owns the connection until it is done.
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	raw, err := b.request(ctx, "clawhq.version", map[string]any{})
@@ -119,6 +173,145 @@ func (b *pluginBridge) detect(st gateway.Status) {
 	if err := b.catchUpInbox(ctx); err != nil {
 		log.Printf("plugin: inbox catch-up: %v", err)
 	}
+	go b.checkLatest()
+}
+
+// checkLatest asks ClawHub (through the gateway's plugin search) for the newest
+// version. With auto-update on, a newer one is installed straight away.
+func (b *pluginBridge) checkLatest() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	raw, err := b.request(ctx, "plugins.search", map[string]any{"query": pluginPackage, "limit": 5})
+	if err != nil {
+		return
+	}
+	var res struct {
+		Results []struct {
+			Package struct {
+				Name          string `json:"name"`
+				LatestVersion string `json:"latestVersion"`
+			} `json:"package"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return
+	}
+	latest := ""
+	for _, r := range res.Results {
+		if r.Package.Name == pluginPackage {
+			latest = r.Package.LatestVersion
+		}
+	}
+	if latest == "" {
+		return
+	}
+	b.mu.Lock()
+	b.latest = latest
+	current := b.status.Version
+	b.mu.Unlock()
+	b.announce()
+	if semverLess(current, latest) {
+		log.Printf("plugin: clawhq %s is on ClawHub, %s installed", latest, current)
+		if b.store.Read().AutoUpdate {
+			go b.upgrade()
+		}
+	}
+}
+
+// upgrade replaces the plugin with the newest ClawHub version. The gateway has no
+// in-place update for plugins, so this is uninstall, install (with capability
+// consent), enable; the gateway restarts itself after each of the first two and
+// this waits for it to come back before the next step.
+func (b *pluginBridge) upgrade() error {
+	b.mu.Lock()
+	if b.upgrading != "" {
+		b.mu.Unlock()
+		return errors.New("an update is already in progress")
+	}
+	target := b.latest
+	b.upgrading = "uninstalling"
+	b.mu.Unlock()
+	b.announce()
+	finish := func(err error) error {
+		b.mu.Lock()
+		b.upgrading = ""
+		b.mu.Unlock()
+		if err != nil {
+			log.Printf("plugin: update failed: %v", err)
+		}
+		b.announce()
+		// A fresh look, whatever happened.
+		go b.detect(b.conn.Status())
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	if _, err := b.request(ctx, "plugins.uninstall", map[string]any{"pluginId": "clawhq"}); err != nil {
+		return finish(err)
+	}
+	if err := b.waitForGateway(ctx); err != nil {
+		return finish(err)
+	}
+	b.setStage("installing")
+	if err := b.installFromHub(ctx, target); err != nil {
+		return finish(err)
+	}
+	if err := b.waitForGateway(ctx); err != nil {
+		return finish(err)
+	}
+	b.setStage("enabling")
+	if err := b.patchHookPolicy(ctx); err != nil {
+		return finish(err)
+	}
+	log.Printf("plugin: updated to clawhq %s", target)
+	return finish(nil)
+}
+
+func (b *pluginBridge) setStage(stage string) {
+	b.mu.Lock()
+	b.upgrading = stage
+	b.mu.Unlock()
+	b.announce()
+}
+
+// waitForGateway rides out the gateway's restart: first the connection drops,
+// then it comes back and answers health.
+func (b *pluginBridge) waitForGateway(ctx context.Context) error {
+	time.Sleep(8 * time.Second)
+	deadline := time.Now().Add(4 * time.Minute)
+	for time.Now().Before(deadline) {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if b.conn.Status().Phase == gateway.PhaseConnected {
+			hctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			_, err := b.request(hctx, "health", map[string]any{})
+			cancel()
+			if err == nil {
+				return nil
+			}
+		}
+		time.Sleep(5 * time.Second)
+	}
+	return errors.New("the gateway did not come back within four minutes")
+}
+
+// installFromHub installs one version, answering the capability-consent challenge.
+func (b *pluginBridge) installFromHub(ctx context.Context, version string) error {
+	params := map[string]any{"source": "clawhub", "packageName": pluginPackage}
+	if version != "" {
+		params["version"] = version
+	}
+	_, err := b.request(ctx, "plugins.install", params)
+	var rpcErr *gateway.RPCError
+	if errors.As(err, &rpcErr) {
+		if token := rpcErr.DetailString("reviewToken"); token != "" {
+			params["acknowledgeCapabilities"] = map[string]any{"reviewToken": token}
+			_, err = b.request(ctx, "plugins.install", params)
+		}
+	}
+	return err
 }
 
 type orgPayload struct {

@@ -461,7 +461,13 @@ installed on the gateway, ClawHQ notices on connect (`clawhq.version`) and switc
   machine name), so one place holds what every machine ran.
 
 Without the plugin nothing changes. Settings → Plugins shows whether it is installed
-and installs it from ClawHub. The plugin needs
+and installs it from ClawHub. After every connect ClawHQ also asks ClawHub (through
+`plugins.search`) for the newest version; with "Download and install updates
+automatically" on, a newer plugin is installed straight away, otherwise the page
+offers an Update button. The gateway has no in-place plugin update, so an update is
+uninstall, install with capability consent, enable, with a wait for the gateway's own
+restart after each of the first two; the status line shows the step. The app itself
+checks for its own update fifteen seconds after launch and hourly after that. The plugin needs
 `plugins.entries.clawhq.hooks.allowConversationAccess` and `allowPromptInjection` set
 to true for its hooks; ClawHQ patches those when it installs the plugin.
 

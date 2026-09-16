@@ -270,6 +270,11 @@ export type PluginStatus = {
   features: string[]
   package: string
   error: string
+  /** Newest version on ClawHub, once looked up. */
+  latest: string
+  updateAvailable: boolean
+  /** Step of an update in flight: uninstalling, installing, enabling; empty when idle. */
+  upgrading: string
 }
 
 /** A thread as kept in the on-disk cache: the messages as JSON plus the stamp they were fetched at. */
