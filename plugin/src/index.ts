@@ -35,7 +35,7 @@ type Delegation = {
 
 const TASK_STATUSES: TaskStatus[] = ["todo", "doing", "done", "failed"];
 
-export const PLUGIN_VERSION = "0.2.2";
+export const PLUGIN_VERSION = "0.2.3";
 
 /**
  * Super Boss Chat: one session per agent reserved for the human operator. ClawHQ
@@ -161,11 +161,11 @@ function register(api: OpenClawPluginApi): void {
     const text = p.text.trim();
     if (!text) throw new Error("empty post");
     const mentions = [...new Set([...(p.mentions ?? []).map((m) => m.trim().toLowerCase()).filter(Boolean), ...mentionsIn(text)])];
-    const post: TeamPost = { id: newId("tp"), atMs: Date.now(), from: p.from, fromKind: p.fromKind, text, mentions, sessionKey: p.sessionKey, runId: p.runId };
+    const post: TeamPost = { id: newId("tp"), atMs: Date.now(), from: p.from, fromKind: p.fromKind, text, mentions, sessionKey: p.sessionKey, runId: p.runId, hops: p.hops ?? 0, replyTo: p.replyTo };
     await store.update((s) => {
       s.team.push(post);
     });
-    emit("clawhq.team.changed", { id: post.id, from: post.from, fromKind: post.fromKind, mentions });
+    emit("clawhq.team.changed", { id: post.id, from: post.from, fromKind: post.fromKind, mentions, hops: post.hops ?? 0 });
     // An agent addressing the boss (or everyone) rings the bell in every ClawHQ.
     if (p.fromKind === "agent" && (mentions.includes("boss") || mentions.includes("all") || mentions.includes("human"))) {
       await addNotice({ title: `Team Chat: ${p.from}`, body: text.slice(0, 400), agentId: p.from, origin: "team" });
@@ -417,6 +417,18 @@ function register(api: OpenClawPluginApi): void {
     const post = await postTeam({ text: str(p, "text"), from: str(p, "from") || "boss", fromKind: "human", mentions });
     return { post };
   });
+  method("clawhq.team.turn", "operator.write", async (p) => {
+    // ClawHQ says which post it is handing an agent; the reply inherits hops+1.
+    const agentId = str(p, "agentId");
+    const postId = str(p, "postId");
+    if (!agentId || !postId) throw new Error("agentId and postId are required");
+    const s = await store.load();
+    const post = (s.team ?? []).find((x) => x.id === postId);
+    await store.update((st) => {
+      st.teamTurn[agentId] = { postId, hops: post?.hops ?? 0, atMs: Date.now() };
+    });
+    return { ok: true };
+  });
   method("clawhq.tasks.delete", "operator.write", async (p) => {
     const id = str(p, "id");
     await store.update((s) => {
@@ -554,7 +566,8 @@ function register(api: OpenClawPluginApi): void {
           mentions: Type.Optional(Type.Array(Type.String(), { description: "Agent ids, \"all\" or \"boss\"; @mentions in the text are picked up too" })),
         }),
         async execute(_id: string, params: { text: string; mentions?: string[] }) {
-          const post = await postTeam({ text: params.text, from: ctx.agentId ?? "agent", fromKind: "agent", mentions: params.mentions, sessionKey: ctx.sessionKey });
+          const turn = ctx.agentId ? (await store.load()).teamTurn?.[ctx.agentId] : undefined;
+          const post = await postTeam({ text: params.text, from: ctx.agentId ?? "agent", fromKind: "agent", mentions: params.mentions, sessionKey: ctx.sessionKey, hops: turn ? turn.hops + 1 : 0, replyTo: turn?.postId });
           return jsonResult({ ok: true, post: { id: post.id, mentions: post.mentions } });
         },
       },
@@ -642,7 +655,9 @@ function register(api: OpenClawPluginApi): void {
     // A turn in an agent's Team Chat session answers the board.
     if (isTeamKey(ctx.sessionKey) && ctx.agentId && line?.trim()) {
       try {
-        await postTeam({ text: line, from: ctx.agentId, fromKind: "agent", sessionKey: ctx.sessionKey, runId: ctx.runId ?? event.runId });
+        const turn = (await store.load()).teamTurn?.[ctx.agentId];
+        if (turn) await store.update((st) => { delete st.teamTurn[ctx.agentId as string]; });
+        await postTeam({ text: line, from: ctx.agentId, fromKind: "agent", sessionKey: ctx.sessionKey, runId: ctx.runId ?? event.runId, hops: (turn?.hops ?? 0) + 1, replyTo: turn?.postId });
       } catch (err) {
         api.logger.warn(`clawhq: team reply not posted: ${String(err)}`);
       }

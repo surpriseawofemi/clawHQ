@@ -64,6 +64,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 34 | No more blank window: an error boundary shows the message and stack with Reload/Copy, uncaught errors and rejections go to `~/.openclaw/clawhq-frontend.log`, devtools enabled on the main window; a saved chat session is restored only once the session list confirms it exists | v0.1.41 |
 | 35 | Super Boss Chat: per-agent session reserved for the human, opened by default and created by ClawHQ; plugin 0.2.1 redirects agent sends away from it and briefs agents in-session | v0.1.43 |
 | 36 | Team Chat: shared board with @agent / @all / no-mention rules, per-agent team sessions, replies posted by the plugin (0.2.2), unread posts as prompt context, @boss rings the bell | v0.1.44 |
+| 37 | Team Chat becomes a chat app: channel + member sidebar with presence and typing, click-to-mention, agents answer each other (hop cap 3, plugin 0.2.3 `team.turn`), and a Super Boss channel merging every agent's Super Boss Chat with @agent/@all sending | v0.1.45 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now

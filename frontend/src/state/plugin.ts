@@ -23,7 +23,9 @@ export const plugin = {
     list: (limit = 200): Promise<TeamPost[]> =>
       api.rpc.request<{ posts?: TeamPost[] }>('clawhq.team.list', { limit }).then((r) => r?.posts ?? []),
     post: (text: string, mentions: string[]): Promise<TeamPost> =>
-      api.rpc.request<{ post: TeamPost }>('clawhq.team.post', { text, mentions }).then((r) => r.post)
+      api.rpc.request<{ post: TeamPost }>('clawhq.team.post', { text, mentions }).then((r) => r.post),
+    turn: (agentId: string, postId: string): Promise<void> =>
+      api.rpc.request('clawhq.team.turn', { agentId, postId }).then(() => undefined)
   }
 }
 
@@ -31,9 +33,9 @@ export const plugin = {
 export const teamSessionKey = (agentId: string): string => `agent:${agentId}:team`
 
 /** The turn an @mention sends into an agent's Team Chat session. */
-export function teamPrompt(text: string, toAll: boolean): string {
+export function teamPrompt(text: string, toAll: boolean, from = 'the boss (human)'): string {
   return [
-    `Team Chat message from the boss (human)${toAll ? ', to everyone' : ', addressed to you'}:`,
+    `Team Chat message from ${from}${toAll ? ', to everyone' : ', addressed to you'}:`,
     '',
     text,
     '',

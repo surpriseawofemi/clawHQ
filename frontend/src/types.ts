@@ -362,4 +362,6 @@ export type TeamPost = {
   mentions: string[]
   sessionKey?: string
   runId?: string
+  hops?: number
+  replyTo?: string
 }

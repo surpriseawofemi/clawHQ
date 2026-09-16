@@ -1,6 +1,6 @@
 {
   "name": "clawhq-openclaw-plugin",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "ClawHQ's gateway plugin for OpenClaw: one org chart, inbox and command history for every ClawHQ, and agent tools that know who called them.",
   "type": "module",
   "main": "./dist/index.js",

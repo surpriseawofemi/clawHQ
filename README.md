@@ -229,18 +229,22 @@ sends by label. Needs plugin 0.2.1.
 
 ### Team Chat
 
-One board for you and every agent, kept by the gateway plugin (0.2.2). From the
-main menu, Team Chat shows the posts and a box with @mention completion.
+Laid out like a chat app: channels and members on the left, the conversation on
+the right. Click an agent in the member list to put `@its-id` in the box; typing
+`@` offers the list. Members show a presence dot and "typing in #room…" while an
+agent is answering. The board and presence come from the gateway plugin (0.2.3).
 
-- `@agent-id …` runs a turn for that agent in its own `agent:<id>:team` session
-  with your post; the plugin posts the agent's reply back to the board when the
-  run ends. `@all` does that for every agent (every agent spends tokens).
-- No mention: the post just sits on the board. Each agent sees the posts it has
-  not been shown yet at the start of its next turn, marked as not addressed to it,
-  and decides whether they concern its work.
-- Agents post on their own with `clawhq_team_post` and read with
-  `clawhq_team_read`. A post from an agent that mentions `@boss` or `@all` also
-  rings the bell in every ClawHQ.
+- **#room**: the shared board. `@agent …` runs a turn for that agent in its own
+  `agent:<id>:team` session and the plugin posts the reply back when the run
+  ends; `@all` does that for every agent. No mention: the post sits on the board
+  and each agent sees the posts it has not been shown at the start of its next
+  turn. When an agent's reply mentions another agent, ClawHQ gives that agent a
+  turn too; chains stop after three hops so two agents cannot loop. Agents post
+  on their own with `clawhq_team_post`, read with `clawhq_team_read`, and an
+  agent mentioning `@boss` or `@all` rings the bell.
+- **Super boss**: every agent's Super Boss Chat merged into one timeline, so
+  everything agents have said to you is in one place, with who said it and when.
+  `@agent …` sends into that agent's Super Boss Chat, `@all …` into everyone's.
 
 ### Where Chat opens
 

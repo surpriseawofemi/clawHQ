@@ -86,6 +86,10 @@ export type TeamPost = {
   mentions: string[];
   sessionKey?: string;
   runId?: string;
+  /** How many agent-to-agent replies led here; 0 for the human. Caps ping-pong. */
+  hops?: number;
+  /** The post this one answers, when it came from a turn ClawHQ started. */
+  replyTo?: string;
 };
 
 export type State = {
@@ -99,6 +103,8 @@ export type State = {
   team: TeamPost[];
   /** Per agent: atMs of the newest board post it has been shown. */
   teamSeen: Record<string, number>;
+  /** Per agent: the board post its current Team Chat turn answers. */
+  teamTurn: Record<string, { postId: string; hops: number; atMs: number }>;
 };
 
 const LIMITS = { notices: 1000, execLog: 5000, activity: 2000, tasks: 2000, team: 2000 };
@@ -113,6 +119,7 @@ const empty = (): State => ({
   tasks: [],
   team: [],
   teamSeen: {},
+  teamTurn: {},
 });
 
 export class Store {
@@ -149,6 +156,7 @@ export class Store {
       s.tasks = (s.tasks ?? []).slice(-LIMITS.tasks);
       s.team = (s.team ?? []).slice(-LIMITS.team);
       s.teamSeen = s.teamSeen ?? {};
+      s.teamTurn = s.teamTurn ?? {};
       await fs.mkdir(path.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
       await fs.writeFile(tmp, JSON.stringify(s), "utf8");

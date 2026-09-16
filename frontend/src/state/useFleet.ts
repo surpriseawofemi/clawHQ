@@ -573,7 +573,8 @@ export function useFleet() {
     connected,
     refreshFleet,
     sendMessage,
-    abortRun
+    abortRun,
+    openSession
   }
 }
 
