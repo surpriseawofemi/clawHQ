@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type { Agent, Attachment, ChatMessage, SessionInfo, StreamingReply } from '../types'
 import { agentLabel, messageText } from '../types'
+import { renderMarkdown } from '../markdown'
 import { AgentHeader, type AgentTab } from './AgentHeader'
 import { ToolCalls, indexToolResults, toolCallsOf } from './ToolCalls'
 import { getPrefs, onPrefs } from '../prefs'
@@ -205,7 +206,12 @@ export function ChatView({
           const mine = msg.role === 'user'
           return (
             <article key={msg.__openclaw?.id ?? `${msg.timestamp}-${i}`} className={`msg ${mine ? 'msg-user' : 'msg-agent'}`}>
-              {text.trim() && <div className="msg-body">{text}</div>}
+              {text.trim() &&
+                (mine ? (
+                  <div className="msg-body">{text}</div>
+                ) : (
+                  <div className="msg-body is-md team-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
+                ))}
               <ToolCalls calls={calls} />
               <div className="msg-meta">
                 {mine ? (msg.__openclaw?.senderName ?? 'You') : agentLabel(agent)}
@@ -217,8 +223,8 @@ export function ChatView({
 
         {stream && (
           <article className="msg msg-agent is-streaming">
-            <div className="msg-body">
-              {stream.text || <span className="thinking">{stream.phase ?? 'thinking'}…</span>}
+            <div className={`msg-body${stream.text ? ' is-md team-md' : ''}`}>
+              {stream.text ? <span dangerouslySetInnerHTML={{ __html: renderMarkdown(stream.text) }} /> : <span className="thinking">{stream.phase ?? 'thinking'}…</span>}
               <span className="caret" />
             </div>
             <div className="msg-meta">{agentLabel(agent)} · now</div>
