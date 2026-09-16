@@ -38,5 +38,12 @@
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.52"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/surpriseawofemi/clawHQ.git",
+    "directory": "plugin"
+  },
+  "homepage": "https://github.com/surpriseawofemi/clawHQ/tree/main/plugin",
+  "author": "surpriseawofemi"
 }
