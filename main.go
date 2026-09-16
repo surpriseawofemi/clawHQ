@@ -47,6 +47,8 @@ func init() {
 	application.RegisterEvent[AgentNotification]("node:notify")
 	application.RegisterEvent[node.ExecRequest]("node:exec-request")
 	application.RegisterEvent[DesktopSelect]("desktop:select")
+	application.RegisterEvent[store.Config]("config:changed")
+	application.RegisterEvent[PluginStatus]("plugin:status")
 }
 
 // identityDir is where the Ed25519 device identity and device token live. It is
@@ -149,6 +151,9 @@ func main() {
 	// The autopilot starts, pairs and approves the node role whenever the operator
 	// connection is up, so nothing below has to think about it.
 	auto := newNodeAutopilot(conn, nodeHost, cfgStore)
+	// The gateway plugin, when installed, owns the org chart and the inbox.
+	bridge := newPluginBridge(conn, cfgStore, inbox, nodeHost, notify)
+	auto.afterConnect = bridge.detect
 	nodeHost.SetHooks(node.Hooks{
 		OnPending:      auto.approvePairing,
 		OnConnected:    auto.verifySurface,
@@ -162,9 +167,11 @@ func main() {
 		},
 		// Every command, ran or refused, goes to the local audit log.
 		OnExecRecord: func(rec node.ExecRecord) {
-			if _, err := execLog.Append(store.ExecRecord(rec)); err != nil {
+			saved, err := execLog.Append(store.ExecRecord(rec))
+			if err != nil {
 				log.Printf("exec log: %v", err)
 			}
+			bridge.appendExec(saved)
 		},
 		OnAllowAlways: func(commandText string) {
 			if cfg, err := cfgStore.AllowExecCommand(commandText); err == nil {
@@ -183,7 +190,7 @@ func main() {
 		},
 	})
 
-	configSvc := &ConfigService{store: cfgStore}
+	configSvc := &ConfigService{store: cfgStore, bridge: bridge}
 	loginSvc := &LoginService{}
 
 	app = application.New(application.Options{
@@ -202,6 +209,7 @@ func main() {
 			application.NewService(&InboxService{inbox: inbox}),
 			application.NewService(&ExecLogService{log: execLog}),
 			application.NewService(&CacheService{cache: threadCache}),
+			application.NewService(&PluginService{bridge: bridge}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -266,6 +274,7 @@ func main() {
 	updateSvc.app = app
 	windowSvc.app = app
 	notify.app = app
+	bridge.app = app
 
 	// Menu bar presence: the node keeps serving after the window is closed.
 	bar := newMenuBar(app, cfgStore, loginSvc, updateSvc, windowSvc)

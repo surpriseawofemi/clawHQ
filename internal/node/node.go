@@ -140,6 +140,8 @@ type Host struct {
 	// logUnknown records invokes we do not implement yet, so the command surface can
 	// be extended against real traffic instead of guesswork.
 	logUnknown func(command string, params string)
+	// hiddenTools are tool names not published to the gateway (see SetHiddenTools).
+	hiddenTools map[string]bool
 
 	// Hooks below are optional and set by the app; see Hooks.
 	onPending         func(gatewayID, deviceID string)

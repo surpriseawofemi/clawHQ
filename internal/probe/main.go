@@ -32,13 +32,22 @@ func main() {
 			profile = g
 		}
 	}
-	conn, err := gateway.New(filepath.Join(home, "Library", "Application Support", "ClawHQ", "identity"), func(gateway.Event) {}, func(gateway.Status) {})
+	identityRoot := filepath.Join(home, "Library", "Application Support", "ClawHQ", "identity")
+	cred := gateway.Credential{}
+	// PROBE_URL and PROBE_TOKEN point the probe at another gateway (a throwaway local
+	// one, say) with a scratch identity, instead of the app's saved pairing.
+	if u := os.Getenv("PROBE_URL"); u != "" {
+		profile = store.GatewayProfile{ID: "probe-" + os.Getenv("PROBE_ID"), URL: u}
+		cred.Token = os.Getenv("PROBE_TOKEN")
+		identityRoot = filepath.Join(os.TempDir(), "clawhq-probe-identity")
+	}
+	conn, err := gateway.New(identityRoot, func(gateway.Event) {}, func(gateway.Status) {})
 	if err != nil {
 		panic(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
-	if _, err := conn.Connect(ctx, profile.ID, profile.URL, gateway.Credential{}); err != nil {
+	if _, err := conn.Connect(ctx, profile.ID, profile.URL, cred); err != nil {
 		panic(err)
 	}
 	var params any = map[string]any{}

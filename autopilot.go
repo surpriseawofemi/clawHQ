@@ -29,6 +29,8 @@ type nodeAutopilot struct {
 	// repaired remembers which gateways were re-paired this launch, so a gateway that
 	// refuses part of the surface cannot trap the node in a pairing loop.
 	repaired map[string]bool
+	// afterConnect runs on every operator connect, for the plugin bridge.
+	afterConnect func(gateway.Status)
 }
 
 func newNodeAutopilot(conn *gateway.Conn, host *node.Host, st *store.Store) *nodeAutopilot {
@@ -40,6 +42,9 @@ func newNodeAutopilot(conn *gateway.Conn, host *node.Host, st *store.Store) *nod
 
 // onOperatorConnected runs after every operator connect, reconnects included.
 func (a *nodeAutopilot) onOperatorConnected(st gateway.Status) {
+	if a.afterConnect != nil {
+		go a.afterConnect(st)
+	}
 	if !a.store.Read().Node.Enabled {
 		return
 	}

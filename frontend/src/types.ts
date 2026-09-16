@@ -203,6 +203,16 @@ export type RemoteNode = {
   commands?: string[]
 }
 
+/** The ClawHQ gateway plugin, as seen from this ClawHQ. */
+export type PluginStatus = {
+  checked: boolean
+  present: boolean
+  version: string
+  features: string[]
+  package: string
+  error: string
+}
+
 /** A thread as kept in the on-disk cache: the messages as JSON plus the stamp they were fetched at. */
 export type CachedThread = {
   gatewayId: string

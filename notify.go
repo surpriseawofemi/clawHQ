@@ -82,6 +82,14 @@ func (n *notifier) deliver(raw node.Notification) {
 		if !raw.Relay {
 			go n.relay(out)
 		}
+		n.show(out)
+	}()
+}
+
+// show stores a notice, tells the window, and posts the OS notification. Notices
+// from the ClawHQ gateway plugin arrive here directly, already attributed.
+func (n *notifier) show(out store.Notice) {
+	{
 		// Stored first, so a notice that arrives while nobody is looking is still
 		// there in the history page later.
 		if n.inbox != nil {
@@ -118,7 +126,7 @@ func (n *notifier) deliver(raw node.Notification) {
 		if err := n.native.SendNotification(opts); err != nil {
 			log.Printf("notifications: %v", err)
 		}
-	}()
+	}
 }
 
 // relay forwards a notification to every other connected ClawHQ node through the

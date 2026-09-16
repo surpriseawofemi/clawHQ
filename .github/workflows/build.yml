@@ -59,6 +59,10 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Typecheck the gateway plugin
+        working-directory: plugin
+        run: npm ci --no-audit --no-fund && npm run check
+
       - name: Vet Go
         run: go vet ./internal/... .
 

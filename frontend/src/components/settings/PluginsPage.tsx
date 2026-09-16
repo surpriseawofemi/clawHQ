@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../../api'
 import { gatewayConfig } from '../../state/gatewayConfig'
 import { SchemaForm } from '../SchemaForm'
+import type { PluginStatus } from '../../types'
 
 /** One row of plugins.list. */
 type PluginRow = {
@@ -45,6 +46,72 @@ type SearchHit = {
 }
 
 type Filter = 'enabled' | 'disabled' | 'available' | 'all'
+
+/**
+ * ClawHQ's own gateway plugin: one org chart, inbox and command history for every
+ * ClawHQ, and agent tools that know who called them. Detected on connect; installed
+ * from ClawHub once published.
+ */
+function ClawHQPluginCard({ connected, onInstalled }: { connected: boolean; onInstalled: () => void }): React.JSX.Element {
+  const [status, setStatus] = useState<PluginStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    api.plugin
+      .status()
+      .then(setStatus)
+      .catch(() => undefined)
+    return api.onPluginStatus(setStatus)
+  }, [])
+
+  const install = async (): Promise<void> => {
+    if (!status) return
+    setBusy(true)
+    setError(null)
+    try {
+      await api.rpc.request('plugins.install', { source: 'clawhub', packageName: status.package })
+      // Non-bundled plugins must be let in to the conversation and prompt hooks.
+      await gatewayConfig.load()
+      await gatewayConfig.set(['plugins', 'entries', 'clawhq', 'hooks'], { allowConversationAccess: true, allowPromptInjection: true }, 'ClawHQ: plugin hooks')
+      setStatus(await api.plugin.recheck())
+      onInstalled()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const present = status?.present === true
+  return (
+    <section className="panel">
+      <div className="settings-toolbar">
+        <h3 style={{ flex: 1 }}>ClawHQ on the gateway</h3>
+        {connected && status?.checked && !present && (
+          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => void install()}>
+            {busy ? 'Installing…' : 'Install'}
+          </button>
+        )}
+        {connected && (
+          <button className="btn btn-sm" disabled={busy} onClick={() => void api.plugin.recheck().then(setStatus)}>
+            Recheck
+          </button>
+        )}
+      </div>
+      <p className="health-line">
+        <i className={`dot ${present ? 'dot-ok' : 'dot-off'}`} />
+        {!connected ? 'Not connected' : !status?.checked ? 'Checking…' : present ? `Installed, version ${status.version}` : 'Not installed'}
+      </p>
+      <p className="field-hint">
+        {present
+          ? 'The org chart, the inbox and command history live on the gateway and every ClawHQ shares them. Agent tools carry the real caller.'
+          : `Installs ${status?.package ?? 'the ClawHQ plugin'} from ClawHub. With it, departments, notifications and command history are kept once on the gateway for every ClawHQ, agents learn their department, and their tools know who called them. Without it everything stays on this machine.`}
+      </p>
+      {error && <p className="error-text">{error}</p>}
+    </section>
+  )
+}
 
 /**
  * Plugins on the gateway: what is on, what is off, what can be installed.
@@ -203,6 +270,7 @@ export function PluginsPage({ connected }: { connected: boolean }): React.JSX.El
 
   return (
     <div className="settings-stack">
+      <ClawHQPluginCard connected={connected} onInstalled={() => void refresh()} />
       <section className="panel">
         <h3>Plugins</h3>
         <p className="field-hint">

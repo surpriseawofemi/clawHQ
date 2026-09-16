@@ -79,7 +79,12 @@ export function useFleet() {
     api().daemon.status().then(setDaemon).catch(() => undefined)
 
     const offStatus = api().onConnectionStatus((s) => setStatus(s))
-    return () => offStatus()
+    // The org chart mirrors the gateway plugin when one is installed.
+    const offConfig = api().onConfigChanged((cfg) => setConfig(cfg))
+    return () => {
+      offStatus()
+      offConfig()
+    }
   }, [])
 
   // Poll the gateway service so the Settings panel reflects external start/stop too.

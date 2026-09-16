@@ -473,6 +473,20 @@ func (s *Store) AssignAgent(agentID, departmentID string) (Config, error) {
 	return s.writeLocked(cfg)
 }
 
+// ReplaceOrg makes the local org chart a mirror of one kept elsewhere (the ClawHQ
+// gateway plugin). Nil slices and maps are treated as empty.
+func (s *Store) ReplaceOrg(departments []Department, assignments map[string]string) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	cfg.Departments = append([]Department{}, departments...)
+	cfg.Assignments = map[string]string{}
+	for k, v := range assignments {
+		cfg.Assignments[k] = v
+	}
+	return s.writeLocked(cfg)
+}
+
 func (s *Store) UpsertDepartment(dept Department) (Config, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

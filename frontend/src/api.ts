@@ -8,6 +8,7 @@ import {
   InboxService,
   LoginService,
   NodeService,
+  PluginService,
   UpdateService,
   WindowService
 } from '../bindings/github.com/surpriseawofemi/clawhq'
@@ -25,6 +26,7 @@ import type {
   GatewayProfile,
   LoginStatus,
   NodeStatus,
+  PluginStatus,
   UpdateStatus,
   NodeNotification
 } from './types'
@@ -134,6 +136,24 @@ export const api = {
     stamps: (gatewayId: string): Promise<CacheStamp[]> => CacheService.Stamps(gatewayId) as Promise<CacheStamp[]>,
     clear: (): Promise<void> => CacheService.Clear(),
     size: (): Promise<number> => CacheService.Size()
+  },
+  plugin: {
+    status: (): Promise<PluginStatus> => PluginService.Status() as Promise<PluginStatus>,
+    recheck: (): Promise<PluginStatus> => PluginService.Recheck() as Promise<PluginStatus>
+  },
+  /** The gateway plugin appeared, vanished or changed version. */
+  onPluginStatus: (cb: (status: PluginStatus) => void): (() => void) => {
+    return Events.On('plugin:status', (raw: any) => {
+      const st = eventPayload<PluginStatus>(raw)
+      if (st) cb(st)
+    })
+  },
+  /** ClawHQ's own config changed on the Go side (an org mirror from the gateway plugin). */
+  onConfigChanged: (cb: (config: ClawHQConfig) => void): (() => void) => {
+    return Events.On('config:changed', (raw: any) => {
+      const cfg = eventPayload<ClawHQConfig>(raw)
+      if (cfg) cb(cfg)
+    })
   },
   login: {
     status: (): Promise<LoginStatus> => LoginService.Status() as Promise<LoginStatus>,

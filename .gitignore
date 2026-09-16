@@ -18,3 +18,5 @@ out/
 
 # Generated from the Go services by `wails3 generate bindings`
 frontend/bindings/
+plugin/node_modules/
+plugin/dist/

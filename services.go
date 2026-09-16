@@ -197,6 +197,8 @@ type ConfigService struct {
 	store *store.Store
 	// onPrefsChanged lets the menu bar mirror a switch flipped in Settings.
 	onPrefsChanged func()
+	// bridge mirrors org changes to the gateway plugin when one is there.
+	bridge *pluginBridge
 }
 
 func (s *ConfigService) Get() store.Config { return s.store.Read() }
@@ -223,15 +225,43 @@ func (s *ConfigService) SetMenuBar(on bool) (store.Config, error) {
 }
 
 func (s *ConfigService) AssignAgent(agentID, departmentID string) (store.Config, error) {
-	return s.store.AssignAgent(agentID, departmentID)
+	cfg, err := s.store.AssignAgent(agentID, departmentID)
+	if err == nil && s.bridge != nil {
+		s.bridge.assign(agentID, departmentID)
+	}
+	return cfg, err
 }
 
 func (s *ConfigService) UpsertDepartment(dept store.Department) (store.Config, error) {
-	return s.store.UpsertDepartment(dept)
+	cfg, err := s.store.UpsertDepartment(dept)
+	if err == nil && s.bridge != nil {
+		s.bridge.upsertDepartment(dept)
+	}
+	return cfg, err
 }
 
 func (s *ConfigService) RemoveDepartment(id string) (store.Config, error) {
-	return s.store.RemoveDepartment(id)
+	cfg, err := s.store.RemoveDepartment(id)
+	if err == nil && s.bridge != nil {
+		s.bridge.removeDepartment(id)
+	}
+	return cfg, err
+}
+
+// ---------------------------------------------------------------------------
+// PluginService — the ClawHQ gateway plugin, as seen from here.
+// ---------------------------------------------------------------------------
+
+type PluginService struct {
+	bridge *pluginBridge
+}
+
+func (s *PluginService) Status() PluginStatus { return s.bridge.Status() }
+
+// Recheck looks again, for instance right after installing the plugin.
+func (s *PluginService) Recheck() PluginStatus {
+	s.bridge.detect(s.bridge.conn.Status())
+	return s.bridge.Status()
 }
 
 // ---------------------------------------------------------------------------

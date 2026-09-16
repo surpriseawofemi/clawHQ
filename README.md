@@ -440,6 +440,31 @@ Agent settings *do* write real OpenClaw config, via `agents.update`: identity (n
 emoji, theme), model, thinking level, and `subagents.allowAgents` — the reporting line
 that decides who each agent may delegate to.
 
+### With the ClawHQ gateway plugin
+
+`plugin/` holds `clawhq-openclaw-plugin`, an OpenClaw gateway plugin. When it is
+installed on the gateway, ClawHQ notices on connect (`clawhq.version`) and switches:
+
+- The org chart lives on the gateway. A gateway with none yet takes this machine's
+  chart once (`clawhq.org.import`); after that `clawhq.json` is a mirror, every edit
+  is written through (`clawhq.org.*`), and a `clawhq.org.changed` event refreshes the
+  mirror everywhere. Every ClawHQ sees one chart.
+- Agents get `clawhq_departments_list`, `clawhq_department_create`,
+  `clawhq_agent_assign` and `clawhq_ask_human` from the plugin, with their real agent
+  id supplied by the runtime; the node stops publishing its own copies of those four
+  tools. Agents are told their department in the system prompt.
+- `clawhq_ask_human` writes to the gateway's inbox and broadcasts `clawhq.notice`;
+  every connected ClawHQ shows it, so the node-to-node relay is not needed. On
+  connect, notices raised while this ClawHQ was away are fetched (`clawhq.inbox.list`)
+  into the local history, already marked read.
+- Command history is pushed to the gateway too (`clawhq.exec.append`, tagged with the
+  machine name), so one place holds what every machine ran.
+
+Without the plugin nothing changes. Settings → Plugins shows whether it is installed
+and installs it from ClawHub. The plugin needs
+`plugins.entries.clawhq.hooks.allowConversationAccess` and `allowPromptInjection` set
+to true for its hooks; ClawHQ patches those when it installs the plugin.
+
 ## Search and appearance
 
 ⌘K (Ctrl-K elsewhere), or the magnifier in the sidebar, opens a palette that finds

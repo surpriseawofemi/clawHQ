@@ -66,6 +66,6 @@ changes. Shipped items keep their number so discussions stay anchored.
 | --- | --- | --- | --- |
 | 14 | **Desktop control gaps.** Non-US keyboard layouts, file transfer. Secondary displays and clipboard sync shipped in v0.1.20. | M | |
 | 17 | **Linux capture and input.** | L | |
-| 21 | **A `clawhq` gateway plugin.** OpenClaw's plugin SDK on the gateway: tools that know which agent called them, departments and notification history stored once on the gateway, lifecycle hooks, ClawHQ's own RPC methods. Installed from Settings via `plugins.install` once published as a package. Replaces the old item 11 (departments on the gateway). Plugin API moves between gateway versions. | L | to consider |
+| 21 | **A `clawhq` gateway plugin.** Phase 1 shipped in v0.1.23: `plugin/` (methods, tools with real caller id, org context, inbox events, activity records) and the ClawHQ bridge (detect, org mirror and import, notice events, exec push). Left: publish to ClawHub, server-side search and usage summary, activity feed UI from `clawhq.activity`. | M | in progress |
 | 22 | **ClawHQ installs OpenClaw.** "Install OpenClaw here": install the CLI, run onboarding non-interactively, start the service, pair the local ClawHQ. Cannot reach a remote machine that has no gateway yet. | M | to consider |
 | 23 | **ClawHQ data on the gateway.** OpenClaw already keeps its state in SQLite on the gateway host. Moving ClawHQ's own data (departments, notifications, exec audit) there, through the plugin, makes two installs behave as one system. | M | part of 21 |

@@ -100,6 +100,20 @@ func pluginTools() []map[string]any {
 	}
 }
 
+// SetHiddenTools withholds some of ClawHQ's tools from the gateway, for when the
+// ClawHQ gateway plugin provides the same ones with the caller's real identity. The
+// change is published straight away when the node is connected.
+func (h *Host) SetHiddenTools(ctx context.Context, names []string) {
+	hidden := map[string]bool{}
+	for _, n := range names {
+		hidden[n] = true
+	}
+	h.mu.Lock()
+	h.hiddenTools = hidden
+	h.mu.Unlock()
+	h.publishPluginTools(ctx)
+}
+
 // publishPluginTools advertises ClawHQ's tools to the gateway so agents can call them.
 func (h *Host) publishPluginTools(ctx context.Context) {
 	h.mu.RLock()
@@ -112,8 +126,18 @@ func (h *Host) publishPluginTools(ctx context.Context) {
 	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
+	h.mu.RLock()
+	hidden := h.hiddenTools
+	h.mu.RUnlock()
+	tools := make([]map[string]any, 0)
+	for _, t := range pluginTools() {
+		if name, _ := t["name"].(string); hidden[name] {
+			continue
+		}
+		tools = append(tools, t)
+	}
 	resp, err := client.Send(reqCtx, "node.pluginTools.update", map[string]any{
-		"tools": pluginTools(),
+		"tools": tools,
 	})
 	if err != nil {
 		if h.logUnknown != nil {
