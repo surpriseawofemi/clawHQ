@@ -66,11 +66,26 @@ export function AddMachinePanel({ connected }: Props): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected])
 
+  // The address the new machine will dial. A ClawHQ on the gateway host talks to it
+  // over loopback, which no other machine can use, so the field is prefilled from any
+  // saved gateway with a real address and can be typed over.
+  const [address, setAddress] = useState('')
+  useEffect(() => {
+    api.connection
+      .gateways()
+      .then((list) => {
+        const real = list.find((g) => !/^(wss?|https?):\/\/(127\.0\.0\.1|localhost|\[?::1\]?|0\.0\.0\.0)(:|\/|$)/i.test(g.url))
+        if (real && !address) setAddress(real.url)
+      })
+      .catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const mint = async (): Promise<void> => {
     setBusy(true)
     setError(null)
     try {
-      setJoin(await api.node.joinCommand())
+      setJoin(await api.node.joinCommand(address.trim()))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -113,6 +128,19 @@ export function AddMachinePanel({ connected }: Props): React.JSX.Element {
           auto, semi-auto or manual. The machine must be able to reach the gateway: on the same tailnet, or the
           gateway published with Tailscale Funnel.
         </p>
+        <div className="field">
+          <span>Gateway address the machine will dial</span>
+          <input
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="wss://gateway-host.tailnet.ts.net"
+            spellCheck={false}
+          />
+          <p className="field-hint">
+            Not a loopback address: the machine dials this from where it is. On a tailnet it is the gateway host's
+            Tailscale name, <code>wss://&lt;host&gt;.&lt;tailnet&gt;.ts.net</code>.
+          </p>
+        </div>
         <div className="btn-row">
           <button className="btn btn-primary" disabled={!connected || busy} onClick={() => void mint()}>
             {busy ? 'Minting…' : join ? 'New code' : 'Get the command'}

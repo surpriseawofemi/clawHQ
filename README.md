@@ -206,7 +206,10 @@ policy. Commands advertised:
 
 Settings → Machines → Add a machine mints a one-time setup code on the gateway
 (`device.pair.setupCode`), swaps the loopback address the gateway writes into it for
-the address this ClawHQ uses, and shows one command for the new machine:
+the address the new machine will dial, and shows one command for it. That address is
+the field above the button: prefilled from any saved gateway that is not loopback (a
+ClawHQ on the gateway host itself connects over `ws://127.0.0.1`, which no other
+machine can use), editable, and refused when it is still loopback.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/surpriseawofemi/clawHQ/main/scripts/node.sh | bash -s -- --code <code> --version 2026.9.4

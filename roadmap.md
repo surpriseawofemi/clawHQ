@@ -54,6 +54,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 27 | One page frame for everything (`layout/Shell.tsx`): global top bar with back, page name, gateway pill, search, bell, desktops, settings; side panel + content or content alone; shared ContentHead; Chat, Settings, Activity and the menu all use it | v0.1.28 |
 | 28 | Office (floor plan with live presence, delegation lines, agent card with context and memory health), Tasks board (plugin-kept, agent tools, run in a fresh thread, closes with the run), Daily digest (runs, tasks, asks, commands, cron runs, cost; Markdown copy), cron run history in Automations; plugin 0.2.0 | v0.1.30 |
 | 22 | Enrol any Linux machine as a node: Settings → Machines mints a one-time code and one paste-able command; `scripts/node.sh` installs the OpenClaw CLI, a read-only exec policy and the node service; Machines room in Office | v0.1.32 |
+| 22b | Join command carries a reachable gateway address: editable field, prefilled from a non-loopback saved gateway, loopback refused (a ClawHQ on the gateway host minted `ws://127.0.0.1` codes) | v0.1.34 |
 
 ## Now
 

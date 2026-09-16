@@ -111,7 +111,7 @@ export const api = {
     /** Drop the node identity and pair again with the current command list. */
     rePair: (): Promise<NodeStatus> => NodeService.RePair() as Promise<NodeStatus>,
     /** One-time command to enrol another machine as a node. */
-    joinCommand: (): Promise<JoinCommand> => NodeService.JoinCommand() as Promise<JoinCommand>
+    joinCommand: (gatewayUrl = ''): Promise<JoinCommand> => NodeService.JoinCommand(gatewayUrl) as Promise<JoinCommand>
   },
   update: {
     status: (): Promise<UpdateStatus> => UpdateService.Status() as Promise<UpdateStatus>,

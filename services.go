@@ -396,6 +396,19 @@ type JoinCommand struct {
 	GatewayURL  string `json:"gatewayUrl"`
 }
 
+// isLoopbackURL reports whether a gateway address only works on the gateway host.
+func isLoopbackURL(raw string) bool {
+	u := strings.ToLower(strings.TrimSpace(raw))
+	for _, p := range []string{"ws://", "wss://", "http://", "https://"} {
+		u = strings.TrimPrefix(u, p)
+	}
+	host := u
+	if i := strings.IndexAny(host, "/:"); i >= 0 {
+		host = host[:i]
+	}
+	return host == "" || host == "127.0.0.1" || host == "localhost" || host == "::1" || host == "[::1]" || host == "0.0.0.0"
+}
+
 // nodeScriptURL is the enrol script served from the repository.
 const nodeScriptURL = "https://raw.githubusercontent.com/surpriseawofemi/clawHQ/main/scripts/node.sh"
 
@@ -403,10 +416,27 @@ const nodeScriptURL = "https://raw.githubusercontent.com/surpriseawofemi/clawHQ/
 // command to paste on the new machine. The gateway writes its own loopback address
 // into the code, which is useless from anywhere else, so the address is replaced
 // with the one this ClawHQ reaches the gateway at.
-func (s *NodeService) JoinCommand(ctx context.Context) (JoinCommand, error) {
-	profile, ok := s.store.Read().ActiveGateway()
+func (s *NodeService) JoinCommand(ctx context.Context, gatewayURL string) (JoinCommand, error) {
+	cfg := s.store.Read()
+	profile, ok := cfg.ActiveGateway()
 	if !ok {
 		return JoinCommand{}, fmt.Errorf("no active gateway")
+	}
+	// The address must work from the new machine. A ClawHQ sitting on the gateway
+	// host connects over loopback, which is useless anywhere else, so prefer the
+	// address given, then any saved profile that is not loopback.
+	if strings.TrimSpace(gatewayURL) != "" {
+		profile.URL = strings.TrimSpace(gatewayURL)
+	} else if isLoopbackURL(profile.URL) {
+		for _, g := range cfg.Gateways {
+			if !isLoopbackURL(g.URL) {
+				profile.URL = g.URL
+				break
+			}
+		}
+	}
+	if isLoopbackURL(profile.URL) {
+		return JoinCommand{}, fmt.Errorf("this ClawHQ reaches the gateway over loopback; enter the address other machines use, such as wss://<gateway host>.<tailnet>.ts.net")
 	}
 	raw, err := s.conn.Request(ctx, "device.pair.setupCode", map[string]any{})
 	if err != nil {
