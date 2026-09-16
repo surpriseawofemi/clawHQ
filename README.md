@@ -246,6 +246,24 @@ agent is answering. The board and presence come from the gateway plugin (0.2.3).
   everything agents have said to you is in one place, with who said it and when.
   `@agent …` sends into that agent's Super Boss Chat, `@all …` into everyone's.
 
+### Issues
+
+Everything agents need from you, one item at a time, and the tasks you hand out.
+The list on the left is ordered by what needs you first (🔴 needs you, 🟡 in
+progress, ✅ resolved), then urgency, then age, with the agent's avatar and the
+kind (question, task, issue, improvement). Click one to see the ask and the thread;
+the answer box sends your reply into the plugin and into that agent's Super Boss
+Chat as a turn, so the agent acts on it and closes the item with a note through
+`clawhq_issue_update`. "+ Task for an agent" creates a task the same way.
+
+Agents file items with `clawhq_issue_create` (one per ask; the plugin's briefing
+tells every agent to do that instead of bundling asks into one message), list
+theirs with `clawhq_issues_list`, and a new item rings the bell. A long report an
+agent already sent to Super Boss Chat can be split from Team Chat → super boss:
+"File as N issues" makes one item per bold heading. Needs plugin 0.2.4.
+
+Chat bubbles in Team Chat and Issues render Markdown, so `**bold**` shows bold.
+
 ### Where Chat opens
 
 Chat reopens on the agent and session that were open last time, saved per gateway

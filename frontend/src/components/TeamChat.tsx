@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
-import { plugin, teamPrompt, teamSessionKey } from '../state/plugin'
+import { plugin, splitReport, teamPrompt, teamSessionKey } from '../state/plugin'
 import { bossSessionKey } from '../state/useFleet'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
 import type { Agent, ChatMessage, Presence, TeamPost } from '../types'
 import { agentEmoji, agentLabel, messageText } from '../types'
+import { renderMarkdown } from '../markdown'
 
 type Props = {
   shell: ShellProps
@@ -30,24 +31,16 @@ const timeOf = (ms: number): string => {
     : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-/** Renders @mentions in a post as chips. */
+/** Markdown (bold, lists, code) with @mentions turned into chips. */
 function PostText({ text, agents }: { text: string; agents: Agent[] }): React.JSX.Element {
-  const parts = text.split(/(@[\w.-]+)/g)
-  return (
-    <>
-      {parts.map((p, i) => {
-        if (!p.startsWith('@')) return <span key={i}>{p}</span>
-        const id = p.slice(1).toLowerCase()
-        const a = agents.find((x) => x.id.toLowerCase() === id)
-        const known = a || id === 'all' || id === 'boss'
-        return (
-          <span key={i} className={`mention${known ? '' : ' is-unknown'}`} title={a ? agentLabel(a) : undefined}>
-            {p}
-          </span>
-        )
-      })}
-    </>
-  )
+  const html = useMemo(() => {
+    const known = new Set([...agents.map((a) => a.id.toLowerCase()), 'all', 'boss'])
+    return renderMarkdown(text).replace(/(^|[\s>(])@([\w.-]+)/g, (_m, pre: string, id: string) => {
+      const cls = known.has(id.toLowerCase()) ? 'mention' : 'mention is-unknown'
+      return `${pre}<span class="${cls}">@${id}</span>`
+    })
+  }, [text, agents])
+  return <div className="md-body team-md" dangerouslySetInnerHTML={{ __html: html }} />
 }
 
 /** One line in either channel, already flattened. */
@@ -285,6 +278,21 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
     }
   }
 
+  const fileIssues = async (l: Line): Promise<void> => {
+    if (!l.agent) return
+    setBusy(true)
+    try {
+      for (const it of splitReport(l.text)) {
+        await plugin.issues.create({ kind: 'question', title: it.title, body: it.body, urgency: it.urgency, from: l.agent.id, fromKind: 'agent', sessionKey: l.sessionKey })
+      }
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // ---- render ----------------------------------------------------------------------
   const side = (
     <>
@@ -352,6 +360,11 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
                     {l.from}
                   </button>
                   <span className="team-time">{l.atMs ? timeOf(l.atMs) : ''}</span>
+                  {channel === 'boss' && !l.mine && l.agent && splitReport(l.text).length > 1 && (
+                    <button className="btn btn-sm btn-ghost team-split" onClick={() => void fileIssues(l)} title="One issue per bold heading, so you can answer them one by one">
+                      File as {splitReport(l.text).length} issues
+                    </button>
+                  )}
                 </div>
                 <div className="team-text">
                   <PostText text={l.text} agents={agents} />

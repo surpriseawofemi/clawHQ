@@ -92,6 +92,28 @@ export type TeamPost = {
   replyTo?: string;
 };
 
+/** Something an agent needs from the human (or a task the human gives an agent), answered one by one. */
+export type IssueKind = "question" | "task" | "issue" | "improvement";
+export type IssueStatus = "open" | "in-progress" | "resolved";
+export type IssueUrgency = "low" | "normal" | "high" | "urgent";
+export type IssueReply = { id: string; by: string; byKind: "human" | "agent"; text: string; atMs: number };
+export type Issue = {
+  id: string;
+  kind: IssueKind;
+  title: string;
+  body?: string;
+  from: string;
+  fromKind: "human" | "agent";
+  assigneeAgentId?: string;
+  urgency: IssueUrgency;
+  status: IssueStatus;
+  createdAtMs: number;
+  updatedAtMs: number;
+  resolvedAtMs?: number;
+  sessionKey?: string;
+  replies: IssueReply[];
+};
+
 export type State = {
   version: number;
   departments: Department[];
@@ -105,9 +127,10 @@ export type State = {
   teamSeen: Record<string, number>;
   /** Per agent: the board post its current Team Chat turn answers. */
   teamTurn: Record<string, { postId: string; hops: number; atMs: number }>;
+  issues: Issue[];
 };
 
-const LIMITS = { notices: 1000, execLog: 5000, activity: 2000, tasks: 2000, team: 2000 };
+const LIMITS = { notices: 1000, execLog: 5000, activity: 2000, tasks: 2000, team: 2000, issues: 2000 };
 
 const empty = (): State => ({
   version: 1,
@@ -120,6 +143,7 @@ const empty = (): State => ({
   team: [],
   teamSeen: {},
   teamTurn: {},
+  issues: [],
 });
 
 export class Store {
@@ -157,6 +181,7 @@ export class Store {
       s.team = (s.team ?? []).slice(-LIMITS.team);
       s.teamSeen = s.teamSeen ?? {};
       s.teamTurn = s.teamTurn ?? {};
+      s.issues = (s.issues ?? []).slice(-LIMITS.issues);
       await fs.mkdir(path.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
       await fs.writeFile(tmp, JSON.stringify(s), "utf8");

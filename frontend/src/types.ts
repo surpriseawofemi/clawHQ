@@ -365,3 +365,25 @@ export type TeamPost = {
   hops?: number
   replyTo?: string
 }
+
+/** Something an agent needs from you, or a task you gave an agent, answered one by one. */
+export type IssueKind = 'question' | 'task' | 'issue' | 'improvement'
+export type IssueStatus = 'open' | 'in-progress' | 'resolved'
+export type IssueUrgency = 'low' | 'normal' | 'high' | 'urgent'
+export type IssueReply = { id: string; by: string; byKind: 'human' | 'agent'; text: string; atMs: number }
+export type Issue = {
+  id: string
+  kind: IssueKind
+  title: string
+  body?: string
+  from: string
+  fromKind: 'human' | 'agent'
+  assigneeAgentId?: string
+  urgency: IssueUrgency
+  status: IssueStatus
+  createdAtMs: number
+  updatedAtMs: number
+  resolvedAtMs?: number
+  sessionKey?: string
+  replies: IssueReply[]
+}

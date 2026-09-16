@@ -6,7 +6,7 @@ import type {
   OpenClawPluginToolContext,
 } from "openclaw/plugin-sdk/core";
 import { Store, newId } from "./store.js";
-import type { Activity, Department, ExecRecord, Notice, State, Task, TaskStatus, TeamPost } from "./store.js";
+import type { Activity, Department, ExecRecord, Issue, IssueKind, IssueStatus, IssueUrgency, Notice, State, Task, TaskStatus, TeamPost } from "./store.js";
 
 /** Live state of one agent, kept in memory: what it is doing right now. */
 type Presence = {
@@ -34,8 +34,11 @@ type Delegation = {
 };
 
 const TASK_STATUSES: TaskStatus[] = ["todo", "doing", "done", "failed"];
+const ISSUE_KINDS: IssueKind[] = ["question", "task", "issue", "improvement"];
+const ISSUE_STATUSES: IssueStatus[] = ["open", "in-progress", "resolved"];
+const ISSUE_URGENCIES: IssueUrgency[] = ["low", "normal", "high", "urgent"];
 
-export const PLUGIN_VERSION = "0.2.3";
+export const PLUGIN_VERSION = "0.2.4";
 
 /**
  * Super Boss Chat: one session per agent reserved for the human operator. ClawHQ
@@ -173,6 +176,50 @@ function register(api: OpenClawPluginApi): void {
     return post;
   };
 
+  const createIssue = async (p: {
+    kind?: string; title: string; body?: string; from: string; fromKind: "human" | "agent"; assigneeAgentId?: string; urgency?: string; sessionKey?: string;
+  }): Promise<Issue> => {
+    const title = p.title.trim();
+    if (!title) throw new Error("an issue needs a title");
+    const kind = ISSUE_KINDS.includes(p.kind as IssueKind) ? (p.kind as IssueKind) : p.fromKind === "human" ? "task" : "question";
+    const urgency = ISSUE_URGENCIES.includes(p.urgency as IssueUrgency) ? (p.urgency as IssueUrgency) : "normal";
+    const now = Date.now();
+    const issue: Issue = {
+      id: newId("i"), kind, title, body: p.body?.trim() || undefined, from: p.from, fromKind: p.fromKind,
+      assigneeAgentId: p.assigneeAgentId?.trim() || undefined, urgency, status: "open", createdAtMs: now, updatedAtMs: now, sessionKey: p.sessionKey, replies: [],
+    };
+    await store.update((s) => { s.issues.push(issue); });
+    emit("clawhq.issues.changed", { id: issue.id, status: issue.status, from: issue.from, fromKind: issue.fromKind });
+    if (p.fromKind === "agent") {
+      await addNotice({ title: `${kind === "question" ? "Question" : kind === "issue" ? "Issue" : kind === "improvement" ? "Improvement" : "Task"} from ${p.from}${urgency === "urgent" || urgency === "high" ? ` (${urgency})` : ""}`, body: title, agentId: p.from, sessionKey: p.sessionKey, origin: "issues" });
+    }
+    return issue;
+  };
+  const updateIssue = async (id: string, patch: Partial<Pick<Issue, "status" | "urgency" | "assigneeAgentId" | "title" | "body">>, reply?: { by: string; byKind: "human" | "agent"; text: string }): Promise<Issue> => {
+    const out = await store.update((s) => {
+      const it = s.issues.find((x) => x.id === id);
+      if (!it) throw new Error(`no issue ${id}`);
+      if (patch.status && ISSUE_STATUSES.includes(patch.status)) {
+        it.status = patch.status;
+        if (patch.status === "resolved") it.resolvedAtMs = Date.now();
+        else it.resolvedAtMs = undefined;
+      }
+      if (patch.urgency && ISSUE_URGENCIES.includes(patch.urgency)) it.urgency = patch.urgency;
+      if (patch.assigneeAgentId !== undefined) it.assigneeAgentId = patch.assigneeAgentId || undefined;
+      if (patch.title?.trim()) it.title = patch.title.trim();
+      if (patch.body !== undefined) it.body = patch.body.trim() || undefined;
+      if (reply?.text.trim()) {
+        it.replies.push({ id: newId("r"), by: reply.by, byKind: reply.byKind, text: reply.text.trim(), atMs: Date.now() });
+        // A human answer moves a waiting item along; an agent note on an open item does too.
+        if (it.status === "open") it.status = "in-progress";
+      }
+      it.updatedAtMs = Date.now();
+      return { ...it };
+    });
+    emit("clawhq.issues.changed", { id: out.id, status: out.status, from: out.from, fromKind: out.fromKind });
+    return out;
+  };
+
   // ---- gateway methods, for ClawHQ desktops --------------------------------
 
   const method = (name: string, scope: "operator.read" | "operator.write", fn: (p: Params, opts: GatewayRequestHandlerOptions) => Promise<unknown>) => {
@@ -191,7 +238,7 @@ function register(api: OpenClawPluginApi): void {
 
   method("clawhq.version", "operator.read", async () => ({
     version: PLUGIN_VERSION,
-    features: ["org", "inbox", "exec", "activity", "events", "orgContext", "presence", "tasks", "superboss", "team"],
+    features: ["org", "inbox", "exec", "activity", "events", "orgContext", "presence", "tasks", "superboss", "team", "issues"],
     stateFile: store.file,
   }));
 
@@ -417,6 +464,27 @@ function register(api: OpenClawPluginApi): void {
     const post = await postTeam({ text: str(p, "text"), from: str(p, "from") || "boss", fromKind: "human", mentions });
     return { post };
   });
+  method("clawhq.issues.list", "operator.read", async (p) => {
+    const s = await store.load();
+    const status = str(p, "status");
+    const issues = (s.issues ?? []).filter((x) => !status || x.status === status);
+    return { issues };
+  });
+  method("clawhq.issues.create", "operator.write", async (p) => ({
+    issue: await createIssue({ kind: str(p, "kind"), title: str(p, "title"), body: str(p, "body"), from: str(p, "from") || "boss", fromKind: (str(p, "fromKind") === "agent" ? "agent" : "human"), assigneeAgentId: str(p, "assigneeAgentId"), urgency: str(p, "urgency"), sessionKey: str(p, "sessionKey") || undefined }),
+  }));
+  method("clawhq.issues.reply", "operator.write", async (p) => ({
+    issue: await updateIssue(str(p, "id"), {}, { by: str(p, "by") || "boss", byKind: "human", text: str(p, "text") }),
+  }));
+  method("clawhq.issues.update", "operator.write", async (p) => ({
+    issue: await updateIssue(str(p, "id"), { status: str(p, "status") as IssueStatus || undefined, urgency: str(p, "urgency") as IssueUrgency || undefined, assigneeAgentId: typeof p.assigneeAgentId === "string" ? (p.assigneeAgentId as string) : undefined, title: str(p, "title") || undefined, body: typeof p.body === "string" ? (p.body as string) : undefined }),
+  }));
+  method("clawhq.issues.delete", "operator.write", async (p) => {
+    const id = str(p, "id");
+    await store.update((s) => { s.issues = s.issues.filter((x) => x.id !== id); });
+    emit("clawhq.issues.changed", { id, status: "deleted" });
+    return { ok: true };
+  });
   method("clawhq.team.turn", "operator.write", async (p) => {
     // ClawHQ says which post it is handing an agent; the reply inherits hops+1.
     const agentId = str(p, "agentId");
@@ -572,6 +640,49 @@ function register(api: OpenClawPluginApi): void {
         },
       },
       {
+        name: "clawhq_issue_create",
+        label: "Ask the boss (ClawHQ issue)",
+        description: "File one item for the human boss in ClawHQ's Issues page: a question to answer, a decision to make, an approval, an issue found, or an improvement idea. One item per question; the boss answers them one by one and the answer arrives in your Super Boss Chat. Do not bundle several asks in one message.",
+        parameters: Type.Object({
+          title: Type.String({ description: "One line: what you need" }),
+          body: Type.Optional(Type.String({ description: "Context, options, your recommendation" })),
+          kind: Type.Optional(Type.String({ description: "question (default), issue, improvement or task" })),
+          urgency: Type.Optional(Type.String({ description: "low, normal (default), high or urgent" })),
+        }),
+        async execute(_id: string, params: { title: string; body?: string; kind?: string; urgency?: string }) {
+          const it = await createIssue({ ...params, from: ctx.agentId ?? "agent", fromKind: "agent", sessionKey: ctx.sessionKey });
+          return jsonResult({ ok: true, issue: { id: it.id, kind: it.kind, urgency: it.urgency, status: it.status } });
+        },
+      },
+      {
+        name: "clawhq_issues_list",
+        label: "List ClawHQ issues",
+        description: "Your open items in ClawHQ's Issues page: questions you asked the boss (with any answers) and tasks the boss gave you.",
+        parameters: Type.Object({
+          all: Type.Optional(Type.Boolean({ description: "Everyone's items, not only yours" })),
+          status: Type.Optional(Type.String({ description: "open, in-progress or resolved; default: not resolved" })),
+        }),
+        async execute(_id: string, params: { all?: boolean; status?: string }) {
+          const s = await store.load();
+          const list = (s.issues ?? []).filter((x) => (params.all || x.from === ctx.agentId || x.assigneeAgentId === ctx.agentId) && (params.status ? x.status === params.status : x.status !== "resolved"));
+          return jsonResult({ you: ctx.agentId ?? null, issues: list.map((x) => ({ id: x.id, kind: x.kind, title: x.title, body: x.body, urgency: x.urgency, status: x.status, from: x.from, assignee: x.assigneeAgentId, replies: x.replies.map((r) => ({ by: r.by, text: r.text, at: new Date(r.atMs).toISOString() })) })) });
+        },
+      },
+      {
+        name: "clawhq_issue_update",
+        label: "Update a ClawHQ issue",
+        description: "Move an issue along: in-progress when you start acting on the boss's answer or a task, resolved with a short note when it is settled. A note without a status change is added as your reply.",
+        parameters: Type.Object({
+          id: Type.String({ description: "Issue id" }),
+          status: Type.Optional(Type.String({ description: "open, in-progress or resolved" })),
+          note: Type.Optional(Type.String({ description: "What you did or still need" })),
+        }),
+        async execute(_id: string, params: { id: string; status?: string; note?: string }) {
+          const it = await updateIssue(params.id, { status: params.status as IssueStatus }, params.note ? { by: ctx.agentId ?? "agent", byKind: "agent", text: params.note } : undefined);
+          return jsonResult({ ok: true, issue: { id: it.id, status: it.status } });
+        },
+      },
+      {
         name: "clawhq_team_read",
         label: "Read Team Chat",
         description: "Read the latest posts on the ClawHQ Team Chat board.",
@@ -596,6 +707,9 @@ function register(api: OpenClawPluginApi): void {
         "clawhq_task_update",
         "clawhq_team_post",
         "clawhq_team_read",
+        "clawhq_issue_create",
+        "clawhq_issues_list",
+        "clawhq_issue_update",
       ],
     },
   );
@@ -706,6 +820,11 @@ function register(api: OpenClawPluginApi): void {
     if (isTeamKey(ctx.sessionKey)) {
       lines.push(
         `This session is your seat in the ClawHQ Team Chat. Whatever you answer here is posted to the shared board that the boss (human) and every agent read, so answer briefly and only what is useful to the room. Address someone with @agent-id, everyone with @all, the human with @boss.`,
+      );
+    }
+    if (ctx.agentId) {
+      lines.push(
+        `When you need the boss (human) to answer, decide, approve or look at something, file each item separately with clawhq_issue_create (kind and urgency), instead of one long message with several asks. The boss answers items one by one in ClawHQ's Issues page and the answer reaches you in your Super Boss Chat; then call clawhq_issue_update (in-progress, resolved with a note).`,
       );
     }
     if (ctx.agentId) {

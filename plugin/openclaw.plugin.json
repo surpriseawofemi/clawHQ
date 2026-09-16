@@ -15,7 +15,10 @@
       "clawhq_task_create",
       "clawhq_task_update",
       "clawhq_team_post",
-      "clawhq_team_read"
+      "clawhq_team_read",
+      "clawhq_issue_create",
+      "clawhq_issues_list",
+      "clawhq_issue_update"
     ]
   },
   "configSchema": {

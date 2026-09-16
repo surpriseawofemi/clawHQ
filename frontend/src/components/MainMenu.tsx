@@ -3,7 +3,7 @@ import { api } from '../api'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
 import type { Agent, SessionInfo } from '../types'
 
-export type Page = 'menu' | 'chat' | 'team' | 'activity' | 'office' | 'tasks' | 'digest' | 'settings'
+export type Page = 'menu' | 'chat' | 'team' | 'issues' | 'activity' | 'office' | 'tasks' | 'digest' | 'settings'
 
 type Props = {
   shell: ShellProps
@@ -49,6 +49,17 @@ const ENTRIES: Entry[] = [
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M4 5h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3v-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
         <path d="M17 9h3a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-1v3l-3-3h-3" />
+      </svg>
+    )
+  },
+  {
+    page: 'issues',
+    title: 'Issues',
+    blurb: 'What agents need from you, one at a time: questions, approvals, problems. Plus tasks you hand out.',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 8v5M12 16h.01" />
       </svg>
     )
   },

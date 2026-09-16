@@ -17,6 +17,7 @@ import { MainMenu, type Page } from './components/MainMenu'
 import { Office } from './components/Office'
 import { TasksBoard } from './components/TasksBoard'
 import { TeamChat } from './components/TeamChat'
+import { IssuesPage } from './components/IssuesPage'
 import { Digest } from './components/Digest'
 import type { SettingsSection } from './components/settings/SettingsPage'
 import { api } from './api'
@@ -176,6 +177,18 @@ function App(): React.JSX.Element {
           connected={connected}
           messages={messages}
           openSession={openSession}
+          onOpenAgent={(agentId, key) => {
+            setSelectedAgentId(agentId)
+            selectSession(key ?? null)
+            setAgentTab('chat')
+            setPage('chat')
+          }}
+        />
+      ) : page === 'issues' ? (
+        <IssuesPage
+          shell={shellProps}
+          agents={agents}
+          connected={connected}
           onOpenAgent={(agentId, key) => {
             setSelectedAgentId(agentId)
             selectSession(key ?? null)
