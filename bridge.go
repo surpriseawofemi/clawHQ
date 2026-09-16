@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"sync"
@@ -247,25 +248,68 @@ func (b *pluginBridge) upgrade() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	if _, err := b.request(ctx, "plugins.uninstall", map[string]any{"pluginId": "clawhq"}); err != nil {
-		return finish(err)
+	// Every ClawHQ on this gateway sees the same new version at about the same
+	// time. Without this two of them race: one installs while the other's
+	// uninstall removes the directory underneath it, and the gateway comes back
+	// with no plugin at all. So: stagger, then look at what is actually installed
+	// right before touching anything.
+	time.Sleep(time.Duration(rand.IntN(45)) * time.Second)
+	installed, present := b.installedVersion(ctx)
+	if present && !semverLess(installed, target) {
+		log.Printf("plugin: clawhq %s already installed (another ClawHQ got there first)", installed)
+		return finish(nil)
 	}
-	if err := b.waitForGateway(ctx); err != nil {
-		return finish(err)
+	if present {
+		if _, err := b.request(ctx, "plugins.uninstall", map[string]any{"pluginId": "clawhq"}); err != nil {
+			return finish(err)
+		}
+		if err := b.waitForGateway(ctx); err != nil {
+			log.Printf("plugin: %v (the gateway defers restarts while agents run); carrying on", err)
+		}
 	}
 	b.setStage("installing")
 	if err := b.installFromHub(ctx, target); err != nil {
 		return finish(err)
 	}
-	if err := b.waitForGateway(ctx); err != nil {
-		return finish(err)
-	}
 	b.setStage("enabling")
+	// The install removed the plugin's settings; put them back now, so they are
+	// on disk whenever the gateway gets round to restarting.
+	if err := b.patchHookPolicy(ctx); err != nil {
+		log.Printf("plugin: hook policy not patched yet: %v", err)
+	}
+	if err := b.waitForGateway(ctx); err != nil {
+		log.Printf("plugin: %v; the plugin loads on the gateway's next restart", err)
+	}
 	if err := b.patchHookPolicy(ctx); err != nil {
 		return finish(err)
 	}
 	log.Printf("plugin: updated to clawhq %s", target)
 	return finish(nil)
+}
+
+// installedVersion asks the gateway's plugin list, which is the truth even while
+// the plugin's methods are not loaded yet (a restart is pending).
+func (b *pluginBridge) installedVersion(ctx context.Context) (version string, present bool) {
+	raw, err := b.request(ctx, "plugins.list", map[string]any{})
+	if err != nil {
+		return "", false
+	}
+	var res struct {
+		Plugins []struct {
+			ID        string `json:"id"`
+			Version   string `json:"version"`
+			Installed bool   `json:"installed"`
+		} `json:"plugins"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return "", false
+	}
+	for _, p := range res.Plugins {
+		if p.ID == "clawhq" && p.Installed {
+			return p.Version, true
+		}
+	}
+	return "", false
 }
 
 func (b *pluginBridge) setStage(stage string) {
