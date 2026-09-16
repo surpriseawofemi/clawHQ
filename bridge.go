@@ -179,9 +179,6 @@ func (b *pluginBridge) detect(st gateway.Status) {
 	if err := b.patchToolAllow(ctx); err != nil {
 		log.Printf("plugin: tool allowlist: %v", err)
 	}
-	if err := b.patchCLIBridge(ctx); err != nil {
-		log.Printf("plugin: CLI tool bridge: %v", err)
-	}
 }
 
 // checkLatest asks ClawHub (through the gateway's plugin search) for the newest
@@ -287,9 +284,6 @@ func (b *pluginBridge) upgrade() error {
 	if err := b.patchToolAllow(ctx); err != nil {
 		log.Printf("plugin: tool allowlist not patched yet: %v", err)
 	}
-	if err := b.patchCLIBridge(ctx); err != nil {
-		log.Printf("plugin: CLI tool bridge: %v", err)
-	}
 	if err := b.waitForGateway(ctx); err != nil {
 		log.Printf("plugin: %v; the plugin loads on the gateway's next restart", err)
 	}
@@ -298,9 +292,6 @@ func (b *pluginBridge) upgrade() error {
 	}
 	if err := b.patchToolAllow(ctx); err != nil {
 		log.Printf("plugin: tool allowlist: %v", err)
-	}
-	if err := b.patchCLIBridge(ctx); err != nil {
-		log.Printf("plugin: CLI tool bridge: %v", err)
 	}
 	log.Printf("plugin: updated to clawhq %s", target)
 	return finish(nil)
@@ -542,9 +533,6 @@ func (b *pluginBridge) install() (PluginStatus, error) {
 	if err := b.patchToolAllow(ctx); err != nil {
 		log.Printf("plugin: tool allowlist: %v", err)
 	}
-	if err := b.patchCLIBridge(ctx); err != nil {
-		log.Printf("plugin: CLI tool bridge: %v", err)
-	}
 	if err := b.patchHookPolicy(ctx); err != nil {
 		return b.Status(), err
 	}
@@ -584,10 +572,15 @@ func (b *pluginBridge) patchHookPolicy(ctx context.Context) error {
 }
 
 // pluginTools is every agent tool the plugin registers (its manifest's
-// contracts.tools). A gateway running a tool profile only offers agents the tools
+// contracts.tools), plus the plugin group. A gateway running a tool profile only offers agents the tools
 // in tools.allow / tools.alsoAllow, so these have to be listed or agents silently
 // lack them.
 var pluginTools = []string{
+	// The plugin group entry matters for agents on a CLI backend (Claude Code,
+	// Codex): OpenClaw only starts its MCP tool bridge for a run when the
+	// allowlist names a plugin or the plugin group, so exact tool names alone
+	// leave those agents without any plugin tool.
+	"group:plugins",
 	"clawhq_departments_list", "clawhq_department_create", "clawhq_agent_assign", "clawhq_ask_human",
 	"clawhq_tasks_list", "clawhq_task_create", "clawhq_task_update",
 	"clawhq_team_post", "clawhq_team_read",
@@ -641,66 +634,6 @@ func (b *pluginBridge) patchToolAllow(ctx context.Context) error {
 	_, err = b.request(ctx, "config.patch", map[string]any{"raw": string(rawPatch), "baseHash": cur.Hash, "note": "ClawHQ: allow every ClawHQ plugin tool"})
 	if err == nil {
 		log.Printf("plugin: %d ClawHQ tools added to the gateway's tool allowlist", missing)
-	}
-	return err
-}
-
-// patchCLIBridge turns on OpenClaw's MCP loopback bridge for agents that run on
-// the Claude CLI backend. Without it those agents never see any gateway tool,
-// plugin tools included, however the allowlist reads: the CLI is a separate
-// process and only learns about gateway tools through that bridge.
-func (b *pluginBridge) patchCLIBridge(ctx context.Context) error {
-	raw, err := b.request(ctx, "agents.list", map[string]any{})
-	if err != nil {
-		return err
-	}
-	var agents struct {
-		Agents []struct {
-			ID      string `json:"id"`
-			Runtime struct {
-				ID string `json:"id"`
-			} `json:"agentRuntime"`
-		} `json:"agents"`
-	}
-	if err := json.Unmarshal(raw, &agents); err != nil {
-		return err
-	}
-	usesClaudeCLI := false
-	for _, a := range agents.Agents {
-		if a.Runtime.ID == "claude-cli" {
-			usesClaudeCLI = true
-		}
-	}
-	if !usesClaudeCLI {
-		return nil
-	}
-	raw, err = b.request(ctx, "config.get", map[string]any{})
-	if err != nil {
-		return err
-	}
-	var cur struct {
-		Hash   string `json:"hash"`
-		Config struct {
-			Agents struct {
-				Defaults struct {
-					CLIBackends map[string]struct {
-						BundleMCP *bool `json:"bundleMcp"`
-					} `json:"cliBackends"`
-				} `json:"defaults"`
-			} `json:"agents"`
-		} `json:"config"`
-	}
-	if err := json.Unmarshal(raw, &cur); err != nil {
-		return err
-	}
-	if c, ok := cur.Config.Agents.Defaults.CLIBackends["claude-cli"]; ok && c.BundleMCP != nil && *c.BundleMCP {
-		return nil
-	}
-	patch := map[string]any{"agents": map[string]any{"defaults": map[string]any{"cliBackends": map[string]any{"claude-cli": map[string]any{"bundleMcp": true}}}}}
-	rawPatch, _ := json.Marshal(patch)
-	_, err = b.request(ctx, "config.patch", map[string]any{"raw": string(rawPatch), "baseHash": cur.Hash, "note": "ClawHQ: expose gateway tools to Claude CLI agents over the MCP bridge"})
-	if err == nil {
-		log.Printf("plugin: MCP tool bridge enabled for Claude CLI agents (gateway restart needed)")
 	}
 	return err
 }

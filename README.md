@@ -224,13 +224,14 @@ to `tools.alsoAllow` when it finds the plugin, after installing it and after an
 upgrade, so agents never silently lack `clawhq_issue_create` and friends. It only
 ever extends the list.
 
-### Agents on the Claude CLI backend
+### Agents on a CLI backend
 
-Agents whose runtime is `claude-cli` run in a separate Claude Code process and
-only see gateway tools, plugin tools included, through OpenClaw's MCP loopback
-bridge (`agents.defaults.cliBackends.claude-cli.bundleMcp`). ClawHQ switches
-that on when it finds such agents, at detect, install and upgrade time. The
-gateway needs one restart afterwards.
+Agents whose runtime is `claude-cli` (Claude Code) or Codex run in a separate
+process and only get gateway tools through OpenClaw's MCP loopback bridge. The
+gateway starts that bridge for a run only when the tool allowlist names a plugin
+or `group:plugins`, so ClawHQ adds `group:plugins` to `tools.alsoAllow` alongside
+the tool names. Note that the gateway's `tools.effective` RPC does not list
+plugin tools even when agents have them; ask an agent.
 
 ### Super Boss Chat
 
