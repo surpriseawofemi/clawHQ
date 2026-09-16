@@ -212,12 +212,17 @@ the address this ClawHQ uses, and shows one command for the new machine:
 curl -fsSL https://raw.githubusercontent.com/surpriseawofemi/clawHQ/main/scripts/node.sh | bash -s -- --code <code> --version 2026.9.4
 ```
 
-`scripts/node.sh` checks for Node.js 22, installs the OpenClaw CLI at the gateway's
-version, writes `~/.openclaw/exec-approvals.json` with a read-only allowlist (cat,
-tail, journalctl, systemctl, docker, git and the like run without asking; everything
-else asks you in ClawHQ; `--allow-writes` skips the allowlist so every command asks),
-then runs `openclaw connect --service`, which pairs and installs the node host as a
-system service. The pairing request shows up in the same panel for approval, the
+`scripts/node.sh` checks for Node.js 24 (OpenClaw 2026.9.4 refuses 22 and 25),
+installs the OpenClaw CLI at the gateway's version, writes
+`~/.openclaw/exec-approvals.json` for the chosen mode, then runs
+`openclaw connect --service`, which pairs and installs the node host as a system
+service. Every machine has one of three modes: **auto** (agents run anything there
+without asking), **semi-auto** (the default: cat, tail, journalctl, systemctl, docker,
+git and other reads run freely, everything else asks you in ClawHQ) and **manual**
+(everything asks). `--mode` picks it at enrol time and Settings → Machines changes it
+later for any online node through `exec.approvals.node.set`, which is the same policy
+file the node host reads; a ClawHQ desktop maps it onto its own off / ask / allow
+switch. The pairing request shows up in the same panel for approval, the
 machine appears under Machines and in the Office's Machines room, and its commands
 land in the shared history through the plugin. The machine must reach the gateway,
 so it sits on the same tailnet or the gateway is published with Tailscale Funnel.

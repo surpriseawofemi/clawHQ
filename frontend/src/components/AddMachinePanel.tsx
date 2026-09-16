@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { JoinCommand, RemoteNode } from '../types'
 import { PairingApprovals } from './PairingApprovals'
+import { readMode, setMode, type MachineMode } from '../state/execPolicy'
 
 type Props = { connected: boolean }
 
@@ -19,13 +20,33 @@ export function AddMachinePanel({ connected }: Props): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
 
+  const [modes, setModes] = useState<Record<string, MachineMode | 'custom' | 'unknown'>>({})
+  const [modeBusy, setModeBusy] = useState<string | null>(null)
+
   const refreshNodes = async (): Promise<void> => {
     if (!connected) return
     try {
       const res = await api.rpc.request<{ paired?: RemoteNode[]; nodes?: RemoteNode[] }>('node.list')
-      setNodes(res?.paired ?? res?.nodes ?? [])
+      const list = res?.paired ?? res?.nodes ?? []
+      setNodes(list)
+      // Each connected node reports its own policy file; read the mode out of it.
+      const entries = await Promise.all(list.filter((n) => n.connected).map(async (n) => [n.nodeId, await readMode(n.nodeId)] as const))
+      setModes((prev) => ({ ...prev, ...Object.fromEntries(entries) }))
     } catch {
       /* keep what we have */
+    }
+  }
+
+  const changeMode = async (nodeId: string, mode: MachineMode): Promise<void> => {
+    setModeBusy(nodeId)
+    setError(null)
+    try {
+      await setMode(nodeId, mode)
+      setModes((prev) => ({ ...prev, [nodeId]: mode }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setModeBusy(null)
     }
   }
 
@@ -87,9 +108,9 @@ export function AddMachinePanel({ connected }: Props): React.JSX.Element {
       <section className="panel">
         <h3>Add a machine</h3>
         <p className="field-hint">
-          A Linux server, another Mac, anything with Node.js 22. It becomes a node of the gateway,
-          so agents can read logs and run commands there through ClawHQ, with every write asking
-          you first. The machine must be able to reach the gateway: on the same tailnet, or the
+          A Linux server, another Mac, anything with Node.js 24. It becomes a node of the gateway,
+          so agents can read logs and run commands there through ClawHQ, in the mode you choose:
+          auto, semi-auto or manual. The machine must be able to reach the gateway: on the same tailnet, or the
           gateway published with Tailscale Funnel.
         </p>
         <div className="btn-row">
@@ -110,10 +131,11 @@ export function AddMachinePanel({ connected }: Props): React.JSX.Element {
               </button>
             </div>
             <p className="field-hint">
-              The script installs OpenClaw {'{'}the gateway's version{'}'} if it is missing, writes a read-only exec policy
-              (cat, tail, journalctl, systemctl, docker and the like run without asking; everything else asks),
-              pairs with <code>{join.gatewayUrl}</code>, and installs the node host as a system service.
-              Add <code>--allow-writes</code> to the command to skip the allowlist and have every command ask.
+              The script needs Node.js 24 (it tells you how to install it if missing), installs the OpenClaw CLI at the
+              gateway's version, pairs with <code>{join.gatewayUrl}</code>, and installs the node host as a system service.
+              It starts the machine in semi-auto mode: reads run, writes ask. Add <code>--mode auto</code> for a machine
+              agents may change freely, or <code>--mode manual</code> to have everything ask. The mode can be changed here
+              at any time once the machine is online.
             </p>
           </>
         )}
@@ -140,6 +162,21 @@ export function AddMachinePanel({ connected }: Props): React.JSX.Element {
                   {(n.commands ?? []).length} commands · {n.nodeId.slice(0, 12)}
                 </span>
               </span>
+              {n.connected && (
+                <select
+                  value={modes[n.nodeId] === 'semi' || modes[n.nodeId] === 'auto' || modes[n.nodeId] === 'manual' ? modes[n.nodeId] : ''}
+                  onChange={(e) => void changeMode(n.nodeId, e.target.value as MachineMode)}
+                  disabled={modeBusy === n.nodeId}
+                  aria-label="Exec mode"
+                  title="How commands from agents are handled on this machine"
+                >
+                  {modes[n.nodeId] === 'custom' && <option value="">Custom</option>}
+                  {modes[n.nodeId] === 'unknown' && <option value="">Mode unknown</option>}
+                  <option value="auto">Auto: run anything</option>
+                  <option value="semi">Semi-auto: reads run, writes ask</option>
+                  <option value="manual">Manual: everything asks</option>
+                </select>
+              )}
               {!n.connected && (
                 <button className="btn btn-sm btn-ghost" onClick={() => void forget(n)}>
                   Forget
