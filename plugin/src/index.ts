@@ -6,7 +6,7 @@ import type {
   OpenClawPluginToolContext,
 } from "openclaw/plugin-sdk/core";
 import { Store, newId } from "./store.js";
-import type { Activity, Department, ExecRecord, Notice, State, Task, TaskStatus } from "./store.js";
+import type { Activity, Department, ExecRecord, Notice, State, Task, TaskStatus, TeamPost } from "./store.js";
 
 /** Live state of one agent, kept in memory: what it is doing right now. */
 type Presence = {
@@ -35,7 +35,7 @@ type Delegation = {
 
 const TASK_STATUSES: TaskStatus[] = ["todo", "doing", "done", "failed"];
 
-export const PLUGIN_VERSION = "0.2.1";
+export const PLUGIN_VERSION = "0.2.2";
 
 /**
  * Super Boss Chat: one session per agent reserved for the human operator. ClawHQ
@@ -46,6 +46,15 @@ export const BOSS_SUFFIX = ":superboss";
 export const BOSS_LABEL = "Super Boss Chat";
 const isBossKey = (k: unknown): k is string => typeof k === "string" && k.endsWith(BOSS_SUFFIX);
 const bossToMain = (k: string): string => k.slice(0, -BOSS_SUFFIX.length) + ":main";
+
+/** Team Chat: one board for everyone. @mentions are agent ids, "all", or "boss" (the human). */
+export const TEAM_SUFFIX = ":team";
+const isTeamKey = (k: unknown): k is string => typeof k === "string" && k.endsWith(TEAM_SUFFIX);
+const mentionsIn = (text: string): string[] => {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/(^|[\s(])@([\w.-]+)/g)) out.add(m[2].toLowerCase());
+  return [...out];
+};
 
 /**
  * ClawHQ's gateway plugin.
@@ -148,6 +157,22 @@ function register(api: OpenClawPluginApi): void {
     return notice;
   };
 
+  const postTeam = async (p: Omit<TeamPost, "id" | "atMs" | "mentions"> & { mentions?: string[] }): Promise<TeamPost> => {
+    const text = p.text.trim();
+    if (!text) throw new Error("empty post");
+    const mentions = [...new Set([...(p.mentions ?? []).map((m) => m.trim().toLowerCase()).filter(Boolean), ...mentionsIn(text)])];
+    const post: TeamPost = { id: newId("tp"), atMs: Date.now(), from: p.from, fromKind: p.fromKind, text, mentions, sessionKey: p.sessionKey, runId: p.runId };
+    await store.update((s) => {
+      s.team.push(post);
+    });
+    emit("clawhq.team.changed", { id: post.id, from: post.from, fromKind: post.fromKind, mentions });
+    // An agent addressing the boss (or everyone) rings the bell in every ClawHQ.
+    if (p.fromKind === "agent" && (mentions.includes("boss") || mentions.includes("all") || mentions.includes("human"))) {
+      await addNotice({ title: `Team Chat: ${p.from}`, body: text.slice(0, 400), agentId: p.from, origin: "team" });
+    }
+    return post;
+  };
+
   // ---- gateway methods, for ClawHQ desktops --------------------------------
 
   const method = (name: string, scope: "operator.read" | "operator.write", fn: (p: Params, opts: GatewayRequestHandlerOptions) => Promise<unknown>) => {
@@ -166,7 +191,7 @@ function register(api: OpenClawPluginApi): void {
 
   method("clawhq.version", "operator.read", async () => ({
     version: PLUGIN_VERSION,
-    features: ["org", "inbox", "exec", "activity", "events", "orgContext", "presence", "tasks", "superboss"],
+    features: ["org", "inbox", "exec", "activity", "events", "orgContext", "presence", "tasks", "superboss", "team"],
     stateFile: store.file,
   }));
 
@@ -380,6 +405,18 @@ function register(api: OpenClawPluginApi): void {
     if (typeof p.runId === "string") patch.runId = p.runId;
     return { task: await updateTask(id, patch) };
   });
+  method("clawhq.team.list", "operator.read", async (p) => {
+    const s = await store.load();
+    const limit = Math.max(1, Math.min(1000, num(p, "limit", 200)));
+    const since = num(p, "sinceMs", 0);
+    const posts = (s.team ?? []).filter((x) => x.atMs > since).slice(-limit);
+    return { posts };
+  });
+  method("clawhq.team.post", "operator.write", async (p) => {
+    const mentions = Array.isArray(p.mentions) ? (p.mentions as unknown[]).filter((m): m is string => typeof m === "string") : [];
+    const post = await postTeam({ text: str(p, "text"), from: str(p, "from") || "boss", fromKind: "human", mentions });
+    return { post };
+  });
   method("clawhq.tasks.delete", "operator.write", async (p) => {
     const id = str(p, "id");
     await store.update((s) => {
@@ -508,6 +545,32 @@ function register(api: OpenClawPluginApi): void {
           return jsonResult({ ok: true, task: { id: t.id, status: t.status } });
         },
       },
+      {
+        name: "clawhq_team_post",
+        label: "Post to Team Chat",
+        description: "Post to the ClawHQ Team Chat board that the boss and every agent read. Address someone with @agent-id in the text, @all for everyone, @boss for the human. Replies in a Team Chat session are posted automatically; use this to say something on your own initiative.",
+        parameters: Type.Object({
+          text: Type.String({ description: "The post, short" }),
+          mentions: Type.Optional(Type.Array(Type.String(), { description: "Agent ids, \"all\" or \"boss\"; @mentions in the text are picked up too" })),
+        }),
+        async execute(_id: string, params: { text: string; mentions?: string[] }) {
+          const post = await postTeam({ text: params.text, from: ctx.agentId ?? "agent", fromKind: "agent", mentions: params.mentions, sessionKey: ctx.sessionKey });
+          return jsonResult({ ok: true, post: { id: post.id, mentions: post.mentions } });
+        },
+      },
+      {
+        name: "clawhq_team_read",
+        label: "Read Team Chat",
+        description: "Read the latest posts on the ClawHQ Team Chat board.",
+        parameters: Type.Object({
+          limit: Type.Optional(Type.Number({ description: "How many, newest last (default 30)" })),
+        }),
+        async execute(_id: string, params: { limit?: number }) {
+          const s = await store.load();
+          const posts = (s.team ?? []).slice(-(params.limit ?? 30)).map((x) => ({ at: new Date(x.atMs).toISOString(), from: x.from, mentions: x.mentions, text: x.text }));
+          return jsonResult({ you: ctx.agentId ?? null, posts });
+        },
+      },
     ],
     {
       names: [
@@ -518,6 +581,8 @@ function register(api: OpenClawPluginApi): void {
         "clawhq_tasks_list",
         "clawhq_task_create",
         "clawhq_task_update",
+        "clawhq_team_post",
+        "clawhq_team_read",
       ],
     },
   );
@@ -574,6 +639,14 @@ function register(api: OpenClawPluginApi): void {
   api.on("agent_end", async (event, ctx) => {
     const line = lastAssistantText(event.messages ?? []);
     touch(ctx.agentId, { state: "idle", sinceMs: Date.now(), tool: undefined, lastLine: line, lastEndMs: Date.now(), lastSuccess: event.success });
+    // A turn in an agent's Team Chat session answers the board.
+    if (isTeamKey(ctx.sessionKey) && ctx.agentId && line?.trim()) {
+      try {
+        await postTeam({ text: line, from: ctx.agentId, fromKind: "agent", sessionKey: ctx.sessionKey, runId: ctx.runId ?? event.runId });
+      } catch (err) {
+        api.logger.warn(`clawhq: team reply not posted: ${String(err)}`);
+      }
+    }
     // A task that was being run in this thread finishes with the run.
     if (ctx.sessionKey) {
       try {
@@ -614,6 +687,28 @@ function register(api: OpenClawPluginApi): void {
       lines.push(
         `This session is your ${BOSS_LABEL}: the human operator talks to you here through ClawHQ and reads every reply. Keep it for them. Never send agent-to-agent traffic, delegation or status chatter into a ${BOSS_LABEL} session (yours or another agent's); use sessions_spawn for work, or send to the agent's main session (agent:<id>:main). Report outcomes here briefly, in plain language.`,
       );
+    }
+    if (isTeamKey(ctx.sessionKey)) {
+      lines.push(
+        `This session is your seat in the ClawHQ Team Chat. Whatever you answer here is posted to the shared board that the boss (human) and every agent read, so answer briefly and only what is useful to the room. Address someone with @agent-id, everyone with @all, the human with @boss.`,
+      );
+    }
+    if (ctx.agentId) {
+      // Board posts this agent has not been shown yet, except the ones addressed to
+      // it (those arrive as a turn) and its own.
+      const me = ctx.agentId.toLowerCase();
+      const s = await store.load();
+      const seen = s.teamSeen?.[ctx.agentId] ?? 0;
+      const fresh = (s.team ?? []).filter((x) => x.atMs > seen && x.from !== ctx.agentId && !x.mentions.includes(me) && !x.mentions.includes("all"));
+      if (fresh.length > 0) {
+        const shown = fresh.slice(-10);
+        lines.push(
+          `New on the ClawHQ Team Chat board (not addressed to you; act only if it concerns your work, and post with clawhq_team_post if you do):\n` +
+            shown.map((x) => `- [${new Date(x.atMs).toISOString().slice(0, 16)}] ${x.from}${x.mentions.length ? ` → @${x.mentions.join(" @")}` : ""}: ${x.text.slice(0, 300)}`).join("\n"),
+        );
+      }
+      const newest = (s.team ?? []).at(-1)?.atMs ?? 0;
+      if (newest > seen) await store.update((st) => { st.teamSeen[ctx.agentId as string] = newest; });
     }
     if (orgContext && ctx.agentId) {
       const s = await store.load();

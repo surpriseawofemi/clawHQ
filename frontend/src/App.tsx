@@ -16,6 +16,7 @@ import { HomePage } from './components/HomePage'
 import { MainMenu, type Page } from './components/MainMenu'
 import { Office } from './components/Office'
 import { TasksBoard } from './components/TasksBoard'
+import { TeamChat } from './components/TeamChat'
 import { Digest } from './components/Digest'
 import type { SettingsSection } from './components/settings/SettingsPage'
 import { api } from './api'
@@ -160,6 +161,18 @@ function App(): React.JSX.Element {
           config={config}
           connected={connected}
           onConfigChanged={setConfig}
+          onOpenAgent={(agentId, key) => {
+            setSelectedAgentId(agentId)
+            selectSession(key ?? null)
+            setAgentTab('chat')
+            setPage('chat')
+          }}
+        />
+      ) : page === 'team' ? (
+        <TeamChat
+          shell={shellProps}
+          agents={agents}
+          connected={connected}
           onOpenAgent={(agentId, key) => {
             setSelectedAgentId(agentId)
             selectSession(key ?? null)

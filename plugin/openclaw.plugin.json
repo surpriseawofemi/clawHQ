@@ -13,7 +13,9 @@
       "clawhq_ask_human",
       "clawhq_tasks_list",
       "clawhq_task_create",
-      "clawhq_task_update"
+      "clawhq_task_update",
+      "clawhq_team_post",
+      "clawhq_team_read"
     ]
   },
   "configSchema": {

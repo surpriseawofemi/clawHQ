@@ -3,7 +3,7 @@ import { api } from '../api'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
 import type { Agent, SessionInfo } from '../types'
 
-export type Page = 'menu' | 'chat' | 'activity' | 'office' | 'tasks' | 'digest' | 'settings'
+export type Page = 'menu' | 'chat' | 'team' | 'activity' | 'office' | 'tasks' | 'digest' | 'settings'
 
 type Props = {
   shell: ShellProps
@@ -38,6 +38,17 @@ const ENTRIES: Entry[] = [
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M3 12h4l3-8 4 16 3-8h4" />
+      </svg>
+    )
+  },
+  {
+    page: 'team',
+    title: 'Team Chat',
+    blurb: 'One room for you and every agent. @name asks that agent, @all asks everyone, no @ just tells the room.',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M4 5h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3v-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
+        <path d="M17 9h3a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-1v3l-3-3h-3" />
       </svg>
     )
   },

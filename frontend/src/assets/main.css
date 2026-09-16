@@ -3370,3 +3370,26 @@ input[type='radio']:disabled {
   max-height: 50vh;
   overflow: auto;
 }
+
+/* ---- Team Chat ---- */
+.team-body { display: flex; flex-direction: column; gap: 12px; padding-bottom: 18px; }
+.team-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.team-empty { margin: auto; text-align: center; }
+.team-post { display: flex; gap: 10px; align-items: flex-start; max-width: 78%; }
+.team-post.is-mine { flex-direction: row-reverse; align-self: flex-end; }
+.team-avatar { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-sunken); border: 1px solid var(--border); font-size: 15px; }
+.team-bubble { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; min-width: 0; }
+.team-post.is-mine .team-bubble { background: color-mix(in srgb, var(--accent) 14%, var(--bg-raised)); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.team-meta { display: flex; gap: 8px; align-items: baseline; margin-bottom: 3px; }
+.team-from { background: none; border: none; padding: 0; font-weight: 600; font-size: 12.5px; cursor: pointer; color: var(--text); }
+.team-from:disabled { cursor: default; }
+.team-time { font-size: 11px; color: var(--text-faint); }
+.team-text { white-space: pre-wrap; word-break: break-word; line-height: 1.45; }
+.mention { color: var(--accent); font-weight: 600; }
+.mention.is-unknown { color: var(--text-dim); font-weight: 500; }
+.team-composer { position: relative; display: flex; gap: 10px; align-items: flex-end; flex: none; }
+.team-composer textarea { flex: 1; resize: none; min-height: 0; line-height: 1.45; padding: 10px 13px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); outline: none; overflow-y: hidden; }
+.team-composer textarea:focus { border-color: var(--accent); }
+.mention-menu { position: absolute; bottom: calc(100% + 6px); left: 0; margin: 0; padding: 4px; list-style: none; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.25); min-width: 240px; z-index: 5; }
+.mention-menu li { padding: 6px 10px; border-radius: 6px; cursor: pointer; display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.mention-menu li.is-active, .mention-menu li:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }

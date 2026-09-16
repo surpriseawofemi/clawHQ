@@ -76,6 +76,18 @@ export type Task = {
   error?: string;
 };
 
+/** One post on the Team Chat board: the human or an agent, addressed to @ids or nobody. */
+export type TeamPost = {
+  id: string;
+  atMs: number;
+  from: string;
+  fromKind: "human" | "agent";
+  text: string;
+  mentions: string[];
+  sessionKey?: string;
+  runId?: string;
+};
+
 export type State = {
   version: number;
   departments: Department[];
@@ -84,9 +96,12 @@ export type State = {
   execLog: ExecRecord[];
   activity: Activity[];
   tasks: Task[];
+  team: TeamPost[];
+  /** Per agent: atMs of the newest board post it has been shown. */
+  teamSeen: Record<string, number>;
 };
 
-const LIMITS = { notices: 1000, execLog: 5000, activity: 2000, tasks: 2000 };
+const LIMITS = { notices: 1000, execLog: 5000, activity: 2000, tasks: 2000, team: 2000 };
 
 const empty = (): State => ({
   version: 1,
@@ -96,6 +111,8 @@ const empty = (): State => ({
   execLog: [],
   activity: [],
   tasks: [],
+  team: [],
+  teamSeen: {},
 });
 
 export class Store {
@@ -130,6 +147,8 @@ export class Store {
       s.execLog = s.execLog.slice(-LIMITS.execLog);
       s.activity = s.activity.slice(-LIMITS.activity);
       s.tasks = (s.tasks ?? []).slice(-LIMITS.tasks);
+      s.team = (s.team ?? []).slice(-LIMITS.team);
+      s.teamSeen = s.teamSeen ?? {};
       await fs.mkdir(path.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
       await fs.writeFile(tmp, JSON.stringify(s), "utf8");

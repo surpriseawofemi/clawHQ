@@ -351,3 +351,15 @@ export type Attachment = {
   size: number
   note?: string
 }
+
+/** One post on the Team Chat board, kept by the gateway plugin. */
+export type TeamPost = {
+  id: string
+  atMs: number
+  from: string
+  fromKind: 'human' | 'agent'
+  text: string
+  mentions: string[]
+  sessionKey?: string
+  runId?: string
+}
