@@ -202,6 +202,12 @@ policy. Commands advertised:
 | `system.notify` | Shows a notification on this machine and a banner in ClawHQ — how an agent asks for a human |
 | `clawhq.departments.list`, `clawhq.departments.create`, `clawhq.agents.assign` | The org chart, for agents |
 
+### Theme
+
+The sun/moon button in the top bar flips between dark and light on every page and
+makes that choice explicit. Settings → App still offers "system" to follow macOS or
+Windows again; both controls stay in step.
+
 ### Where Chat opens
 
 Chat reopens on the agent and session that were open last time, saved per gateway

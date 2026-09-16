@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { ClawHQConfig, LoginStatus } from '../types'
-import { applyTheme, getTheme, type Theme } from '../theme'
+import { applyTheme, getTheme, onTheme, type Theme } from '../theme'
 import { getPrefs, setPref } from '../prefs'
 
 type Props = {
@@ -16,6 +16,8 @@ type Props = {
 export function AppPanel({ config, onConfigChanged }: Props): React.JSX.Element {
   const [login, setLogin] = useState<LoginStatus | null>(null)
   const [theme, setTheme] = useState<Theme>(getTheme())
+  // The top bar toggle changes it too; keep the picker honest.
+  useEffect(() => onTheme(setTheme), [])
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 

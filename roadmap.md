@@ -57,6 +57,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 22b | Join command carries a reachable gateway address: editable field, prefilled from a non-loopback saved gateway, loopback refused (a ClawHQ on the gateway host minted `ws://127.0.0.1` codes) | v0.1.34 |
 | 22c | Machines: host glyph (ClawHQ desktop vs OpenClaw node host), Trust label for desktops, app version in the node hello, valid exec-approvals snapshot (path/exists/hash/file), enrol script installs Node 24 side by side in `/opt/node24` | v0.1.35 |
 | 29 | Chat reopens on the last open agent and session, per gateway; one themed dropdown style for every `select` (custom chevron, no browser default box) | v0.1.36 |
+| 30 | Sun/moon toggle in the top bar flips dark/light on every page; Settings → App picker stays in sync | v0.1.37 |
 
 ## Now
 
