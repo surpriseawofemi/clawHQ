@@ -6,9 +6,36 @@ import type {
   OpenClawPluginToolContext,
 } from "openclaw/plugin-sdk/core";
 import { Store, newId } from "./store.js";
-import type { Activity, Department, ExecRecord, Notice, State } from "./store.js";
+import type { Activity, Department, ExecRecord, Notice, State, Task, TaskStatus } from "./store.js";
 
-export const PLUGIN_VERSION = "0.1.2";
+/** Live state of one agent, kept in memory: what it is doing right now. */
+type Presence = {
+  agentId: string;
+  state: "idle" | "working";
+  sinceMs: number;
+  sessionKey?: string;
+  runId?: string;
+  tool?: string;
+  toolSinceMs?: number;
+  lastLine?: string;
+  lastEndMs?: number;
+  lastSuccess?: boolean;
+};
+
+/** A parent agent waiting on a child it spawned. */
+type Delegation = {
+  childSessionKey: string;
+  childAgentId: string;
+  parentAgentId?: string;
+  parentSessionKey?: string;
+  label?: string;
+  runId?: string;
+  sinceMs: number;
+};
+
+const TASK_STATUSES: TaskStatus[] = ["todo", "doing", "done", "failed"];
+
+export const PLUGIN_VERSION = "0.2.0";
 
 /**
  * ClawHQ's gateway plugin.
@@ -129,7 +156,7 @@ function register(api: OpenClawPluginApi): void {
 
   method("clawhq.version", "operator.read", async () => ({
     version: PLUGIN_VERSION,
-    features: ["org", "inbox", "exec", "activity", "events", "orgContext"],
+    features: ["org", "inbox", "exec", "activity", "events", "orgContext", "presence", "tasks"],
     stateFile: store.file,
   }));
 
@@ -243,6 +270,115 @@ function register(api: OpenClawPluginApi): void {
     return { activity: s.activity.filter((a) => (!agentId || a.agentId === agentId) && a.atMs > since).slice(-limit).reverse() };
   });
 
+  // ---- presence: who is doing what right now --------------------------------
+  // In memory only; it is a picture of the moment, rebuilt from hooks as they fire.
+
+  const presence = new Map<string, Presence>();
+  const delegations = new Map<string, Delegation>();
+  let presenceTimer: NodeJS.Timeout | null = null;
+
+  const presenceView = () => ({
+    agents: [...presence.values()],
+    delegations: [...delegations.values()],
+    atMs: Date.now(),
+  });
+
+  /** Coalesces bursts (tool calls come fast) into one event every 400 ms. */
+  const presenceChanged = (): void => {
+    if (presenceTimer) return;
+    presenceTimer = setTimeout(() => {
+      presenceTimer = null;
+      emit("clawhq.presence", presenceView());
+    }, 400);
+  };
+
+  const touch = (agentId: string | undefined, patch: Partial<Presence>): void => {
+    if (!agentId) return;
+    const cur = presence.get(agentId) ?? { agentId, state: "idle" as const, sinceMs: Date.now() };
+    presence.set(agentId, { ...cur, ...patch });
+    presenceChanged();
+  };
+
+  method("clawhq.presence.get", "operator.read", async () => presenceView());
+
+  // ---- tasks: a board every ClawHQ and every agent can see --------------------
+
+  const findTask = (s: State, id: string): Task => {
+    const t = (s.tasks ?? []).find((x) => x.id === id);
+    if (!t) throw new Error(`no task "${id}"`);
+    return t;
+  };
+
+  const createTask = async (input: { title: string; details?: string; agentId?: string; createdBy: string }): Promise<Task> => {
+    const title = input.title.trim();
+    if (!title) throw new Error("a task needs a title");
+    const now = Date.now();
+    const task: Task = {
+      id: newId("t"),
+      title,
+      details: input.details?.trim() || undefined,
+      agentId: input.agentId?.trim() || undefined,
+      status: "todo",
+      createdAtMs: now,
+      updatedAtMs: now,
+      createdBy: input.createdBy,
+    };
+    await store.update((s) => {
+      s.tasks = s.tasks ?? [];
+      s.tasks.push(task);
+    });
+    emit("clawhq.tasks.changed", { id: task.id, status: task.status });
+    return task;
+  };
+
+  const updateTask = async (id: string, patch: Partial<Task>): Promise<Task> => {
+    let out!: Task;
+    await store.update((s) => {
+      const t = findTask(s, id);
+      if (patch.status && !TASK_STATUSES.includes(patch.status)) throw new Error(`unknown status "${patch.status}"`);
+      const now = Date.now();
+      if (patch.status === "doing" && t.status !== "doing") t.startedAtMs = now;
+      if ((patch.status === "done" || patch.status === "failed") && t.status !== patch.status) t.finishedAtMs = now;
+      Object.assign(t, patch, { updatedAtMs: now });
+      out = { ...t };
+    });
+    emit("clawhq.tasks.changed", { id, status: out.status });
+    return out;
+  };
+
+  method("clawhq.tasks.list", "operator.read", async (p) => {
+    const s = await store.load();
+    const agentId = str(p, "agentId");
+    const status = str(p, "status");
+    const since = num(p, "sinceMs", 0);
+    const list = (s.tasks ?? []).filter((t) => (!agentId || t.agentId === agentId) && (!status || t.status === status) && t.updatedAtMs > since);
+    return { tasks: [...list].sort((a, b) => b.updatedAtMs - a.updatedAtMs) };
+  });
+  method("clawhq.tasks.create", "operator.write", async (p) => ({
+    task: await createTask({ title: str(p, "title"), details: str(p, "details"), agentId: str(p, "agentId"), createdBy: "human" }),
+  }));
+  method("clawhq.tasks.update", "operator.write", async (p) => {
+    const id = str(p, "id");
+    const patch: Partial<Task> = {};
+    if (typeof p.title === "string") patch.title = p.title.trim();
+    if (typeof p.details === "string") patch.details = p.details.trim() || undefined;
+    if (typeof p.agentId === "string") patch.agentId = p.agentId.trim() || undefined;
+    if (typeof p.status === "string") patch.status = p.status as TaskStatus;
+    if (typeof p.result === "string") patch.result = p.result;
+    if (typeof p.error === "string") patch.error = p.error;
+    if (typeof p.sessionKey === "string") patch.sessionKey = p.sessionKey;
+    if (typeof p.runId === "string") patch.runId = p.runId;
+    return { task: await updateTask(id, patch) };
+  });
+  method("clawhq.tasks.delete", "operator.write", async (p) => {
+    const id = str(p, "id");
+    await store.update((s) => {
+      s.tasks = (s.tasks ?? []).filter((t) => t.id !== id);
+    });
+    emit("clawhq.tasks.changed", { id, status: "deleted" });
+    return { ok: true };
+  });
+
   // ---- agent tools, with the caller's real identity ------------------------
 
   const describeDept = (s: State, id: string, agents: string[]) => {
@@ -312,13 +448,119 @@ function register(api: OpenClawPluginApi): void {
           return jsonResult({ ok: true, noticeId: n.id, delivered: "every connected ClawHQ" });
         },
       },
+      {
+        name: "clawhq_tasks_list",
+        label: "ClawHQ tasks",
+        description: "List tasks on the ClawHQ board. By default your own open tasks; pass all=true for everyone's, or a status to filter.",
+        parameters: Type.Object({
+          all: Type.Optional(Type.Boolean({ description: "Every agent's tasks, not only yours" })),
+          status: Type.Optional(Type.String({ description: "todo, doing, done or failed" })),
+        }),
+        async execute(_id: string, params: { all?: boolean; status?: string }) {
+          const s = await store.load();
+          const list = (s.tasks ?? []).filter(
+            (t) => (params.all || t.agentId === ctx.agentId) && (params.status ? t.status === params.status : t.status !== "done"),
+          );
+          return jsonResult({ you: ctx.agentId ?? null, tasks: list.map((t) => ({ id: t.id, title: t.title, details: t.details, agentId: t.agentId, status: t.status, result: t.result })) });
+        },
+      },
+      {
+        name: "clawhq_task_create",
+        label: "Create ClawHQ task",
+        description: "Put a task on the ClawHQ board for an agent (yourself or another by id). The people running ClawHQ see it, and the agent can pick it up.",
+        parameters: Type.Object({
+          title: Type.String({ description: "Short title" }),
+          details: Type.Optional(Type.String({ description: "What exactly to do" })),
+          agentId: Type.Optional(Type.String({ description: "Who should do it; defaults to you" })),
+        }),
+        async execute(_id: string, params: { title: string; details?: string; agentId?: string }) {
+          const t = await createTask({ title: params.title, details: params.details, agentId: params.agentId?.trim() || ctx.agentId, createdBy: ctx.agentId ?? "agent" });
+          return jsonResult({ ok: true, task: { id: t.id, title: t.title, agentId: t.agentId, status: t.status } });
+        },
+      },
+      {
+        name: "clawhq_task_update",
+        label: "Update ClawHQ task",
+        description: "Move a task on the ClawHQ board: doing when you start, done with a short result when finished, failed with an error if you cannot.",
+        parameters: Type.Object({
+          id: Type.String({ description: "Task id" }),
+          status: Type.Optional(Type.String({ description: "todo, doing, done or failed" })),
+          result: Type.Optional(Type.String({ description: "What was done, a few lines" })),
+          error: Type.Optional(Type.String({ description: "Why it failed" })),
+        }),
+        async execute(_id: string, params: { id: string; status?: string; result?: string; error?: string }) {
+          const patch: Partial<Task> = {};
+          if (params.status) patch.status = params.status as TaskStatus;
+          if (params.result) patch.result = params.result;
+          if (params.error) patch.error = params.error;
+          if (ctx.sessionKey && params.status === "doing") patch.sessionKey = ctx.sessionKey;
+          const t = await updateTask(params.id, patch);
+          return jsonResult({ ok: true, task: { id: t.id, status: t.status } });
+        },
+      },
     ],
-    { names: ["clawhq_departments_list", "clawhq_department_create", "clawhq_agent_assign", "clawhq_ask_human"] },
+    {
+      names: [
+        "clawhq_departments_list",
+        "clawhq_department_create",
+        "clawhq_agent_assign",
+        "clawhq_ask_human",
+        "clawhq_tasks_list",
+        "clawhq_task_create",
+        "clawhq_task_update",
+      ],
+    },
   );
 
   // ---- hooks ----------------------------------------------------------------
 
+  api.on("agent_turn_prepare", async (_event, ctx) => {
+    touch(ctx.agentId, { state: "working", sinceMs: Date.now(), sessionKey: ctx.sessionKey, runId: ctx.runId, tool: undefined });
+  });
+
+  api.on("before_tool_call", async (event, ctx) => {
+    touch(ctx.agentId, { state: "working", tool: event.toolName, toolSinceMs: Date.now(), sessionKey: ctx.sessionKey ?? presence.get(ctx.agentId ?? "")?.sessionKey });
+  });
+
+  api.on("after_tool_call", async (_event, ctx) => {
+    touch(ctx.agentId, { tool: undefined });
+  });
+
+  api.on("subagent_spawned", async (event) => {
+    const requester = event.requester as { agentId?: string; sessionKey?: string } | undefined;
+    delegations.set(event.childSessionKey, {
+      childSessionKey: event.childSessionKey,
+      childAgentId: event.agentId,
+      parentAgentId: requester?.agentId,
+      parentSessionKey: requester?.sessionKey,
+      label: event.label,
+      runId: event.runId,
+      sinceMs: Date.now(),
+    });
+    touch(event.agentId, { state: "working", sinceMs: Date.now(), sessionKey: event.childSessionKey, runId: event.runId });
+    presenceChanged();
+  });
+
+  api.on("subagent_ended", async (event) => {
+    delegations.delete(event.targetSessionKey);
+    presenceChanged();
+  });
+
   api.on("agent_end", async (event, ctx) => {
+    const line = lastAssistantText(event.messages ?? []);
+    touch(ctx.agentId, { state: "idle", sinceMs: Date.now(), tool: undefined, lastLine: line, lastEndMs: Date.now(), lastSuccess: event.success });
+    // A task that was being run in this thread finishes with the run.
+    if (ctx.sessionKey) {
+      try {
+        const s = await store.load();
+        const open = (s.tasks ?? []).find((t) => t.status === "doing" && t.sessionKey === ctx.sessionKey);
+        if (open) {
+          await updateTask(open.id, event.success ? { status: "done", result: open.result ?? line } : { status: "failed", error: open.error ?? event.error ?? "the run failed" });
+        }
+      } catch (err) {
+        api.logger.warn(`clawhq: task not closed: ${String(err)}`);
+      }
+    }
     try {
       const rec: Activity = {
         id: newId("a"),

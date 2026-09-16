@@ -6,7 +6,15 @@
   "categories": ["context"],
   "contracts": {
     "gatewayMethodDispatch": ["authenticated-request"],
-    "tools": ["clawhq_departments_list", "clawhq_department_create", "clawhq_agent_assign", "clawhq_ask_human"]
+    "tools": [
+      "clawhq_departments_list",
+      "clawhq_department_create",
+      "clawhq_agent_assign",
+      "clawhq_ask_human",
+      "clawhq_tasks_list",
+      "clawhq_task_create",
+      "clawhq_task_update"
+    ]
   },
   "configSchema": {
     "type": "object",

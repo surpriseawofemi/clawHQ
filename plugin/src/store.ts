@@ -55,6 +55,27 @@ export type Activity = {
   channel?: string;
 };
 
+export type TaskStatus = "todo" | "doing" | "done" | "failed";
+
+export type Task = {
+  id: string;
+  title: string;
+  details?: string;
+  agentId?: string;
+  status: TaskStatus;
+  createdAtMs: number;
+  updatedAtMs: number;
+  /** "human" or the agent id that created it. */
+  createdBy: string;
+  /** The thread the run happens in, once started. */
+  sessionKey?: string;
+  runId?: string;
+  startedAtMs?: number;
+  finishedAtMs?: number;
+  result?: string;
+  error?: string;
+};
+
 export type State = {
   version: number;
   departments: Department[];
@@ -62,9 +83,10 @@ export type State = {
   notices: Notice[];
   execLog: ExecRecord[];
   activity: Activity[];
+  tasks: Task[];
 };
 
-const LIMITS = { notices: 1000, execLog: 5000, activity: 2000 };
+const LIMITS = { notices: 1000, execLog: 5000, activity: 2000, tasks: 2000 };
 
 const empty = (): State => ({
   version: 1,
@@ -73,6 +95,7 @@ const empty = (): State => ({
   notices: [],
   execLog: [],
   activity: [],
+  tasks: [],
 });
 
 export class Store {
@@ -106,6 +129,7 @@ export class Store {
       s.notices = s.notices.slice(-LIMITS.notices);
       s.execLog = s.execLog.slice(-LIMITS.execLog);
       s.activity = s.activity.slice(-LIMITS.activity);
+      s.tasks = (s.tasks ?? []).slice(-LIMITS.tasks);
       await fs.mkdir(path.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
       await fs.writeFile(tmp, JSON.stringify(s), "utf8");

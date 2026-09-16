@@ -203,6 +203,65 @@ export type RemoteNode = {
   commands?: string[]
 }
 
+/** Live state of one agent, from the gateway plugin's hooks. */
+export type Presence = {
+  agentId: string
+  state: 'idle' | 'working'
+  sinceMs: number
+  sessionKey?: string
+  runId?: string
+  tool?: string
+  toolSinceMs?: number
+  lastLine?: string
+  lastEndMs?: number
+  lastSuccess?: boolean
+}
+
+/** A parent agent waiting on a child it spawned. */
+export type Delegation = {
+  childSessionKey: string
+  childAgentId: string
+  parentAgentId?: string
+  parentSessionKey?: string
+  label?: string
+  runId?: string
+  sinceMs: number
+}
+
+export type TaskStatus = 'todo' | 'doing' | 'done' | 'failed'
+
+/** A card on the shared task board, kept by the gateway plugin. */
+export type Task = {
+  id: string
+  title: string
+  details?: string
+  agentId?: string
+  status: TaskStatus
+  createdAtMs: number
+  updatedAtMs: number
+  createdBy: string
+  sessionKey?: string
+  runId?: string
+  startedAtMs?: number
+  finishedAtMs?: number
+  result?: string
+  error?: string
+}
+
+/** One agent run, as the gateway plugin records it on agent_end. */
+export type ActivityRecord = {
+  id: string
+  atMs: number
+  agentId?: string
+  sessionKey?: string
+  runId?: string
+  success: boolean
+  durationMs?: number
+  error?: string
+  summary?: string
+  channel?: string
+}
+
 /** The ClawHQ gateway plugin, as seen from this ClawHQ. */
 export type PluginStatus = {
   checked: boolean

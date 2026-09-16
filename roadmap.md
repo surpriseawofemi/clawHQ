@@ -52,6 +52,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 25 | Activity page: one timeline for every agent (plugin runs, notices, commands), Needs you and Working now, department/agent filters; notice banner auto-dismisses; tool calls in chat behind a setting, off by default | v0.1.25 |
 | 26 | Main menu shell: the app opens on a menu (Chat, Activity, Office soon, Settings) with an org glance; every page is full-window with a ‹ Menu button | v0.1.26 |
 | 27 | One page frame for everything (`layout/Shell.tsx`): global top bar with back, page name, gateway pill, search, bell, desktops, settings; side panel + content or content alone; shared ContentHead; Chat, Settings, Activity and the menu all use it | v0.1.28 |
+| 28 | Office (floor plan with live presence, delegation lines, agent card with context and memory health), Tasks board (plugin-kept, agent tools, run in a fresh thread, closes with the run), Daily digest (runs, tasks, asks, commands, cron runs, cost; Markdown copy), cron run history in Automations; plugin 0.2.0 | v0.1.30 |
 
 ## Now
 

@@ -477,6 +477,32 @@ list, Settings' is its section nav, the main menu's is the menu; Activity has no
 Two-column and one-column pages therefore share every pixel of chrome, and a new page
 (Office, next) is a component that picks a side panel and fills the content.
 
+## Office, Tasks and Digest
+
+**Office** is the floor plan: a room per department (the org chart), a desk per agent,
+and the truth about each desk. Idle, working (with what the agent is doing right now:
+its current tool, or "thinking"), needs you (an unread ask or a pending command),
+failed (the last run ended badly). A dashed line runs from a parent desk to a child
+it spawned while the child works. Live state is the plugin's presence feed
+(`clawhq.presence.get`, pushed as `clawhq.presence`), built from the
+`agent_turn_prepare`, `before_tool_call`, `after_tool_call`, `subagent_spawned`,
+`subagent_ended` and `agent_end` hooks; without the plugin the session list's
+run-in-flight flag stands in. A desk opens the agent's card: context use of its main
+thread against the model's window, when its memory files last changed, the last
+thing it said, open tasks, today's runs, a move between rooms, and Open chat.
+
+**Tasks** is a board the plugin keeps (`clawhq.tasks.*`), so every ClawHQ and every
+agent sees the same cards. Run creates a fresh thread for the assigned agent, sends
+the task with instructions to report back through `clawhq_task_update`, and moves
+the card to Doing; when that thread's run ends, the plugin closes the card with the
+agent's last words if the agent did not. Agents get `clawhq_tasks_list`,
+`clawhq_task_create` (hand work to another agent) and `clawhq_task_update`.
+
+**Digest** rolls one day up: per agent, every run (from the plugin), tasks, asks,
+commands and cost (`sessions.usage` for that day), plus every automation run from
+`cron.runs`. Copy as Markdown puts it on the clipboard for a channel or a note.
+Automations in Settings gained a Runs button per job with the same run log.
+
 ## The main menu and its pages
 
 ClawHQ opens on a main menu: a left column with Chat, Activity, Office (coming) and

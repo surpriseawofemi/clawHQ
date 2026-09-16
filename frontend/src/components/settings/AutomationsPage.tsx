@@ -21,7 +21,17 @@ type CronJob = {
   payload?: { kind?: string; message?: string; text?: string }
 }
 
-const describeSchedule = (s: CronJob['schedule']): string => {
+/** One entry of cron.runs. */
+type CronRun = {
+  ts: number
+  action?: string
+  status?: string
+  completionStatus?: string
+  error?: string
+  durationMs?: number
+}
+
+const describeSchedule =(s: CronJob['schedule']): string => {
   if (!s) return 'no schedule'
   if (s.kind === 'every' && s.everyMs) {
     const mins = Math.round(s.everyMs / 60000)
@@ -48,6 +58,24 @@ const when = (ms?: number): string => {
  */
 export function AutomationsPage({ connected }: { connected: boolean }): React.JSX.Element {
   const [jobs, setJobs] = useState<CronJob[]>([])
+  const [openJob, setOpenJob] = useState<string | null>(null)
+  const [runs, setRuns] = useState<Record<string, CronRun[]>>({})
+
+  /** The gateway keeps a run log per job (cron.runs): status, duration, error. */
+  const toggleRuns = async (id: string): Promise<void> => {
+    if (openJob === id) {
+      setOpenJob(null)
+      return
+    }
+    setOpenJob(id)
+    try {
+      const res = await api.rpc.request<{ entries?: CronRun[] }>('cron.runs', { id, limit: 30 })
+      setRuns((prev) => ({ ...prev, [id]: (res?.entries ?? []).filter((e) => e.action === 'finished' || !e.action) }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setRuns((prev) => ({ ...prev, [id]: [] }))
+    }
+  }
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -100,7 +128,8 @@ export function AutomationsPage({ connected }: { connected: boolean }): React.JS
             const status = job.state?.lastRunStatus ?? job.state?.lastStatus
             const failing = (job.state?.consecutiveErrors ?? 0) > 0 || status === 'failed'
             return (
-              <div key={job.id} className="gw-row">
+              <div key={job.id} className="settings-row-block">
+              <div className="gw-row">
                 <i className={`dot ${job.enabled === false ? 'dot-off' : failing ? 'dot-warn' : 'dot-ok'}`} />
                 <span className="gw-meta">
                   <span className="gw-name">
@@ -131,6 +160,28 @@ export function AutomationsPage({ connected }: { connected: boolean }): React.JS
                 >
                   {busy === `run-${job.id}` ? 'Starting…' : 'Run now'}
                 </button>
+                <button className="btn btn-sm btn-ghost" onClick={() => void toggleRuns(job.id)}>
+                  {openJob === job.id ? 'Hide runs' : 'Runs'}
+                </button>
+              </div>
+              {openJob === job.id && (
+                <div className="settings-drawer">
+                  {!runs[job.id] && <p className="field-hint">Loading…</p>}
+                  {runs[job.id]?.length === 0 && <p className="field-hint">No runs recorded yet.</p>}
+                  {(runs[job.id] ?? []).map((r, i) => (
+                    <div key={`${r.ts}-${i}`} className={`home-row is-${r.completionStatus === 'failed' || r.status === 'error' ? 'bad' : r.status === 'skipped' ? 'plain' : 'ok'}`}>
+                      <span className="home-time">{new Date(r.ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      <span className="home-main">
+                        <span className="home-title">{r.completionStatus ?? r.status ?? r.action}</span>
+                        <span className="home-detail">
+                          {r.durationMs ? `${(r.durationMs / 1000).toFixed(1)}s` : ''}
+                          {r.error ? ` · ${r.error}` : ''}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               </div>
             )
           })}

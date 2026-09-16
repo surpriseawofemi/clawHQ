@@ -3,7 +3,7 @@ import { api } from '../api'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
 import type { Agent, SessionInfo } from '../types'
 
-export type Page = 'menu' | 'chat' | 'activity' | 'settings'
+export type Page = 'menu' | 'chat' | 'activity' | 'office' | 'tasks' | 'digest' | 'settings'
 
 type Props = {
   shell: ShellProps
@@ -42,14 +42,36 @@ const ENTRIES: Entry[] = [
     )
   },
   {
-    page: null,
+    page: 'office',
     title: 'Office',
-    blurb: 'See the org at work: who is busy, who is idle, who talks to whom.',
-    soon: true,
+    blurb: 'The floor plan: who is busy, who is idle, who needs you, who is delegating to whom.',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <rect x="3" y="7" width="18" height="14" rx="2" />
         <path d="M8 7V4h8v3M3 13h18" />
+      </svg>
+    )
+  },
+  {
+    page: 'tasks',
+    title: 'Tasks',
+    blurb: 'A board every agent can see. Assign, run, and read the result on the card.',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="5" height="16" rx="1" />
+        <rect x="10" y="4" width="5" height="10" rx="1" />
+        <rect x="17" y="4" width="4" height="7" rx="1" />
+      </svg>
+    )
+  },
+  {
+    page: 'digest',
+    title: 'Digest',
+    blurb: 'One day rolled up: every run, task, ask, command, automation and its cost.',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M6 3h9l4 4v14H6z" />
+        <path d="M9 12h7M9 16h7M9 8h3" />
       </svg>
     )
   },

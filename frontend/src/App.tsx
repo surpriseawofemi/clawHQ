@@ -14,6 +14,9 @@ import { GatewaySwitcher } from './components/GatewaySwitcher'
 import { SearchPalette } from './components/SearchPalette'
 import { HomePage } from './components/HomePage'
 import { MainMenu, type Page } from './components/MainMenu'
+import { Office } from './components/Office'
+import { TasksBoard } from './components/TasksBoard'
+import { Digest } from './components/Digest'
 import type { SettingsSection } from './components/settings/SettingsPage'
 import { api } from './api'
 import { useFleet } from './state/useFleet'
@@ -148,6 +151,45 @@ function App(): React.JSX.Element {
           onConfigChanged={setConfig}
           onDaemonChanged={setDaemon}
           onReconnected={refreshFleet}
+        />
+      ) : page === 'office' ? (
+        <Office
+          shell={shellProps}
+          agents={agents}
+          sessions={sessions}
+          config={config}
+          connected={connected}
+          onConfigChanged={setConfig}
+          onOpenAgent={(agentId, key) => {
+            setSelectedAgentId(agentId)
+            selectSession(key ?? null)
+            setAgentTab('chat')
+            setPage('chat')
+          }}
+        />
+      ) : page === 'tasks' ? (
+        <TasksBoard
+          shell={shellProps}
+          agents={agents}
+          connected={connected}
+          onOpenAgent={(agentId, key) => {
+            setSelectedAgentId(agentId)
+            selectSession(key ?? null)
+            setAgentTab('chat')
+            setPage('chat')
+          }}
+        />
+      ) : page === 'digest' ? (
+        <Digest
+          shell={shellProps}
+          agents={agents}
+          connected={connected}
+          onOpenAgent={(agentId, key) => {
+            setSelectedAgentId(agentId)
+            selectSession(key ?? null)
+            setAgentTab('chat')
+            setPage('chat')
+          }}
         />
       ) : page === 'activity' ? (
         <HomePage
