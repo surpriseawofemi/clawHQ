@@ -3,7 +3,7 @@
   "name": "ClawHQ",
   "description": "One org chart, inbox and command history for every ClawHQ, plus agent tools that know who called them.",
   "enabledByDefault": true,
-  "categories": ["tools", "gateway"],
+  "categories": ["agent-orchestration"],
   "contracts": {
     "gatewayMethodDispatch": ["authenticated-request"],
     "tools": ["clawhq_departments_list", "clawhq_department_create", "clawhq_agent_assign", "clawhq_ask_human"]

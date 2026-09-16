@@ -29,6 +29,9 @@
     "release": {
       "publishToClawHub": true,
       "publishToNpm": true
+    },
+    "build": {
+      "openclawVersion": "2026.9.4"
     }
   },
   "devDependencies": {
@@ -41,7 +44,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/surpriseawofemi/clawHQ.git",
+    "url": "git+https://github.com/surpriseawofemi/clawHQ.git",
     "directory": "plugin"
   },
   "homepage": "https://github.com/surpriseawofemi/clawHQ/tree/main/plugin",
