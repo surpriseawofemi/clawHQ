@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import type { Agent, ClawHQConfig, ExecRecord, NodeNotification, SessionInfo } from '../types'
 import { UNASSIGNED, agentEmoji, agentLabel } from '../types'
-import { PageTop } from './PageTop'
+import { ContentHead, Shell, type ShellProps } from './layout/Shell'
 
 type Props = {
   agents: Agent[]
@@ -12,7 +12,7 @@ type Props = {
   onOpenAgent: (agentId: string, sessionKey?: string) => void
   onOpenNotifications: () => void
   onOpenCommands: () => void
-  onBack: () => void
+  shell: ShellProps
 }
 
 /** One agent run, as the gateway plugin records it on agent_end. */
@@ -70,7 +70,7 @@ const agentOfSession = (key: string): string => key.split(':')[1] ?? ''
  * session list says what is live. Everything is one timeline, filterable by
  * department and agent; a row opens that agent's thread.
  */
-export function HomePage({ agents, sessions, config, connected, onOpenAgent, onOpenNotifications, onOpenCommands, onBack }: Props): React.JSX.Element {
+export function HomePage({ agents, sessions, config, connected, onOpenAgent, onOpenNotifications, onOpenCommands, shell }: Props): React.JSX.Element {
   const [runs, setRuns] = useState<Activity[]>([])
   const [notices, setNotices] = useState<NodeNotification[]>([])
   const [commands, setCommands] = useState<ExecRecord[]>([])
@@ -209,19 +209,15 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
   }
 
   return (
-    <div className="page">
-    <PageTop title="Activity" onBack={onBack} />
-    <main className="home">
-      <header className="home-head">
-        <div>
-          <h1>Activity</h1>
-          <p>
-            {!connected
-              ? 'Not connected to a gateway.'
-              : `${agents.length} agents · ${running.length} working now · ${needsYou.length} ${needsYou.length === 1 ? 'thing needs' : 'things need'} you`}
-          </p>
-        </div>
-        <div className="settings-toolbar">
+    <Shell shell={shell} title="Activity">
+      <ContentHead
+        title="Activity"
+        subtitle={
+          !connected
+            ? 'Not connected to a gateway.'
+            : `${agents.length} agents · ${running.length} working now · ${needsYou.length} ${needsYou.length === 1 ? 'thing needs' : 'things need'} you`
+        }
+      >
           <select value={dept} onChange={(e) => setDept(e.target.value)} aria-label="Department">
             <option value="">All departments</option>
             {departments.map((d) => (
@@ -243,10 +239,9 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
             <input type="checkbox" checked={onlyNeedsYou} onChange={(e) => setOnlyNeedsYou(e.target.checked)} />
             <span>Needs me</span>
           </label>
-        </div>
-      </header>
+      </ContentHead>
 
-      <div className="home-body">
+      <div className="content-body">
         {needsYou.length > 0 && !onlyNeedsYou && (
           <section className="home-section home-needs">
             <h2>Needs you</h2>
@@ -320,7 +315,6 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
         ))}
         {error && <p className="error-text">{error}</p>}
       </div>
-    </main>
-    </div>
+    </Shell>
   )
 }

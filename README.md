@@ -465,6 +465,18 @@ and installs it from ClawHub. The plugin needs
 `plugins.entries.clawhq.hooks.allowConversationAccess` and `allowPromptInjection` set
 to true for its hooks; ClawHQ patches those when it installs the plugin.
 
+## How a page is built
+
+Every page uses one frame, `frontend/src/components/layout/Shell.tsx`. The frame is a
+top bar across the window (brand, "‹ Menu", the page name, then the global actions:
+gateway pill, search, notifications, desktops, settings), and under it either a side
+panel plus content or content alone. A page renders `<Shell shell={…} title="…"
+side={…}>` and fills the content, starting with `<ContentHead>` (title, subtitle,
+controls on the right) and a scrolling `.content-body`. Chat's side panel is the agent
+list, Settings' is its section nav, the main menu's is the menu; Activity has none.
+Two-column and one-column pages therefore share every pixel of chrome, and a new page
+(Office, next) is a component that picks a side panel and fills the content.
+
 ## The main menu and its pages
 
 ClawHQ opens on a main menu: a left column with Chat, Activity, Office (coming) and

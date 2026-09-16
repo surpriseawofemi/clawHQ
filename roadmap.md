@@ -51,6 +51,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 24 | Thread cache: SQLite on each machine, instant open from disk, gateway asked only when the session stamp moved, main threads warmed after connect | v0.1.22 |
 | 25 | Activity page: one timeline for every agent (plugin runs, notices, commands), Needs you and Working now, department/agent filters; notice banner auto-dismisses; tool calls in chat behind a setting, off by default | v0.1.25 |
 | 26 | Main menu shell: the app opens on a menu (Chat, Activity, Office soon, Settings) with an org glance; every page is full-window with a ‹ Menu button | v0.1.26 |
+| 27 | One page frame for everything (`layout/Shell.tsx`): global top bar with back, page name, gateway pill, search, bell, desktops, settings; side panel + content or content alone; shared ContentHead; Chat, Settings, Activity and the menu all use it | v0.1.28 |
 
 ## Now
 

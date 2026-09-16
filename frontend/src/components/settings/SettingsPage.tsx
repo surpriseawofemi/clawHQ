@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Agent, ClawHQConfig, ConnectionStatus, DaemonStatus, Department } from '../../types'
 import { UsagePage } from './UsagePage'
 import { AppPanel } from '../AppPanel'
-import { PageTop } from '../PageTop'
+import { ContentHead, Shell, SideHead, type ShellProps } from '../layout/Shell'
 import { api } from '../../api'
 import { ConnectionPanel } from '../ConnectionPanel'
 import { NodePanel } from '../NodePanel'
@@ -24,7 +24,7 @@ type Props = {
   pendingCount: number
   initialSection?: SettingsSection
   onOpenAgent: (agentId: string) => void
-  onClose: () => void
+  shell: ShellProps
   onConfigChanged: (config: ClawHQConfig) => void
   onDaemonChanged: (daemon: DaemonStatus) => void
   onReconnected: () => void
@@ -118,7 +118,7 @@ export function SettingsPage({
   pendingCount,
   initialSection,
   onOpenAgent,
-  onClose,
+  shell,
   onConfigChanged,
   onDaemonChanged,
   onReconnected
@@ -143,11 +143,11 @@ export function SettingsPage({
   // Escape closes, like the modal did.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') shell.onBack()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [shell])
 
   const run = async (label: string, fn: () => Promise<void>): Promise<void> => {
     setBusy(label)
@@ -206,34 +206,34 @@ export function SettingsPage({
     })
 
   return (
-    <div className="page">
-    <PageTop title="Settings" onBack={onClose} />
-    <div className="settings">
-      <nav className="settings-nav" aria-label="Settings sections">
-        <div className="settings-nav-head">
-          <h2>Settings</h2>
-        </div>
-        {NAV.map((group) => (
-          <div key={group.label}>
-            <div className="settings-nav-group">{group.label}</div>
-            {group.items.map((item) => (
-              <button
-                key={item.id}
-                className={`settings-nav-item${section === item.id ? ' is-active' : ''}`}
-                onClick={() => setSection(item.id)}
-              >
-                {item.label}
-                {item.id === 'gateways' && pendingCount > 0 && <span className="badge">{pendingCount}</span>}
-              </button>
+    <Shell
+      shell={shell}
+      title="Settings"
+      side={
+        <>
+          <SideHead>Settings</SideHead>
+          <nav className="settings-nav" aria-label="Settings sections">
+            {NAV.map((group) => (
+              <div key={group.label}>
+                <div className="settings-nav-group">{group.label}</div>
+                {group.items.map((item) => (
+                  <button
+                    key={item.id}
+                    className={`settings-nav-item${section === item.id ? ' is-active' : ''}`}
+                    onClick={() => setSection(item.id)}
+                  >
+                    {item.label}
+                    {item.id === 'gateways' && pendingCount > 0 && <span className="badge">{pendingCount}</span>}
+                  </button>
+                ))}
+              </div>
             ))}
-          </div>
-        ))}
-      </nav>
-
-      <div className="settings-main">
-        <header>
-          <h2>{TITLES[section]}</h2>
-        </header>
+          </nav>
+        </>
+      }
+    >
+      <ContentHead title={TITLES[section]} />
+      <div className="content-body settings-main">
 
         {section === 'gateways' && (
           <div className="settings-stack">
@@ -399,7 +399,6 @@ export function SettingsPage({
         {error && <p className="error-text">{error}</p>}
         {note && <p className="note-text">{note}</p>}
       </div>
-    </div>
-    </div>
+    </Shell>
   )
 }

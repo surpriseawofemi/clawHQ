@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Sidebar } from './components/Sidebar'
+import { AgentSidebar } from './components/Sidebar'
+import { Shell, type ShellProps } from './components/layout/Shell'
 import { ChatView } from './components/ChatView'
 import { AgentSettingsDialog } from './components/AgentSettingsDialog'
 import { SettingsPage } from './components/settings/SettingsPage'
@@ -107,42 +108,28 @@ function App(): React.JSX.Element {
 
   const agentForSettings = agents.find((a) => a.id === agentSettingsId) ?? null
 
-  return (
-    <div className={page === 'chat' ? 'app' : 'app app-single'}>
-      {page === 'chat' && (
-        <Sidebar
-          agents={agents}
-          sessions={sessions}
-          config={config}
-          onOpenSearch={() => setSearchOpen(true)}
-          selectedAgentId={selectedAgentId}
-          onSelect={(id) => {
-            selectSession(null)
-            setSelectedAgentId(id)
-          }}
-          onBack={() => setPage('menu')}
-          desktops={desktops}
-          desktopsOpen={false}
-          onToggleDesktops={() => void api.window.openDesktop('')}
-          unreadNotices={unread}
-          onOpenNotifications={() => openSettings('notifications')}
-          onAgentSettings={setAgentSettingsId}
-          onOpenSettings={() => openSettings()}
-          onOpenSwitcher={() => setSwitcherOpen(true)}
-          status={status}
-          settingsOpen={false}
-        />
-      )}
+  // What the top bar needs; the same on every page.
+  const shellProps: ShellProps = {
+    status,
+    config,
+    desktops,
+    unreadNotices: unread,
+    onBack: () => setPage('menu'),
+    onOpenSearch: () => setSearchOpen(true),
+    onOpenNotifications: () => openSettings('notifications'),
+    onOpenDesktops: () => void api.window.openDesktop(''),
+    onOpenSettings: () => openSettings(),
+    onOpenSwitcher: () => setSwitcherOpen(true)
+  }
 
+  return (
+    <div className="app-root">
       {page === 'menu' ? (
         <MainMenu
-          status={status}
-          config={config}
+          shell={shellProps}
           agents={agents}
           sessions={sessions}
-          unreadNotices={unread}
           onOpen={(next) => (next === 'settings' ? openSettings() : setPage(next))}
-          onOpenSwitcher={() => setSwitcherOpen(true)}
         />
       ) : page === 'settings' ? (
         <SettingsPage
@@ -157,7 +144,7 @@ function App(): React.JSX.Element {
             setSelectedAgentId(agentId)
             setPage('chat')
           }}
-          onClose={() => setPage('menu')}
+          shell={shellProps}
           onConfigChanged={setConfig}
           onDaemonChanged={setDaemon}
           onReconnected={refreshFleet}
@@ -176,10 +163,28 @@ function App(): React.JSX.Element {
           }}
           onOpenNotifications={() => openSettings('notifications')}
           onOpenCommands={() => openSettings('commands')}
-          onBack={() => setPage('menu')}
+          shell={shellProps}
         />
       ) : (
-      selectedAgent && agentTab === 'documents' ? (
+      <Shell
+        shell={shellProps}
+        title="Chat"
+        side={
+          <AgentSidebar
+            agents={agents}
+            sessions={sessions}
+            config={config}
+            connected={connected}
+            selectedAgentId={selectedAgentId}
+            onSelect={(id) => {
+              selectSession(null)
+              setSelectedAgentId(id)
+            }}
+            onAgentSettings={setAgentSettingsId}
+          />
+        }
+      >
+      {selectedAgent && agentTab === 'documents' ? (
         <AgentDocuments agent={selectedAgent} tab={agentTab} onTab={setAgentTab} connected={connected} />
       ) : selectedAgent && agentTab === 'activity' ? (
         <AgentActivity
@@ -221,7 +226,9 @@ function App(): React.JSX.Element {
         onAbort={abortRun}
         onSettings={() => selectedAgentId && setAgentSettingsId(selectedAgentId)}
       />
-      ))}
+      )}
+      </Shell>
+      )}
 
       <ApprovalBanners connected={connected} />
 
