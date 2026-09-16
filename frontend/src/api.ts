@@ -24,6 +24,7 @@ import type {
   ExecRecord,
   ExecRequest,
   GatewayProfile,
+  JoinCommand,
   LoginStatus,
   NodeStatus,
   PluginStatus,
@@ -108,7 +109,9 @@ export const api = {
     setAgentExecMode: (agentId: string, mode: ExecMode | ''): Promise<NodeStatus> =>
       NodeService.SetAgentExecMode(agentId, mode) as Promise<NodeStatus>,
     /** Drop the node identity and pair again with the current command list. */
-    rePair: (): Promise<NodeStatus> => NodeService.RePair() as Promise<NodeStatus>
+    rePair: (): Promise<NodeStatus> => NodeService.RePair() as Promise<NodeStatus>,
+    /** One-time command to enrol another machine as a node. */
+    joinCommand: (): Promise<JoinCommand> => NodeService.JoinCommand() as Promise<JoinCommand>
   },
   update: {
     status: (): Promise<UpdateStatus> => UpdateService.Status() as Promise<UpdateStatus>,

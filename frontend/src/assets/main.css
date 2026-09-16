@@ -2473,6 +2473,31 @@ html.is-mac .topbar {
   background: var(--danger);
 }
 
+.room-machines {
+  flex-basis: 100%;
+  max-width: none;
+  background: var(--bg-sunken);
+}
+
+.desk.is-machine {
+  cursor: default;
+}
+
+.desk.is-machine.is-offline {
+  opacity: 0.55;
+}
+
+.desk-dot.is-online {
+  background: var(--ok);
+}
+
+.join-cmd {
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 0;
+  font-size: 11.5px;
+}
+
 /* ---- tasks board ---- */
 .task-new {
   display: grid;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { api } from '../api'
 import { plugin } from '../state/plugin'
 import { ContentHead, Shell, type ShellProps } from './layout/Shell'
-import type { ActivityRecord, Agent, ClawHQConfig, Delegation, NodeNotification, Presence, SessionInfo, Task } from '../types'
+import type { ActivityRecord, Agent, ClawHQConfig, Delegation, NodeNotification, Presence, RemoteNode, SessionInfo, Task } from '../types'
 import { UNASSIGNED, agentEmoji, agentLabel } from '../types'
 
 type Props = {
@@ -57,11 +57,18 @@ export function Office({ shell, agents, sessions, config, connected, onOpenAgent
   const [runs, setRuns] = useState<ActivityRecord[]>([])
   const [memoryAt, setMemoryAt] = useState<Record<string, number>>({})
   const [tick, setTick] = useState(0)
+  const [machines, setMachines] = useState<RemoteNode[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     try {
       const [status, inbox, node] = await Promise.all([api.plugin.status(), api.inbox.list(), api.node.status()])
+      if (connected) {
+        api.rpc
+          .request<{ paired?: RemoteNode[]; nodes?: RemoteNode[] }>('node.list')
+          .then((res) => setMachines(res?.paired ?? res?.nodes ?? []))
+          .catch(() => undefined)
+      }
       setPluginPresent(status.present)
       setNotices(inbox)
       const pend: Record<string, number> = {}
@@ -241,7 +248,30 @@ export function Office({ shell, agents, sessions, config, connected, onOpenAgent
               </g>
             ))}
           </svg>
-          {rooms.length === 0 && <p className="thread-empty">No agents yet.</p>}
+          {rooms.length === 0 && machines.length === 0 && <p className="thread-empty">No agents yet.</p>}
+          {machines.length > 0 && (
+            <section className="room room-machines">
+              <h2 className="room-name">
+                <span>🖥️</span> Machines
+                <span className="plugin-desc">{machines.filter((m) => m.connected).length} of {machines.length} online</span>
+              </h2>
+              <div className="room-desks">
+                {machines.map((m) => (
+                  <div key={m.nodeId} className={`desk is-machine${m.connected ? '' : ' is-offline'}`} title={m.nodeId}>
+                    <span className="desk-avatar">
+                      {m.platform === 'linux' ? '🐧' : m.platform === 'windows' ? '🪟' : m.platform === 'macos' || m.platform === 'darwin' ? '🍎' : '🖥️'}
+                      <i className={`desk-dot ${m.connected ? 'is-online' : 'is-idle'}`} />
+                    </span>
+                    <span className="desk-name">{m.displayName || m.platform || m.nodeId.slice(0, 8)}</span>
+                    <span className="desk-meta">
+                      {m.connected ? 'online' : 'offline'} · {(m.commands ?? []).length} commands
+                      {(m.commands ?? []).includes('screen.snapshot') ? ' · desktop' : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
           {rooms.map((room) => (
             <section key={room.id} className="room">
               <h2 className="room-name">

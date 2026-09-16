@@ -202,6 +202,27 @@ policy. Commands advertised:
 | `system.notify` | Shows a notification on this machine and a banner in ClawHQ — how an agent asks for a human |
 | `clawhq.departments.list`, `clawhq.departments.create`, `clawhq.agents.assign` | The org chart, for agents |
 
+### Enrolling another machine
+
+Settings → Machines → Add a machine mints a one-time setup code on the gateway
+(`device.pair.setupCode`), swaps the loopback address the gateway writes into it for
+the address this ClawHQ uses, and shows one command for the new machine:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/surpriseawofemi/clawHQ/main/scripts/node.sh | bash -s -- --code <code> --version 2026.9.4
+```
+
+`scripts/node.sh` checks for Node.js 22, installs the OpenClaw CLI at the gateway's
+version, writes `~/.openclaw/exec-approvals.json` with a read-only allowlist (cat,
+tail, journalctl, systemctl, docker, git and the like run without asking; everything
+else asks you in ClawHQ; `--allow-writes` skips the allowlist so every command asks),
+then runs `openclaw connect --service`, which pairs and installs the node host as a
+system service. The pairing request shows up in the same panel for approval, the
+machine appears under Machines and in the Office's Machines room, and its commands
+land in the shared history through the plugin. The machine must reach the gateway,
+so it sits on the same tailnet or the gateway is published with Tailscale Funnel.
+ClawHQ itself is not needed on it.
+
 ### Pairing is automatic
 
 Two special cases are handled without you. A gateway does not device-pair clients

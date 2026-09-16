@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/surpriseawofemi/clawhq/internal/gateway"
 	"github.com/surpriseawofemi/clawhq/internal/node"
@@ -386,6 +388,55 @@ type NodeService struct {
 // RePair drops this node's device identity and pairs again right away.
 //
 // The gateway serves a node's command surface from its *approved* pairing record, and
+// JoinCommand is what a new Linux machine needs to enrol as a node.
+type JoinCommand struct {
+	Command     string `json:"command"`
+	Code        string `json:"code"`
+	ExpiresAtMs int64  `json:"expiresAtMs"`
+	GatewayURL  string `json:"gatewayUrl"`
+}
+
+// nodeScriptURL is the enrol script served from the repository.
+const nodeScriptURL = "https://raw.githubusercontent.com/surpriseawofemi/clawHQ/main/scripts/node.sh"
+
+// JoinCommand mints a one-time setup code on the gateway and turns it into the one
+// command to paste on the new machine. The gateway writes its own loopback address
+// into the code, which is useless from anywhere else, so the address is replaced
+// with the one this ClawHQ reaches the gateway at.
+func (s *NodeService) JoinCommand(ctx context.Context) (JoinCommand, error) {
+	profile, ok := s.store.Read().ActiveGateway()
+	if !ok {
+		return JoinCommand{}, fmt.Errorf("no active gateway")
+	}
+	raw, err := s.conn.Request(ctx, "device.pair.setupCode", map[string]any{})
+	if err != nil {
+		return JoinCommand{}, err
+	}
+	var res struct {
+		SetupCode   string `json:"setupCode"`
+		ExpiresAtMs int64  `json:"expiresAtMs"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return JoinCommand{}, err
+	}
+	sc, err := gateway.DecodeSetupCode(res.SetupCode)
+	if err != nil {
+		return JoinCommand{}, err
+	}
+	sc.URL = profile.URL
+	encoded, err := json.Marshal(sc)
+	if err != nil {
+		return JoinCommand{}, err
+	}
+	code := base64.RawURLEncoding.EncodeToString(encoded)
+	version := strings.TrimSpace(s.conn.Status().ServerVersion)
+	cmd := fmt.Sprintf("curl -fsSL %s | bash -s -- --code %s", nodeScriptURL, code)
+	if version != "" {
+		cmd += " --version " + version
+	}
+	return JoinCommand{Command: cmd, Code: code, ExpiresAtMs: res.ExpiresAtMs, GatewayURL: profile.URL}, nil
+}
+
 // neither the node nor an operator can rewrite that in place. Re-pairing is how a
 // changed command list reaches the gateway; the autopilot approves the new request.
 func (s *NodeService) RePair() (node.Status, error) {

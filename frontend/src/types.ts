@@ -295,6 +295,14 @@ export type CacheStamp = {
   full: boolean
 }
 
+/** The one command that enrols another machine as a node, with its one-time code. */
+export type JoinCommand = {
+  command: string
+  code: string
+  expiresAtMs: number
+  gatewayUrl: string
+}
+
 /** Whether ClawHQ starts with the user's session, and whether this OS supports it. */
 export type LoginStatus = {
   enabled: boolean

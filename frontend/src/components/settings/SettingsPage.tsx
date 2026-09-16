@@ -6,6 +6,7 @@ import { ContentHead, Shell, SideHead, type ShellProps } from '../layout/Shell'
 import { api } from '../../api'
 import { ConnectionPanel } from '../ConnectionPanel'
 import { NodePanel } from '../NodePanel'
+import { AddMachinePanel } from '../AddMachinePanel'
 import { PairingApprovals } from '../PairingApprovals'
 import { UpdatePanel } from '../UpdatePanel'
 import { PluginsPage } from './PluginsPage'
@@ -53,7 +54,7 @@ const NAV: NavGroup[] = [
     label: 'Connection',
     items: [
       { id: 'gateways', label: 'Gateways' },
-      { id: 'machine', label: 'This machine' }
+      { id: 'machine', label: 'Machines' }
     ]
   },
   {
@@ -81,7 +82,7 @@ const NAV: NavGroup[] = [
 
 const TITLES: Record<SettingsSection, string> = {
   gateways: 'Gateways',
-  machine: 'This machine',
+  machine: 'Machines',
   departments: 'Departments',
   notifications: 'Notifications',
   commands: 'Command history',
@@ -265,6 +266,7 @@ export function SettingsPage({
         {section === 'machine' && (
           <div className="settings-stack">
             <NodePanel />
+            <AddMachinePanel connected={connected} />
           </div>
         )}
 
