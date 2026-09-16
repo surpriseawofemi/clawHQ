@@ -5,7 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/surpriseawofemi/clawhq/internal/gateway"
 	"github.com/surpriseawofemi/clawhq/internal/node"
@@ -576,3 +580,38 @@ func (s *NodeService) ResolveExec(id, decision string) (node.Status, error) {
 	}
 	return s.Status(), nil
 }
+
+// DiagService — the webview reports uncaught errors here, so a blank window
+// leaves a trace in ~/.openclaw/clawhq-frontend.log instead of nothing.
+type DiagService struct{}
+
+func frontendLogPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "clawhq-frontend.log"
+	}
+	return filepath.Join(home, ".openclaw", "clawhq-frontend.log")
+}
+
+// Report appends one entry; the file is capped at ~256KB by dropping the oldest half.
+func (s *DiagService) Report(kind, message, stack string) {
+	path := frontendLogPath()
+	_ = os.MkdirAll(filepath.Dir(path), 0o700)
+	line := fmt.Sprintf("%s [%s] %s\n%s\n\n", time.Now().Format(time.RFC3339), kind, message, stack)
+	if st, err := os.Stat(path); err == nil && st.Size() > 256*1024 {
+		if b, err := os.ReadFile(path); err == nil {
+			_ = os.WriteFile(path, b[len(b)/2:], 0o600)
+		}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		log.Printf("frontend: %s: %s", kind, message)
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(line)
+	log.Printf("frontend: %s: %s", kind, message)
+}
+
+// Path tells the UI where the log lives, for the error screen.
+func (s *DiagService) Path() string { return frontendLogPath() }

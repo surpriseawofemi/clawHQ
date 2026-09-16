@@ -3,6 +3,7 @@ import {
   CacheService,
   ConfigService,
   DaemonService,
+  DiagService,
   ExecLogService,
   GatewayService,
   InboxService,
@@ -165,6 +166,11 @@ export const api = {
   login: {
     status: (): Promise<LoginStatus> => LoginService.Status() as Promise<LoginStatus>,
     set: (on: boolean): Promise<LoginStatus> => LoginService.Set(on) as Promise<LoginStatus>
+  },
+  diag: {
+    report: (kind: string, message: string, stack: string): Promise<void> =>
+      DiagService.Report(kind, message, stack) as Promise<void>,
+    path: (): Promise<string> => DiagService.Path() as Promise<string>
   },
   execLog: {
     list: (): Promise<ExecRecord[]> => ExecLogService.List() as Promise<ExecRecord[]>,

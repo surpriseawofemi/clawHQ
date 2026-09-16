@@ -3345,3 +3345,28 @@ input[type='radio']:disabled {
 
 /* Host role glyph: ClawHQ desktop vs OpenClaw node host, in front of a node's name. */
 .host-glyph { font-size: 0.95em; margin-right: 2px; cursor: help; }
+
+/* Crash screen from the error boundary: never a blank window. */
+.crash {
+  padding: 40px 32px;
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.crash h2 { margin: 0; }
+.crash-msg { margin: 0; color: var(--danger, #e5484d); font-weight: 600; }
+.crash-stack {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 50vh;
+  overflow: auto;
+}

@@ -61,6 +61,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 31 | Settings pages use the full width (760px cap removed); checkboxes no longer inherit the text-input box, hints indent under their checkbox | v0.1.38 |
 | 32 | Desktops button shows a small online dot instead of a count that read as unread notifications | v0.1.39 |
 | 33 | Chat box starts at one line and grows with the draft to five lines, then scrolls | v0.1.40 |
+| 34 | No more blank window: an error boundary shows the message and stack with Reload/Copy, uncaught errors and rejections go to `~/.openclaw/clawhq-frontend.log`, devtools enabled on the main window; a saved chat session is restored only once the session list confirms it exists | v0.1.41 |
 
 ## Now
 

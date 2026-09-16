@@ -211,6 +211,7 @@ func main() {
 			application.NewService(&ExecLogService{log: execLog}),
 			application.NewService(&CacheService{cache: threadCache}),
 			application.NewService(&PluginService{bridge: bridge}),
+			application.NewService(&DiagService{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -223,12 +224,13 @@ func main() {
 	})
 
 	mainWin := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:      mainWindowName,
-		Title:     "ClawHQ",
-		Width:     1280,
-		Height:    840,
-		MinWidth:  940,
-		MinHeight: 600,
+		DevToolsEnabled: true,
+		Name:            mainWindowName,
+		Title:           "ClawHQ",
+		Width:           1280,
+		Height:          840,
+		MinWidth:        940,
+		MinHeight:       600,
 		Mac: application.MacWindow{
 			// Matches the Electron build: traffic lights kept, title bar dropped so the
 			// sidebar runs to the top edge.

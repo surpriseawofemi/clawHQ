@@ -202,6 +202,14 @@ policy. Commands advertised:
 | `system.notify` | Shows a notification on this machine and a banner in ClawHQ — how an agent asks for a human |
 | `clawhq.departments.list`, `clawhq.departments.create`, `clawhq.agents.assign` | The org chart, for agents |
 
+### When something breaks
+
+A render error no longer leaves a blank window: the error boundary shows the
+message and stack with Reload and Copy details. Every uncaught error, unhandled
+promise rejection and boundary catch is appended to `~/.openclaw/clawhq-frontend.log`.
+The main window has devtools enabled, so on macOS Safari → Develop → ClawHQ can
+inspect it once `defaults write com.clawhq.app WebKitDeveloperExtras -bool true` is set.
+
 ### Theme
 
 The sun/moon button in the top bar flips between dark and light on every page and

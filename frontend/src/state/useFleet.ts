@@ -164,16 +164,14 @@ export function useFleet() {
     const saved = readLastChat(status.gatewayId)
     const agent = saved && agents.some((a) => a.id === saved.agentId) ? saved.agentId : agents[0].id
     setSelectedAgentId(agent)
-    if (saved && agent === saved.agentId && saved.sessionKey) {
-      restored.current = saved.sessionKey
-      setSelectedSessionKey(saved.sessionKey)
-    }
+    // The session waits until the session list proves it still exists.
+    if (saved && agent === saved.agentId && saved.sessionKey) restored.current = saved.sessionKey
   }, [agents, selectedAgentId, status.gatewayId])
-  // A restored session that turns out not to exist any more falls back to the main thread.
   useEffect(() => {
     if (!restored.current || sessions.length === 0) return
-    if (!sessions.some((x) => x.key === restored.current)) setSelectedSessionKey(null)
+    const key = restored.current
     restored.current = null
+    if (sessions.some((x) => x.key === key)) setSelectedSessionKey(key)
   }, [sessions])
   useEffect(() => {
     // Only a selection that belongs to this gateway's roster is worth keeping; right
