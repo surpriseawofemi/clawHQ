@@ -177,7 +177,7 @@ export function TopBar({ shell, title }: { shell: ShellProps; title: string | nu
         aria-label="Desktops"
       >
         {Icon.desktop}
-        {desktops.length > 0 && <i className={`desk-badge${online > 0 ? ' is-online' : ''}`}>{desktops.length}</i>}
+        {online > 0 && <i className="desk-dot-mark" aria-hidden="true" />}
       </button>
       <button
         className="desk-btn"

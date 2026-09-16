@@ -3328,5 +3328,19 @@ input[type='radio']:disabled {
   align-items: center;
 }
 
+/* Desktops button: a small green dot when any desktop is online, no count (a number
+   there reads as unread notifications). */
+.desk-btn { position: relative; }
+.desk-dot-mark {
+  position: absolute;
+  right: 5px;
+  bottom: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok, #3ccb7f);
+  box-shadow: 0 0 0 2px var(--bg-raised);
+}
+
 /* Host role glyph: ClawHQ desktop vs OpenClaw node host, in front of a node's name. */
 .host-glyph { font-size: 0.95em; margin-right: 2px; cursor: help; }
