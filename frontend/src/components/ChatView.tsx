@@ -79,6 +79,12 @@ export function ChatView({
     setAttachments([])
   }, [agent?.id, sessionKey])
 
+  // Hooks stay above the no-agent return below: React counts them every render,
+  // and a hook that only runs once an agent is picked crashes with "rendered fewer
+  // hooks than expected" the moment the agent arrives.
+  const [showToolCalls, setShowToolCalls] = useState(getPrefs().showToolCalls)
+  useEffect(() => onPrefs((p) => setShowToolCalls(p.showToolCalls)), [])
+
   // The box starts one line tall and grows with the draft up to five lines, then
   // scrolls inside. Measured from the element itself so font and padding changes
   // in the stylesheet keep it honest.
@@ -138,8 +144,6 @@ export function ChatView({
 
   const visible = messages.filter((m) => m.role === 'user' || m.role === 'assistant')
   const toolResults = indexToolResults(messages)
-  const [showToolCalls, setShowToolCalls] = useState(getPrefs().showToolCalls)
-  useEffect(() => onPrefs((p) => setShowToolCalls(p.showToolCalls)), [])
   const placeholder = !connected
     ? 'Not connected to a gateway'
     : sendable.length > 0
