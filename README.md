@@ -216,6 +216,14 @@ The sun/moon button in the top bar flips between dark and light on every page an
 makes that choice explicit. Settings → App still offers "system" to follow macOS or
 Windows again; both controls stay in step.
 
+### Tool allowlist
+
+A gateway running a tool profile (`tools.profile`) only offers agents the tools
+in `tools.allow` / `tools.alsoAllow`. ClawHQ adds every plugin tool it registers
+to `tools.alsoAllow` when it finds the plugin, after installing it and after an
+upgrade, so agents never silently lack `clawhq_issue_create` and friends. It only
+ever extends the list.
+
 ### Super Boss Chat
 
 Every agent gets one session that belongs to the human: `agent:<id>:superboss`,

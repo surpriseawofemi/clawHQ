@@ -67,6 +67,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 37 | Team Chat becomes a chat app: channel + member sidebar with presence and typing, click-to-mention, agents answer each other (hop cap 3, plugin 0.2.3 `team.turn`), and a Super Boss channel merging every agent's Super Boss Chat with @agent/@all sending | v0.1.45 |
 | 38 | Issues page: one-by-one items from agents (question/task/issue/improvement, urgency, 🔴🟡✅), answer box that turns into a Super Boss Chat turn, tasks for agents, "File as N issues" splitter for long reports, agent tools + briefing (plugin 0.2.4); Markdown in chat bubbles | v0.1.46 |
 | 39 | Plugin auto-update no longer races between ClawHQs: stagger, check `plugins.list` first, skip when another ClawHQ already installed the version; hook policy patched right after install; a deferred gateway restart is tolerated | v0.1.47 |
+| 40 | Gateways with a tool profile get every ClawHQ plugin tool added to `tools.alsoAllow` on detect/install/upgrade (agents had only 3 of 12) | v0.1.48 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now

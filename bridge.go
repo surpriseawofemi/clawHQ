@@ -175,6 +175,10 @@ func (b *pluginBridge) detect(st gateway.Status) {
 		log.Printf("plugin: inbox catch-up: %v", err)
 	}
 	go b.checkLatest()
+	// A gateway with a tool profile must list the plugin's tools or agents never see them.
+	if err := b.patchToolAllow(ctx); err != nil {
+		log.Printf("plugin: tool allowlist: %v", err)
+	}
 }
 
 // checkLatest asks ClawHub (through the gateway's plugin search) for the newest
@@ -277,11 +281,17 @@ func (b *pluginBridge) upgrade() error {
 	if err := b.patchHookPolicy(ctx); err != nil {
 		log.Printf("plugin: hook policy not patched yet: %v", err)
 	}
+	if err := b.patchToolAllow(ctx); err != nil {
+		log.Printf("plugin: tool allowlist not patched yet: %v", err)
+	}
 	if err := b.waitForGateway(ctx); err != nil {
 		log.Printf("plugin: %v; the plugin loads on the gateway's next restart", err)
 	}
 	if err := b.patchHookPolicy(ctx); err != nil {
 		return finish(err)
+	}
+	if err := b.patchToolAllow(ctx); err != nil {
+		log.Printf("plugin: tool allowlist: %v", err)
 	}
 	log.Printf("plugin: updated to clawhq %s", target)
 	return finish(nil)
@@ -520,6 +530,9 @@ func (b *pluginBridge) install() (PluginStatus, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
+	if err := b.patchToolAllow(ctx); err != nil {
+		log.Printf("plugin: tool allowlist: %v", err)
+	}
 	if err := b.patchHookPolicy(ctx); err != nil {
 		return b.Status(), err
 	}
@@ -555,6 +568,68 @@ func (b *pluginBridge) patchHookPolicy(ctx context.Context) error {
 	}}}}
 	rawPatch, _ := json.Marshal(patch)
 	_, err = b.request(ctx, "config.patch", map[string]any{"raw": string(rawPatch), "baseHash": cur.Hash, "note": "ClawHQ: plugin hook policy"})
+	return err
+}
+
+// pluginTools is every agent tool the plugin registers (its manifest's
+// contracts.tools). A gateway running a tool profile only offers agents the tools
+// in tools.allow / tools.alsoAllow, so these have to be listed or agents silently
+// lack them.
+var pluginTools = []string{
+	"clawhq_departments_list", "clawhq_department_create", "clawhq_agent_assign", "clawhq_ask_human",
+	"clawhq_tasks_list", "clawhq_task_create", "clawhq_task_update",
+	"clawhq_team_post", "clawhq_team_read",
+	"clawhq_issue_create", "clawhq_issues_list", "clawhq_issue_update",
+}
+
+// patchToolAllow adds any missing plugin tool to tools.alsoAllow. A gateway with
+// no tool profile offers everything and needs nothing; one with a profile gets
+// the list extended, never shortened.
+func (b *pluginBridge) patchToolAllow(ctx context.Context) error {
+	raw, err := b.request(ctx, "config.get", map[string]any{})
+	if err != nil {
+		return err
+	}
+	var cur struct {
+		Hash   string `json:"hash"`
+		Config struct {
+			Tools struct {
+				Profile   string   `json:"profile"`
+				AlsoAllow []string `json:"alsoAllow"`
+				Allow     []string `json:"allow"`
+			} `json:"tools"`
+		} `json:"config"`
+	}
+	if err := json.Unmarshal(raw, &cur); err != nil {
+		return err
+	}
+	if cur.Config.Tools.Profile == "" && len(cur.Config.Tools.Allow) == 0 {
+		return nil // no profile: every tool is offered already
+	}
+	have := map[string]bool{}
+	for _, t := range cur.Config.Tools.AlsoAllow {
+		have[t] = true
+	}
+	for _, t := range cur.Config.Tools.Allow {
+		have[t] = true
+	}
+	next := append([]string{}, cur.Config.Tools.AlsoAllow...)
+	missing := 0
+	for _, t := range pluginTools {
+		if !have[t] {
+			next = append(next, t)
+			missing++
+		}
+	}
+	if missing == 0 {
+		return nil
+	}
+	patch := map[string]any{"tools": map[string]any{"alsoAllow": next}}
+	rawPatch, _ := json.Marshal(patch)
+	_, err = b.request(ctx, "config.patch", map[string]any{"raw": string(rawPatch), "baseHash": cur.Hash, "note": "ClawHQ: allow every ClawHQ plugin tool"})
+	if err == nil {
+		log.Printf("plugin: %d ClawHQ tools added to the gateway's tool allowlist", missing)
+	}
 	return err
 }
 
