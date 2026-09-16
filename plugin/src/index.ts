@@ -35,7 +35,17 @@ type Delegation = {
 
 const TASK_STATUSES: TaskStatus[] = ["todo", "doing", "done", "failed"];
 
-export const PLUGIN_VERSION = "0.2.0";
+export const PLUGIN_VERSION = "0.2.1";
+
+/**
+ * Super Boss Chat: one session per agent reserved for the human operator. ClawHQ
+ * opens it by default; agent-to-agent traffic aimed at it is redirected to the
+ * agent's main session so the operator's thread stays theirs.
+ */
+export const BOSS_SUFFIX = ":superboss";
+export const BOSS_LABEL = "Super Boss Chat";
+const isBossKey = (k: unknown): k is string => typeof k === "string" && k.endsWith(BOSS_SUFFIX);
+const bossToMain = (k: string): string => k.slice(0, -BOSS_SUFFIX.length) + ":main";
 
 /**
  * ClawHQ's gateway plugin.
@@ -156,7 +166,7 @@ function register(api: OpenClawPluginApi): void {
 
   method("clawhq.version", "operator.read", async () => ({
     version: PLUGIN_VERSION,
-    features: ["org", "inbox", "exec", "activity", "events", "orgContext", "presence", "tasks"],
+    features: ["org", "inbox", "exec", "activity", "events", "orgContext", "presence", "tasks", "superboss"],
     stateFile: store.file,
   }));
 
@@ -520,6 +530,21 @@ function register(api: OpenClawPluginApi): void {
 
   api.on("before_tool_call", async (event, ctx) => {
     touch(ctx.agentId, { state: "working", tool: event.toolName, toolSinceMs: Date.now(), sessionKey: ctx.sessionKey ?? presence.get(ctx.agentId ?? "")?.sessionKey });
+    // Keep every Super Boss Chat for the human: a send aimed at one goes to that
+    // agent's main session instead. Sends by label cannot be resolved here, so
+    // they are refused with the reason.
+    if (event.toolName === "sessions_send") {
+      const p = event.params ?? {};
+      if (isBossKey(p.sessionKey)) {
+        const to = bossToMain(p.sessionKey);
+        api.logger.info(`clawhq: sessions_send from ${ctx.agentId ?? "?"} redirected ${p.sessionKey} -> ${to} (Super Boss Chat is for the human)`);
+        return { params: { ...p, sessionKey: to } };
+      }
+      if (p.label === BOSS_LABEL) {
+        return { block: true, blockReason: `"${BOSS_LABEL}" sessions are reserved for the human operator; send to the agent's main session (agent:<id>:main) or use sessions_spawn.` };
+      }
+    }
+    return undefined;
   });
 
   api.on("after_tool_call", async (_event, ctx) => {
@@ -583,21 +608,29 @@ function register(api: OpenClawPluginApi): void {
     }
   });
 
-  if (orgContext) {
-    api.on("before_prompt_build", async (_event, ctx) => {
-      if (!ctx.agentId) return;
+  api.on("before_prompt_build", async (_event, ctx) => {
+    const lines: string[] = [];
+    if (isBossKey(ctx.sessionKey)) {
+      lines.push(
+        `This session is your ${BOSS_LABEL}: the human operator talks to you here through ClawHQ and reads every reply. Keep it for them. Never send agent-to-agent traffic, delegation or status chatter into a ${BOSS_LABEL} session (yours or another agent's); use sessions_spawn for work, or send to the agent's main session (agent:<id>:main). Report outcomes here briefly, in plain language.`,
+      );
+    }
+    if (orgContext && ctx.agentId) {
       const s = await store.load();
       const deptId = s.assignments[ctx.agentId];
-      if (!deptId) return;
-      const dept = s.departments.find((d) => d.id === deptId);
-      if (!dept) return;
-      const peers = Object.entries(s.assignments)
-        .filter(([a, d]) => d === deptId && a !== ctx.agentId)
-        .map(([a]) => a);
-      const line = `You are in the ${dept.name} department of this organisation (ClawHQ).${peers.length ? ` Also in ${dept.name}: ${peers.join(", ")}.` : ""} Use clawhq_departments_list to see the whole chart and clawhq_ask_human when you need a person.`;
-      return { appendSystemContext: line };
-    });
-  }
+      const dept = deptId ? s.departments.find((d) => d.id === deptId) : undefined;
+      if (dept) {
+        const peers = Object.entries(s.assignments)
+          .filter(([a, d]) => d === deptId && a !== ctx.agentId)
+          .map(([a]) => a);
+        lines.push(
+          `You are in the ${dept.name} department of this organisation (ClawHQ).${peers.length ? ` Also in ${dept.name}: ${peers.join(", ")}.` : ""} Use clawhq_departments_list to see the whole chart and clawhq_ask_human when you need a person.`,
+        );
+      }
+    }
+    if (lines.length === 0) return undefined;
+    return { appendSystemContext: lines.join("\n") };
+  });
 
   api.registerService({
     id: "clawhq",

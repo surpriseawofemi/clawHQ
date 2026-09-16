@@ -216,6 +216,17 @@ The sun/moon button in the top bar flips between dark and light on every page an
 makes that choice explicit. Settings → App still offers "system" to follow macOS or
 Windows again; both controls stay in step.
 
+### Super Boss Chat
+
+Every agent gets one session that belongs to the human: `agent:<id>:superboss`,
+labelled "Super Boss Chat". ClawHQ opens it when you click an agent and creates it
+the first time (fixed key, so the gateway adopts the existing one afterwards). The
+main thread and every other session stay in the picker for watching agent-to-agent
+work. Nobody has to tell the agents: the plugin's prompt hook explains the session
+to whichever agent is answering in it, and its tool hook redirects any
+`sessions_send` aimed at a Super Boss Chat to that agent's main session, refusing
+sends by label. Needs plugin 0.2.1.
+
 ### Where Chat opens
 
 Chat reopens on the agent and session that were open last time, saved per gateway

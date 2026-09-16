@@ -32,6 +32,7 @@ const timeOf = (ts?: number): string =>
   ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
 
 const sessionTitle = (s: SessionInfo): string => {
+  if (s.key.endsWith(':superboss')) return 'Super Boss Chat'
   if (s.isMain || s.key.endsWith(':main')) return 'Main thread'
   if (s.label) return s.label
   return s.key.split(':').slice(2).join(':') || s.key
@@ -158,7 +159,7 @@ export function ChatView({
             value={sessionKey ?? ''}
             disabled={!connected}
             title="Which conversation with this agent"
-            onChange={(e) => onSelectSession(e.target.value.endsWith(':main') ? null : e.target.value)}
+            onChange={(e) => onSelectSession(e.target.value.endsWith(':superboss') ? null : e.target.value)}
           >
             {sessions.map((s) => (
               <option key={s.key} value={s.key}>

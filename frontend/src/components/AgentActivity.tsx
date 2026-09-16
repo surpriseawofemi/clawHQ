@@ -21,6 +21,7 @@ const when = (ms?: number): string => {
 }
 
 const sessionTitle = (s: SessionInfo): string => {
+  if (s.key.endsWith(':superboss')) return 'Super Boss Chat'
   if (s.isMain || s.key.endsWith(':main')) return 'Main thread'
   if (s.label) return s.label
   return s.key.split(':').slice(2).join(':') || s.key
@@ -94,7 +95,7 @@ export function AgentActivity({ agent, tab, onTab, sessions, connected, onOpenSe
                       {s.totalTokens ? ` · ${Math.round(s.totalTokens / 1000)}k tokens` : ''}
                     </span>
                   </span>
-                  <button className="btn btn-sm" onClick={() => onOpenSession(s.key.endsWith(':main') ? null : s.key)}>
+                  <button className="btn btn-sm" onClick={() => onOpenSession(s.key.endsWith(':superboss') ? null : s.key)}>
                     Open
                   </button>
                 </div>

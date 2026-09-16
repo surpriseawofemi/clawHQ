@@ -17,6 +17,14 @@ const api = (): typeof clawhqApi => clawhqApi
 
 /** The main session key for an agent — the conversation ClawHQ opens on click. */
 export const mainSessionKey = (agentId: string): string => `agent:${agentId}:main`
+/**
+ * Super Boss Chat: the one session per agent that belongs to the human. ClawHQ
+ * opens it by default and creates it on first use; the gateway plugin keeps
+ * agent-to-agent traffic out of it.
+ */
+export const BOSS_LABEL = 'Super Boss Chat'
+export const bossSessionKey = (agentId: string): string => `agent:${agentId}:superboss`
+export const isBossKey = (key: string): boolean => key.endsWith(':superboss')
 
 /** A message's identity for merging: the gateway id when it has one, else its shape. */
 const messageId = (m: ChatMessage): string =>
@@ -69,7 +77,7 @@ export function useFleet() {
   const selectedKey = selectedAgentId
     ? selectedSessionKey && selectedSessionKey.startsWith(`agent:${selectedAgentId}:`)
       ? selectedSessionKey
-      : mainSessionKey(selectedAgentId)
+      : bossSessionKey(selectedAgentId)
     : null
 
   // ---- bootstrap --------------------------------------------------------
@@ -402,7 +410,8 @@ export function useFleet() {
     const roster = agents.map((a) => a.id)
     void (async () => {
       for (const id of roster) {
-        const key = mainSessionKey(id)
+        const boss = bossSessionKey(id)
+        const key = sessions.some((x) => x.key === boss) ? boss : mainSessionKey(id)
         if (key === selectedKey) continue
         await loadHistory(key, HISTORY_TAIL)
         await new Promise((r) => setTimeout(r, 150))
@@ -413,7 +422,10 @@ export function useFleet() {
   }, [connected, gatewayId, agents, sessions.length > 0, loadHistory])
 
   useEffect(() => {
-    if (!connected) prefetched.current = null
+    if (!connected) {
+      prefetched.current = null
+      created.current.clear()
+    }
   }, [connected])
 
   const openSession = useCallback((sessionKey: string) => loadHistory(sessionKey, HISTORY_TAIL), [loadHistory])
@@ -425,6 +437,30 @@ export function useFleet() {
   useEffect(() => {
     if (selectedKey && connected) void openSession(selectedKey)
   }, [selectedKey, connected, openSession])
+
+  // The Super Boss Chat is created the first time an agent is opened. The key is
+  // fixed, so the gateway adopts the existing session when it is already there.
+  const ensuring = useRef<Set<string>>(new Set())
+  const created = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!selectedKey || !connected || !selectedAgentId || sessions.length === 0) return
+    if (!isBossKey(selectedKey) || sessions.some((x) => x.key === selectedKey) || ensuring.current.has(selectedKey)) return
+    // Once per connection: a session the list does not show (nothing said yet) must
+    // not be re-created on every roster refresh.
+    if (created.current.has(selectedKey)) return
+    created.current.add(selectedKey)
+    ensuring.current.add(selectedKey)
+    void (async () => {
+      try {
+        await api().rpc.request('sessions.create', { key: selectedKey, agentId: selectedAgentId, label: BOSS_LABEL })
+        await refreshFleet()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        ensuring.current.delete(selectedKey)
+      }
+    })()
+  }, [selectedKey, connected, selectedAgentId, sessions, refreshFleet])
 
   // ---- actions ----------------------------------------------------------
   const sendMessage = useCallback(
@@ -458,9 +494,11 @@ export function useFleet() {
       .filter((s) => s.key.startsWith(prefix) && !s.key.startsWith(`${prefix}cron:`))
       .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     const main = mainSessionKey(selectedAgentId)
-    const rest = list.filter((s) => s.key !== main)
+    const boss = bossSessionKey(selectedAgentId)
+    const rest = list.filter((s) => s.key !== main && s.key !== boss)
+    const bossInfo = list.find((s) => s.key === boss) ?? { key: boss, agentId: selectedAgentId, label: BOSS_LABEL }
     const mainInfo = list.find((s) => s.key === main) ?? { key: main, agentId: selectedAgentId, isMain: true }
-    return [mainInfo, ...rest]
+    return [bossInfo, mainInfo, ...rest]
   }, [sessions, selectedAgentId])
 
   const selectSession = useCallback((key: string | null) => {
