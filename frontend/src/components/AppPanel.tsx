@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { ClawHQConfig, LoginStatus } from '../types'
 import { applyTheme, getTheme, type Theme } from '../theme'
+import { getPrefs, setPref } from '../prefs'
 
 type Props = {
   config: ClawHQConfig | null
@@ -19,6 +20,7 @@ export function AppPanel({ config, onConfigChanged }: Props): React.JSX.Element 
   const [error, setError] = useState<string | null>(null)
 
   const [cacheSize, setCacheSize] = useState<number | null>(null)
+  const [prefs, setPrefs] = useState(getPrefs())
 
   useEffect(() => {
     api.login
@@ -96,6 +98,18 @@ export function AppPanel({ config, onConfigChanged }: Props): React.JSX.Element 
         {login?.supported
           ? `Registered as ${login.path}; remove that to undo it by hand.`
           : 'Not wired up on this platform yet.'}
+      </p>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={prefs.showToolCalls}
+          onChange={(e) => setPrefs(setPref('showToolCalls', e.target.checked))}
+        />
+        <span>Show tool calls in chat</span>
+      </label>
+      <p className="field-hint">
+        Each assistant message's tool calls, with their arguments and results, under the
+        message. Off by default; the thread reads cleaner without them.
       </p>
       <div className="field">
         <span>Thread cache</span>

@@ -11,6 +11,7 @@ import { AgentCharter } from './components/AgentCharter'
 import type { AgentTab } from './components/AgentHeader'
 import { GatewaySwitcher } from './components/GatewaySwitcher'
 import { SearchPalette } from './components/SearchPalette'
+import { HomePage } from './components/HomePage'
 import type { SettingsSection } from './components/settings/SettingsPage'
 import { api } from './api'
 import { useFleet } from './state/useFleet'
@@ -22,6 +23,8 @@ function App(): React.JSX.Element {
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('gateways')
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  // The app lands on Activity; Chat is where the agents live.
+  const [view, setView] = useState<'home' | 'chat'>('home')
 
   // Cmd-K (Ctrl-K elsewhere) opens the search palette from anywhere.
   useEffect(() => {
@@ -57,6 +60,14 @@ function App(): React.JSX.Element {
       setUnread((u) => u + 1)
     })
   }, [])
+
+  // The banner is a nudge, not a record: it leaves after five seconds. The
+  // notification history in Settings keeps everything.
+  useEffect(() => {
+    if (!notice) return
+    const t = window.setTimeout(() => setNotice((cur) => (cur?.id === notice.id ? null : cur)), 5000)
+    return () => window.clearTimeout(t)
+  }, [notice])
 
   const {
     status,
@@ -108,6 +119,17 @@ function App(): React.JSX.Element {
         onSelect={(id) => {
           selectSession(null)
           setSelectedAgentId(id)
+          setSettingsOpen(false)
+          setView('chat')
+        }}
+        view={settingsOpen ? 'settings' : view}
+        onHome={() => {
+          setSettingsOpen(false)
+          setView('home')
+        }}
+        onChat={() => {
+          setSettingsOpen(false)
+          setView('chat')
         }}
         desktops={desktops}
         desktopsOpen={false}
@@ -133,11 +155,27 @@ function App(): React.JSX.Element {
             selectSession(null)
             setSelectedAgentId(agentId)
             setSettingsOpen(false)
+            setView('chat')
           }}
           onClose={() => setSettingsOpen(false)}
           onConfigChanged={setConfig}
           onDaemonChanged={setDaemon}
           onReconnected={refreshFleet}
+        />
+      ) : view === 'home' ? (
+        <HomePage
+          agents={agents}
+          sessions={sessions}
+          config={config}
+          connected={connected}
+          onOpenAgent={(agentId, key) => {
+            setSelectedAgentId(agentId)
+            selectSession(key ?? null)
+            setAgentTab('chat')
+            setView('chat')
+          }}
+          onOpenNotifications={() => openSettings('notifications')}
+          onOpenCommands={() => openSettings('commands')}
         />
       ) : (
       selectedAgent && agentTab === 'documents' ? (
@@ -198,6 +236,7 @@ function App(): React.JSX.Element {
             setSelectedAgentId(agentId)
             selectSession(key)
             setAgentTab('chat')
+            setView('chat')
           }}
         />
       )}
@@ -229,6 +268,7 @@ function App(): React.JSX.Element {
               onClick={() => {
                 selectSession(null)
                 setSelectedAgentId(notice.agentId!)
+                setView('chat')
                 setSettingsOpen(false)
                 setNotice(null)
               }}

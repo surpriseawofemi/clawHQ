@@ -4,6 +4,7 @@ import type { Agent, Attachment, ChatMessage, SessionInfo, StreamingReply } from
 import { agentLabel, messageText } from '../types'
 import { AgentHeader, type AgentTab } from './AgentHeader'
 import { ToolCalls, indexToolResults, toolCallsOf } from './ToolCalls'
+import { getPrefs, onPrefs } from '../prefs'
 
 type Props = {
   agent: Agent | null
@@ -120,6 +121,8 @@ export function ChatView({
 
   const visible = messages.filter((m) => m.role === 'user' || m.role === 'assistant')
   const toolResults = indexToolResults(messages)
+  const [showToolCalls, setShowToolCalls] = useState(getPrefs().showToolCalls)
+  useEffect(() => onPrefs((p) => setShowToolCalls(p.showToolCalls)), [])
   const placeholder = !connected
     ? 'Not connected to a gateway'
     : sendable.length > 0
@@ -175,7 +178,7 @@ export function ChatView({
 
         {visible.map((msg, i) => {
           const text = messageText(msg)
-          const calls = msg.role === 'assistant' ? toolCallsOf(msg, toolResults) : []
+          const calls = msg.role === 'assistant' && showToolCalls ? toolCallsOf(msg, toolResults) : []
           if (!text.trim() && calls.length === 0) return null
           const mine = msg.role === 'user'
           return (

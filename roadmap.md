@@ -49,6 +49,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 16 | ⌘K search palette (agents, thread labels, loaded message text) and an appearance switch (system, dark, light) | v0.1.19 |
 | 14a | Secondary displays (display picker, per-display coordinate mapping on macOS) and clipboard sync (`clawhq.clipboard.get/set`, agent tools, Send/Fetch clipboard while in control) | v0.1.20 |
 | 24 | Thread cache: SQLite on each machine, instant open from disk, gateway asked only when the session stamp moved, main threads warmed after connect | v0.1.22 |
+| 25 | Activity landing page: one timeline for every agent (plugin runs, notices, commands), Needs you and Working now, department/agent filters; sidebar nav Activity/Chat/Settings; notice banner auto-dismisses; tool calls in chat behind a setting, off by default | v0.1.25 |
 
 ## Now
 

@@ -8,7 +8,7 @@ import type {
 import { Store, newId } from "./store.js";
 import type { Activity, Department, ExecRecord, Notice, State } from "./store.js";
 
-export const PLUGIN_VERSION = "0.1.1";
+export const PLUGIN_VERSION = "0.1.2";
 
 /**
  * ClawHQ's gateway plugin.

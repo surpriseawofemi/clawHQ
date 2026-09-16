@@ -1,6 +1,6 @@
 {
   "name": "clawhq-openclaw-plugin",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "ClawHQ's gateway plugin for OpenClaw: one org chart, inbox and command history for every ClawHQ, and agent tools that know who called them.",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,6 +32,12 @@
     },
     "build": {
       "openclawVersion": "2026.9.4"
+    },
+    "install": {
+      "clawhubSpec": "clawhub:clawhq-openclaw-plugin",
+      "npmSpec": "clawhq-openclaw-plugin",
+      "defaultChoice": "clawhub",
+      "minHostVersion": ">=2026.9.4"
     }
   },
   "devDependencies": {
