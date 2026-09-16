@@ -942,7 +942,6 @@ html.is-mac .topbar {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 760px;
 }
 
 .settings-row-block {
@@ -1149,10 +1148,10 @@ html.is-mac .topbar {
   color: var(--text-dim);
 }
 
-.field input,
+.field input:not([type='checkbox']):not([type='radio']),
 .field textarea,
 .field select,
-.dept-edit-row input {
+.dept-edit-row input:not([type='checkbox']) {
   padding: 9px 11px;
   background: var(--bg-sunken);
   border: 1px solid var(--border);
@@ -3224,8 +3223,31 @@ html.is-mac .topbar {
 .check-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+/* Checkboxes were picking up the text-input box (full width, padded) inside .field. */
+input[type='checkbox'],
+input[type='radio'] {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+input[type='checkbox']:disabled,
+input[type='radio']:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.check-row + .field-hint {
+  padding-left: 24px;
 }
 
 /* ---- sessions + attachments in the chat ---- */

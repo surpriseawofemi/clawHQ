@@ -58,6 +58,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 22c | Machines: host glyph (ClawHQ desktop vs OpenClaw node host), Trust label for desktops, app version in the node hello, valid exec-approvals snapshot (path/exists/hash/file), enrol script installs Node 24 side by side in `/opt/node24` | v0.1.35 |
 | 29 | Chat reopens on the last open agent and session, per gateway; one themed dropdown style for every `select` (custom chevron, no browser default box) | v0.1.36 |
 | 30 | Sun/moon toggle in the top bar flips dark/light on every page; Settings → App picker stays in sync | v0.1.37 |
+| 31 | Settings pages use the full width (760px cap removed); checkboxes no longer inherit the text-input box, hints indent under their checkbox | v0.1.38 |
 
 ## Now
 
