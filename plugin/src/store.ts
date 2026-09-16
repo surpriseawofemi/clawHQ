@@ -147,7 +147,6 @@ const empty = (): State => ({
 });
 
 export class Store {
-  private state: State | null = null;
   private chain: Promise<void> = Promise.resolve();
   readonly file: string;
 
@@ -156,39 +155,83 @@ export class Store {
     this.file = path.join(base, "clawhq", "state.json");
   }
 
+  /**
+   * Always reads the file. The gateway and the tool bridge it spawns for CLI
+   * backends each load this plugin, so two processes share one file; a cached
+   * copy in either would go stale the moment the other writes, and a later
+   * write from the stale side would erase the other's changes. (That happened:
+   * issues filed through tools vanished while activity written by hooks
+   * survived.)
+   */
   async load(): Promise<State> {
-    if (this.state) return this.state;
     try {
       const raw = await fs.readFile(this.file, "utf8");
       const parsed = JSON.parse(raw) as Partial<State>;
-      this.state = { ...empty(), ...parsed };
+      return { ...empty(), ...parsed };
     } catch {
-      this.state = empty();
+      return empty();
     }
-    return this.state;
   }
 
-  /** Applies a change under a write lock and persists the result. */
+  /**
+   * Read-modify-write under a cross-process lock: a lock file created with
+   * O_EXCL, retried for a few seconds, treated as stale after ten. Within one
+   * process, calls also queue so they never interleave.
+   */
   async update<T>(fn: (s: State) => T): Promise<T> {
     let out!: T;
     this.chain = this.chain.then(async () => {
-      const s = await this.load();
-      out = fn(s);
-      s.notices = s.notices.slice(-LIMITS.notices);
-      s.execLog = s.execLog.slice(-LIMITS.execLog);
-      s.activity = s.activity.slice(-LIMITS.activity);
-      s.tasks = (s.tasks ?? []).slice(-LIMITS.tasks);
-      s.team = (s.team ?? []).slice(-LIMITS.team);
-      s.teamSeen = s.teamSeen ?? {};
-      s.teamTurn = s.teamTurn ?? {};
-      s.issues = (s.issues ?? []).slice(-LIMITS.issues);
       await fs.mkdir(path.dirname(this.file), { recursive: true });
-      const tmp = `${this.file}.tmp`;
-      await fs.writeFile(tmp, JSON.stringify(s), "utf8");
-      await fs.rename(tmp, this.file);
+      const lock = `${this.file}.lock`;
+      await acquire(lock);
+      try {
+        const s = await this.load();
+        out = fn(s);
+        s.notices = s.notices.slice(-LIMITS.notices);
+        s.execLog = s.execLog.slice(-LIMITS.execLog);
+        s.activity = s.activity.slice(-LIMITS.activity);
+        s.tasks = (s.tasks ?? []).slice(-LIMITS.tasks);
+        s.team = (s.team ?? []).slice(-LIMITS.team);
+        s.teamSeen = s.teamSeen ?? {};
+        s.teamTurn = s.teamTurn ?? {};
+        s.issues = (s.issues ?? []).slice(-LIMITS.issues);
+        const tmp = `${this.file}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+        await fs.writeFile(tmp, JSON.stringify(s), "utf8");
+        await fs.rename(tmp, this.file);
+      } finally {
+        await fs.rm(lock, { force: true }).catch(() => undefined);
+      }
     });
     await this.chain;
     return out;
+  }
+}
+
+const LOCK_STALE_MS = 10_000;
+const LOCK_WAIT_MS = 5_000;
+
+async function acquire(lock: string): Promise<void> {
+  const started = Date.now();
+  for (;;) {
+    try {
+      const h = await fs.open(lock, "wx");
+      await h.writeFile(String(process.pid));
+      await h.close();
+      return;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      try {
+        const st = await fs.stat(lock);
+        if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+          await fs.rm(lock, { force: true });
+          continue;
+        }
+      } catch {
+        continue; // vanished between the open and the stat
+      }
+      if (Date.now() - started > LOCK_WAIT_MS) throw new Error(`clawhq state is locked by another process (${lock})`);
+      await new Promise((r) => setTimeout(r, 15 + Math.random() * 35));
+    }
   }
 }
 

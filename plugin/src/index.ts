@@ -38,7 +38,7 @@ const ISSUE_KINDS: IssueKind[] = ["question", "task", "issue", "improvement"];
 const ISSUE_STATUSES: IssueStatus[] = ["open", "in-progress", "resolved"];
 const ISSUE_URGENCIES: IssueUrgency[] = ["low", "normal", "high", "urgent"];
 
-export const PLUGIN_VERSION = "0.2.4";
+export const PLUGIN_VERSION = "0.2.5";
 
 /**
  * Super Boss Chat: one session per agent reserved for the human operator. ClawHQ

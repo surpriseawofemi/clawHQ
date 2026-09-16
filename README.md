@@ -224,6 +224,15 @@ to `tools.alsoAllow` when it finds the plugin, after installing it and after an
 upgrade, so agents never silently lack `clawhq_issue_create` and friends. It only
 ever extends the list.
 
+### Plugin state file
+
+The plugin keeps its state in `<state dir>/clawhq/state.json`. With CLI-backed
+agents the gateway and the tool bridge it spawns both load the plugin, so two
+processes write that file. Since plugin 0.2.5 every write is a fresh
+read-modify-write under a lock file (`state.json.lock`, stale after ten seconds),
+and nothing is cached between calls. Earlier versions cached the state per
+process, and a write from one side erased what the other had filed.
+
 ### Agents on a CLI backend
 
 Agents whose runtime is `claude-cli` (Claude Code) or Codex run in a separate
