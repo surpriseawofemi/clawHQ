@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
+import { getPrefs, setPref } from '../prefs'
 import type { Agent, ClawHQConfig, ExecRecord, NodeNotification, SessionInfo } from '../types'
 import { UNASSIGNED, agentEmoji, agentLabel } from '../types'
 import { ContentHead, Shell, type ShellProps } from './layout/Shell'
@@ -21,6 +22,7 @@ type Activity = {
   atMs: number
   agentId?: string
   sessionKey?: string
+  runId?: string
   success: boolean
   durationMs?: number
   error?: string
@@ -78,6 +80,7 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
   const [dept, setDept] = useState('')
   const [agentFilter, setAgentFilter] = useState('')
   const [onlyNeedsYou, setOnlyNeedsYou] = useState(false)
+  const [hideNoise, setHideNoise] = useState(getPrefs().hideActivityNoise)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
@@ -123,7 +126,12 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = []
+    // Noise: automations (cron sessions or cron runs) and turns that produced
+    // nothing to read and did not fail.
+    const isNoise = (r: Activity): boolean =>
+      (r.sessionKey ?? '').includes(':cron:') || (r.runId ?? '').startsWith('cron:') || (r.success && !(r.summary ?? '').trim() && !r.error)
     for (const r of runs) {
+      if (hideNoise && isNoise(r)) continue
       out.push({
         id: `run-${r.id}`,
         atMs: r.atMs,
@@ -188,7 +196,7 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
       .slice(0, 400)
     // deptOf reads config, which is a dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runs, notices, commands, sessions, pluginPresent, dept, agentFilter, onlyNeedsYou, config])
+  }, [runs, notices, commands, sessions, pluginPresent, dept, agentFilter, onlyNeedsYou, hideNoise, config])
 
   const needsYou = items.filter((i) => i.needsYou)
   const running = sessions.filter((s) => s.hasActiveRun)
@@ -238,6 +246,17 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
           <label className="check-row">
             <input type="checkbox" checked={onlyNeedsYou} onChange={(e) => setOnlyNeedsYou(e.target.checked)} />
             <span>Needs me</span>
+          </label>
+          <label className="check-row" title="Hide automation (cron) runs and turns that produced nothing">
+            <input
+              type="checkbox"
+              checked={hideNoise}
+              onChange={(e) => {
+                setHideNoise(e.target.checked)
+                setPref('hideActivityNoise', e.target.checked)
+              }}
+            />
+            <span>Hide automations & empty runs</span>
           </label>
       </ContentHead>
 

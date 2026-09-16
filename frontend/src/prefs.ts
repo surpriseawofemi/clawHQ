@@ -10,9 +10,11 @@ const EVENT = 'clawhq:prefs'
 export type Prefs = {
   /** Show each assistant message's tool calls in the thread. Off by default: noise for most reading. */
   showToolCalls: boolean
+  /** Activity: hide automation (cron) runs and runs that said nothing. On by default. */
+  hideActivityNoise: boolean
 }
 
-const DEFAULTS: Prefs = { showToolCalls: false }
+const DEFAULTS: Prefs = { showToolCalls: false, hideActivityNoise: true }
 
 export function getPrefs(): Prefs {
   try {
