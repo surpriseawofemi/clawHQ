@@ -89,22 +89,25 @@ html.is-mac .sidebar-head {
   padding-left: 80px;
 }
 
-/* Full-window pages start at the left edge, under the traffic lights. */
-html.is-mac .settings-nav-head,
-html.is-mac .home-head {
-  padding-left: 80px;
+/* A full-window page: the shared top strip, then the page filling the rest. */
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
 }
 
-.settings-nav-head,
-.home-head {
-  -webkit-app-region: drag;
+.page > .settings,
+.page > .home {
+  flex: 1;
+  min-height: 0;
+  height: auto;
 }
 
-.settings-nav-head button,
-.home-head button,
-.home-head select,
-.home-head label {
-  -webkit-app-region: no-drag;
+.page > .sidebar-head {
+  flex: none;
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .brand {
@@ -699,10 +702,8 @@ html.is-mac .home-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 52px;
-  padding: 0 8px;
+  padding: 12px 10px 4px;
   flex: none;
-  -webkit-app-region: drag;
 }
 
 .settings-nav-head h2 {

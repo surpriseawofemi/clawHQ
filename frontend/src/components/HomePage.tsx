@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import type { Agent, ClawHQConfig, ExecRecord, NodeNotification, SessionInfo } from '../types'
 import { UNASSIGNED, agentEmoji, agentLabel } from '../types'
+import { PageTop } from './PageTop'
 
 type Props = {
   agents: Agent[]
@@ -208,12 +209,11 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
   }
 
   return (
+    <div className="page">
+    <PageTop title="Activity" onBack={onBack} />
     <main className="home">
       <header className="home-head">
         <div>
-          <button className="back-btn" onClick={onBack} title="Back to the main menu">
-            ‹ Menu
-          </button>
           <h1>Activity</h1>
           <p>
             {!connected
@@ -321,5 +321,6 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
         {error && <p className="error-text">{error}</p>}
       </div>
     </main>
+    </div>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Agent, ClawHQConfig, ConnectionStatus, DaemonStatus, Department } from '../../types'
 import { UsagePage } from './UsagePage'
 import { AppPanel } from '../AppPanel'
+import { PageTop } from '../PageTop'
 import { api } from '../../api'
 import { ConnectionPanel } from '../ConnectionPanel'
 import { NodePanel } from '../NodePanel'
@@ -205,12 +206,11 @@ export function SettingsPage({
     })
 
   return (
+    <div className="page">
+    <PageTop title="Settings" onBack={onClose} />
     <div className="settings">
       <nav className="settings-nav" aria-label="Settings sections">
         <div className="settings-nav-head">
-          <button className="back-btn" title="Back to the main menu" onClick={onClose}>
-            ‹ Menu
-          </button>
           <h2>Settings</h2>
         </div>
         {NAV.map((group) => (
@@ -399,6 +399,7 @@ export function SettingsPage({
         {error && <p className="error-text">{error}</p>}
         {note && <p className="note-text">{note}</p>}
       </div>
+    </div>
     </div>
   )
 }
