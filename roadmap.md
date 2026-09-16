@@ -56,6 +56,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 22 | Enrol any Linux machine as a node: Settings → Machines mints a one-time code and one paste-able command; `scripts/node.sh` installs the OpenClaw CLI, a read-only exec policy and the node service; Machines room in Office | v0.1.32 |
 | 22b | Join command carries a reachable gateway address: editable field, prefilled from a non-loopback saved gateway, loopback refused (a ClawHQ on the gateway host minted `ws://127.0.0.1` codes) | v0.1.34 |
 | 22c | Machines: host glyph (ClawHQ desktop vs OpenClaw node host), Trust label for desktops, app version in the node hello, valid exec-approvals snapshot (path/exists/hash/file), enrol script installs Node 24 side by side in `/opt/node24` | v0.1.35 |
+| 29 | Chat reopens on the last open agent and session, per gateway; one themed dropdown style for every `select` (custom chevron, no browser default box) | v0.1.36 |
 
 ## Now
 

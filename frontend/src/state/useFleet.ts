@@ -154,10 +154,33 @@ export function useFleet() {
     }
   }, [connected, refreshFleet])
 
-  // Default to the gateway's own default agent once the roster arrives.
+  // The chat that was open last time comes back on the next start, per gateway,
+  // so Chat opens where you left it rather than on the roster's first agent.
+  // Falls back to the gateway's own default agent when nothing was saved or the
+  // saved agent is gone.
+  const restored = useRef<string | null>(null)
   useEffect(() => {
-    if (!selectedAgentId && agents.length > 0) setSelectedAgentId(agents[0].id)
-  }, [agents, selectedAgentId])
+    if (selectedAgentId || agents.length === 0) return
+    const saved = readLastChat(status.gatewayId)
+    const agent = saved && agents.some((a) => a.id === saved.agentId) ? saved.agentId : agents[0].id
+    setSelectedAgentId(agent)
+    if (saved && agent === saved.agentId && saved.sessionKey) {
+      restored.current = saved.sessionKey
+      setSelectedSessionKey(saved.sessionKey)
+    }
+  }, [agents, selectedAgentId, status.gatewayId])
+  // A restored session that turns out not to exist any more falls back to the main thread.
+  useEffect(() => {
+    if (!restored.current || sessions.length === 0) return
+    if (!sessions.some((x) => x.key === restored.current)) setSelectedSessionKey(null)
+    restored.current = null
+  }, [sessions])
+  useEffect(() => {
+    // Only a selection that belongs to this gateway's roster is worth keeping; right
+    // after a gateway switch the old agent id lingers until the new roster lands.
+    if (!status.gatewayId || !selectedAgentId || !agents.some((a) => a.id === selectedAgentId)) return
+    writeLastChat(status.gatewayId, { agentId: selectedAgentId, sessionKey: selectedSessionKey })
+  }, [status.gatewayId, selectedAgentId, selectedSessionKey, agents])
 
   // First run only: drop agents into departments whose name their id already hints at
   // (a "marketing" agent into Marketing), so the sidebar isn't one flat Unassigned list.
@@ -515,5 +538,25 @@ export function useFleet() {
     refreshFleet,
     sendMessage,
     abortRun
+  }
+}
+
+// ---- last open chat, per gateway, on this machine ------------------------------
+type LastChat = { agentId: string; sessionKey: string | null }
+const lastChatKey = (gatewayId: string): string => `clawhq.lastChat.${gatewayId}`
+function readLastChat(gatewayId: string): LastChat | null {
+  if (!gatewayId) return null
+  try {
+    const raw = localStorage.getItem(lastChatKey(gatewayId))
+    return raw ? (JSON.parse(raw) as LastChat) : null
+  } catch {
+    return null
+  }
+}
+function writeLastChat(gatewayId: string, v: LastChat): void {
+  try {
+    localStorage.setItem(lastChatKey(gatewayId), JSON.stringify(v))
+  } catch {
+    /* private mode: forgotten on close */
   }
 }

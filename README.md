@@ -202,6 +202,13 @@ policy. Commands advertised:
 | `system.notify` | Shows a notification on this machine and a banner in ClawHQ — how an agent asks for a human |
 | `clawhq.departments.list`, `clawhq.departments.create`, `clawhq.agents.assign` | The org chart, for agents |
 
+### Where Chat opens
+
+Chat reopens on the agent and session that were open last time, saved per gateway
+on this machine (localStorage). A saved agent that has left the roster, or a saved
+session that no longer exists, falls back to the gateway's default agent and its
+main thread.
+
 ### Enrolling another machine
 
 Settings → Machines → Add a machine mints a one-time setup code on the gateway
