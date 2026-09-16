@@ -60,6 +60,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 30 | Sun/moon toggle in the top bar flips dark/light on every page; Settings → App picker stays in sync | v0.1.37 |
 | 31 | Settings pages use the full width (760px cap removed); checkboxes no longer inherit the text-input box, hints indent under their checkbox | v0.1.38 |
 | 32 | Desktops button shows a small online dot instead of a count that read as unread notifications | v0.1.39 |
+| 33 | Chat box starts at one line and grows with the draft to five lines, then scrolls | v0.1.40 |
 
 ## Now
 

@@ -740,9 +740,10 @@ html.is-mac .topbar {
 .composer textarea {
   flex: 1;
   resize: none;
-  max-height: 180px;
-  min-height: 42px;
-  padding: 11px 13px;
+  min-height: 0;
+  line-height: 1.45;
+  padding: 10px 13px;
+  overflow-y: hidden;
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);

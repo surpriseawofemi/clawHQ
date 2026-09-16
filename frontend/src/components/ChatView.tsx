@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type { Agent, Attachment, ChatMessage, SessionInfo, StreamingReply } from '../types'
 import { agentLabel, messageText } from '../types'
@@ -78,6 +78,23 @@ export function ChatView({
     composer.current?.focus()
     setAttachments([])
   }, [agent?.id, sessionKey])
+
+  // The box starts one line tall and grows with the draft up to five lines, then
+  // scrolls inside. Measured from the element itself so font and padding changes
+  // in the stylesheet keep it honest.
+  useLayoutEffect(() => {
+    const el = composer.current
+    if (!el) return
+    const cs = getComputedStyle(el)
+    const line = parseFloat(cs.lineHeight) || 20
+    const chrome =
+      parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth)
+    const max = Math.round(line * 5 + chrome)
+    el.style.height = 'auto'
+    const want = el.scrollHeight
+    el.style.height = `${Math.min(want, max)}px`
+    el.style.overflowY = want > max ? 'auto' : 'hidden'
+  }, [draft])
 
   const sendable = attachments.filter((a) => a.kind !== 'unsupported')
 
