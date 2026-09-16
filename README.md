@@ -224,6 +224,15 @@ to `tools.alsoAllow` when it finds the plugin, after installing it and after an
 upgrade, so agents never silently lack `clawhq_issue_create` and friends. It only
 ever extends the list.
 
+### Live pages
+
+Issues, Team Chat, Tasks, Activity, Office and Digest refresh on their own while
+visible (every 6 to 30 seconds depending on the page), again when the window
+comes back to the front, and on the refresh button in the page header. Gateway
+events still trigger an immediate refresh when they arrive, but changes made
+from the tool-bridge process of a CLI-backed agent raise no event ClawHQ can
+hear, so polling is what keeps those pages honest.
+
 ### Plugin state file
 
 The plugin keeps its state in `<state dir>/clawhq/state.json`. With CLI-backed

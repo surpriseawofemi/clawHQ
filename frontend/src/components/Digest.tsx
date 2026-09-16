@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
+import { useLiveRefresh } from '../state/useLiveRefresh'
 import { plugin } from '../state/plugin'
 import { ContentHead, Shell, type ShellProps } from './layout/Shell'
 import type { ActivityRecord, Agent, ExecRecord, NodeNotification, Task } from '../types'
@@ -98,6 +99,7 @@ export function Digest({ shell, agents, connected, onOpenAgent }: Props): React.
     }
   }, [connected, day, agents])
 
+  const live = useLiveRefresh(refresh, 30000)
   useEffect(() => {
     void refresh()
   }, [refresh])
@@ -155,7 +157,7 @@ export function Digest({ shell, agents, connected, onOpenAgent }: Props): React.
 
   return (
     <Shell shell={shell} title="Digest">
-      <ContentHead
+      <ContentHead onRefresh={live.now} refreshing={live.busy}
         title="Daily digest"
         subtitle={
           loading

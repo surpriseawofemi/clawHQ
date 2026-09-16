@@ -212,14 +212,39 @@ export function SideHead({ children }: { children: React.ReactNode }): React.JSX
 }
 
 /** The row every page's content starts with: a title, optionally a subtitle, then controls on the right. */
-export function ContentHead({ title, subtitle, children }: { title: React.ReactNode; subtitle?: React.ReactNode; children?: React.ReactNode }): React.JSX.Element {
+export function ContentHead({
+  title,
+  subtitle,
+  children,
+  onRefresh,
+  refreshing
+}: {
+  title: React.ReactNode
+  subtitle?: React.ReactNode
+  children?: React.ReactNode
+  /** Shows a refresh button at the right end; pages that poll still offer it for "now". */
+  onRefresh?: () => void
+  refreshing?: boolean
+}): React.JSX.Element {
   return (
     <header className="content-head">
       <div className="content-title">
         <h1>{title}</h1>
         {subtitle && <p>{subtitle}</p>}
       </div>
-      {children && <div className="content-actions">{children}</div>}
+      {(children || onRefresh) && (
+        <div className="content-actions">
+          {children}
+          {onRefresh && (
+            <button className={`desk-btn refresh-btn${refreshing ? ' is-spinning' : ''}`} onClick={onRefresh} title="Refresh now (pages also refresh on their own)" aria-label="Refresh">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 12a9 9 0 1 1-2.6-6.4" />
+                <path d="M21 3v6h-6" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
     </header>
   )
 }

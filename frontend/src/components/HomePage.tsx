@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
+import { useLiveRefresh } from '../state/useLiveRefresh'
 import { getPrefs, setPref } from '../prefs'
 import type { Agent, ClawHQConfig, ExecRecord, NodeNotification, SessionInfo } from '../types'
 import { UNASSIGNED, agentEmoji, agentLabel } from '../types'
@@ -101,6 +102,7 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
     }
   }, [connected])
 
+  const live = useLiveRefresh(refresh, 10000)
   useEffect(() => {
     void refresh()
     const tick = setInterval(() => void refresh(), 30_000)
@@ -218,7 +220,7 @@ export function HomePage({ agents, sessions, config, connected, onOpenAgent, onO
 
   return (
     <Shell shell={shell} title="Activity">
-      <ContentHead
+      <ContentHead onRefresh={live.now} refreshing={live.busy}
         title="Activity"
         subtitle={
           !connected

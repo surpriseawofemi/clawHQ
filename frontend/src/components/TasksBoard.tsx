@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
+import { useLiveRefresh } from '../state/useLiveRefresh'
 import { plugin, taskPrompt } from '../state/plugin'
 import { ContentHead, Shell, type ShellProps } from './layout/Shell'
 import type { Agent, Task, TaskStatus } from '../types'
@@ -54,6 +55,7 @@ export function TasksBoard({ shell, agents, connected, onOpenAgent }: Props): Re
     }
   }, [connected])
 
+  const live = useLiveRefresh(refresh, 8000)
   useEffect(() => {
     void refresh()
     const off = api.onGatewayEvent(({ event }) => {
@@ -112,7 +114,7 @@ export function TasksBoard({ shell, agents, connected, onOpenAgent }: Props): Re
 
   return (
     <Shell shell={shell} title="Tasks">
-      <ContentHead title="Tasks" subtitle={pluginPresent === false ? 'The task board needs the ClawHQ plugin on the gateway (Settings → Plugins).' : `${tasks.filter((t) => t.status !== 'done').length} open`}>
+      <ContentHead onRefresh={live.now} refreshing={live.busy} title="Tasks" subtitle={pluginPresent === false ? 'The task board needs the ClawHQ plugin on the gateway (Settings → Plugins).' : `${tasks.filter((t) => t.status !== 'done').length} open`}>
         <label className="check-row">
           <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} />
           <span>Show all done</span>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
+import { useLiveRefresh } from '../state/useLiveRefresh'
 import { hostKind, hostGlyph, hostLabel } from '../state/execPolicy'
 import { plugin } from '../state/plugin'
 import { ContentHead, Shell, type ShellProps } from './layout/Shell'
@@ -91,6 +92,7 @@ export function Office({ shell, agents, sessions, config, connected, onOpenAgent
     }
   }, [connected])
 
+  const live = useLiveRefresh(refresh, 10000)
   useEffect(() => {
     void refresh()
     const clock = setInterval(() => setTick((n) => n + 1), 10_000)
@@ -226,7 +228,7 @@ export function Office({ shell, agents, sessions, config, connected, onOpenAgent
 
   return (
     <Shell shell={shell} title="Office">
-      <ContentHead
+      <ContentHead onRefresh={live.now} refreshing={live.busy}
         title="Office"
         subtitle={
           !connected

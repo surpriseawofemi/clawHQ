@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
+import { useLiveRefresh } from '../state/useLiveRefresh'
 import { plugin, splitReport, teamPrompt, teamSessionKey } from '../state/plugin'
 import { bossSessionKey } from '../state/useFleet'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
@@ -109,6 +110,7 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
     []
   )
 
+  const live = useLiveRefresh(refresh, 6000)
   useEffect(() => {
     void refresh()
     const off = api.onGatewayEvent(({ event, payload }) => {
@@ -339,7 +341,7 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
 
   return (
     <Shell shell={shell} title="Team Chat" side={side}>
-      <ContentHead title={channel === 'room' ? '# room' : 'Super Boss'} subtitle={sub} />
+      <ContentHead onRefresh={live.now} refreshing={live.busy} title={channel === 'room' ? '# room' : 'Super Boss'} subtitle={sub} />
       <div className="content-body team-body">
         {pluginPresent === false && channel === 'room' && <p className="field-hint">The room needs the ClawHQ gateway plugin (Settings → Plugins).</p>}
         {error && <p className="error-text">{error}</p>}

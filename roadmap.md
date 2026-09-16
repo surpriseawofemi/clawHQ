@@ -73,6 +73,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 43 | Claude CLI agents get the plugin tools: ClawHQ enables `cliBackends.claude-cli.bundleMcp` (the MCP loopback bridge) when any agent runs on that backend; without it no gateway tool reached them, whatever the allowlist said | v0.1.51 |
 | 44 | Correction: the bridge key from the docs does not exist in 2026.9.4; what CLI-backed agents need is `group:plugins` in `tools.alsoAllow`, which ClawHQ now adds. Verified live: the main agent lists all 14 clawhq tools | v0.1.52 |
 | 45 | Plugin 0.2.5: state store reads fresh and writes under a cross-process lock; the gateway process and the CLI tool-bridge process each load the plugin and the cached copy in one erased issues/tasks/posts written by the other (CEO's diagnosis, confirmed by 3-process test: 120/120 kept) | plugin 0.2.5 |
+| 46 | Live pages: Issues, Team Chat, Tasks, Activity, Office and Digest poll while visible (6–30s), refresh when the window comes to the front, and have a refresh button in the header; plugin events raised in the tool-bridge process never reached ClawHQ | v0.1.53 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now

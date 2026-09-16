@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
+import { useLiveRefresh } from '../state/useLiveRefresh'
 import { renderMarkdown } from '../markdown'
 import { plugin } from '../state/plugin'
 import { bossSessionKey } from '../state/useFleet'
@@ -55,6 +56,7 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent }: Props): Re
     }
   }, [connected])
 
+  const live = useLiveRefresh(refresh, 6000)
   useEffect(() => {
     void refresh()
     const off = api.onGatewayEvent(({ event }) => {
@@ -203,7 +205,7 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent }: Props): Re
     <Shell shell={shell} title="Issues" side={side}>
       {composing ? (
         <>
-          <ContentHead title="New task for an agent" subtitle="It lands in the agent's Super Boss Chat and on this list; the agent closes it with a note." />
+          <ContentHead onRefresh={live.now} refreshing={live.busy} title="New task for an agent" subtitle="It lands in the agent's Super Boss Chat and on this list; the agent closes it with a note." />
           <div className="content-body issue-detail">
             <div className="field">
               <span>Title</span>
@@ -252,7 +254,7 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent }: Props): Re
           const from = selected.fromKind === 'agent' ? agentOf(selected.from) : undefined
           return (
             <>
-              <ContentHead
+              <ContentHead onRefresh={live.now} refreshing={live.busy}
                 title={
                   <span className="issue-title">
                     <span title={STATUS_LABEL[selected.status]}>{STATUS_ICON[selected.status]}</span> {selected.title}
@@ -340,7 +342,7 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent }: Props): Re
         })()
       ) : (
         <>
-          <ContentHead title="Issues" subtitle="Questions, approvals and problems agents raise for you, and tasks you hand out, one at a time." />
+          <ContentHead onRefresh={live.now} refreshing={live.busy} title="Issues" subtitle="Questions, approvals and problems agents raise for you, and tasks you hand out, one at a time." />
           <div className="content-body">
             <p className="field-hint">{pluginPresent === false ? 'Issues need the ClawHQ gateway plugin (Settings → Plugins).' : 'Nothing waiting. Agents file items here with clawhq_issue_create; use "+ Task for an agent" to hand something out.'}</p>
           </div>
