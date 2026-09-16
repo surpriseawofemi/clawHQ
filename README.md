@@ -224,6 +224,14 @@ to `tools.alsoAllow` when it finds the plugin, after installing it and after an
 upgrade, so agents never silently lack `clawhq_issue_create` and friends. It only
 ever extends the list.
 
+### Agents on the Claude CLI backend
+
+Agents whose runtime is `claude-cli` run in a separate Claude Code process and
+only see gateway tools, plugin tools included, through OpenClaw's MCP loopback
+bridge (`agents.defaults.cliBackends.claude-cli.bundleMcp`). ClawHQ switches
+that on when it finds such agents, at detect, install and upgrade time. The
+gateway needs one restart afterwards.
+
 ### Super Boss Chat
 
 Every agent gets one session that belongs to the human: `agent:<id>:superboss`,

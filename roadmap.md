@@ -70,6 +70,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 40 | Gateways with a tool profile get every ClawHQ plugin tool added to `tools.alsoAllow` on detect/install/upgrade (agents had only 3 of 12) | v0.1.48 |
 | 41 | Activity: "Hide automations & empty runs" filter (cron sessions/runs and successful turns with no summary), on by default, remembered per machine | v0.1.49 |
 | 42 | Chat renders agent messages as Markdown (bold, headings, lists, code, tables), streaming included; the raw `**` and `#` are gone | v0.1.50 |
+| 43 | Claude CLI agents get the plugin tools: ClawHQ enables `cliBackends.claude-cli.bundleMcp` (the MCP loopback bridge) when any agent runs on that backend; without it no gateway tool reached them, whatever the allowlist said | v0.1.51 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now
