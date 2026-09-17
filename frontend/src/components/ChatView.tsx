@@ -4,6 +4,7 @@ import type { Agent, Attachment, ChatMessage, SessionInfo, StreamingReply } from
 import { agentLabel, messageText } from '../types'
 import { renderMarkdown } from '../markdown'
 import type { QueuedMessage } from '../state/useFleet'
+import { MessageImage, imageBlocks, stripMediaLines } from './MessageImage'
 import { AgentHeader, type AgentTab } from './AgentHeader'
 import { ToolCalls, indexToolResults, toolCallsOf } from './ToolCalls'
 import { getPrefs, onPrefs } from '../prefs'
@@ -211,7 +212,7 @@ export function ChatView({
         {visible.map((msg, i) => {
           const text = messageText(msg)
           const calls = msg.role === 'assistant' && showToolCalls ? toolCallsOf(msg, toolResults) : []
-          if (!text.trim() && calls.length === 0) return null
+          if (!text.trim() && calls.length === 0 && imageBlocks(msg).length === 0) return null
           const mine = msg.role === 'user'
           return (
             <article key={msg.__openclaw?.id ?? `${msg.timestamp}-${i}`} className={`msg ${mine ? 'msg-user' : 'msg-agent'}`}>
@@ -219,8 +220,11 @@ export function ChatView({
                 (mine ? (
                   <div className="msg-body">{text}</div>
                 ) : (
-                  <div className="msg-body is-md team-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
+                  <div className="msg-body is-md team-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(stripMediaLines(text)) }} />
                 ))}
+              {imageBlocks(msg).map((b) => (
+                <MessageImage key={b.artifactId} artifactId={b.artifactId} sessionKey={sessionKey ?? ''} title={b.title} />
+              ))}
               <ToolCalls calls={calls} />
               <div className="msg-meta">
                 {mine ? (msg.__openclaw?.senderName ?? 'You') : agentLabel(agent)}

@@ -211,6 +211,7 @@ func main() {
 			application.NewService(&ExecLogService{log: execLog}),
 			application.NewService(&CacheService{cache: threadCache}),
 			application.NewService(&PluginService{bridge: bridge}),
+			application.NewService(&MediaService{conn: conn, store: cfgStore}),
 			application.NewService(&DiagService{}),
 		},
 		Assets: application.AssetOptions{

@@ -224,6 +224,15 @@ to `tools.alsoAllow` when it finds the plugin, after installing it and after an
 upgrade, so agents never silently lack `clawhq_issue_create` and friends. It only
 ever extends the list.
 
+### Images in replies
+
+When an agent attaches an image to a reply (the gateway stores it as an image
+artifact on the message; the old `MEDIA:<path>` line is the same thing), Chat
+shows it inline under the text, click to enlarge. ClawHQ resolves the artifact
+with `artifacts.download` over the authenticated WebSocket, downloads the
+short-lived ticketed URL on the gateway's HTTP side from Go, and hands the bytes
+to the page as a data URL; Go caches them. The `MEDIA:` line itself is hidden.
+
 ### Live pages
 
 Issues, Team Chat, Tasks, Activity, Office and Digest refresh on their own while

@@ -76,6 +76,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 46 | Live pages: Issues, Team Chat, Tasks, Activity, Office and Digest poll while visible (6–30s), refresh when the window comes to the front, and have a refresh button in the header; plugin events raised in the tool-bridge process never reached ClawHQ | v0.1.53 |
 | 47 | Chat sidebar: sort by last message (default), name or department order; department grouping can be switched off for one flat list; both remembered per machine; a relative time on each agent | v0.1.54 |
 | 48 | Chat queue: a message sent while the agent is still replying waits above the composer (Next, #2…) and goes out when the run ends; Send now stops the run and sends it first; ✕ drops it. The Send button reads Queue while a reply streams | v0.1.55 |
+| 49 | Images agents attach to replies show inline in Chat (click to enlarge): the message's image artifact is resolved with `artifacts.download` over the WebSocket, the ticketed HTTP URL fetched by Go and handed over as a data URL, cached; legacy `MEDIA:` lines are hidden | v0.1.56 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now

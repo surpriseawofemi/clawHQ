@@ -8,6 +8,7 @@ import {
   GatewayService,
   InboxService,
   LoginService,
+  MediaService,
   NodeService,
   PluginService,
   UpdateService,
@@ -166,6 +167,10 @@ export const api = {
   login: {
     status: (): Promise<LoginStatus> => LoginService.Status() as Promise<LoginStatus>,
     set: (on: boolean): Promise<LoginStatus> => LoginService.Set(on) as Promise<LoginStatus>
+  },
+  media: {
+    /** A data: URL for an artifact an agent attached to a reply. Cached in Go. */
+    fetch: (artifactId: string, sessionKey: string): Promise<string> => MediaService.Fetch(artifactId, sessionKey) as Promise<string>
   },
   diag: {
     report: (kind: string, message: string, stack: string): Promise<void> =>

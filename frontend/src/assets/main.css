@@ -3480,3 +3480,10 @@ input[type='radio']:disabled {
 .queue-badge { font-size: 10.5px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; color: var(--accent); flex: none; }
 .queue-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
 .queue-hint { padding-left: 4px; }
+
+/* Images agents attach to replies */
+.msg-image { display: block; max-width: min(100%, 720px); max-height: 420px; margin-top: 8px; border-radius: 10px; border: 1px solid var(--border); cursor: zoom-in; background: var(--bg-sunken); }
+.msg-image-loading, .msg-image-error { margin-top: 8px; font-size: 12px; color: var(--text-dim); display: flex; gap: 8px; align-items: center; }
+.lightbox { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.82); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; cursor: zoom-out; padding: 24px; }
+.lightbox img { max-width: 96vw; max-height: 86vh; border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.lightbox-bar { display: flex; gap: 12px; align-items: center; color: #fff; font-size: 13px; }
