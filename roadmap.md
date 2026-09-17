@@ -78,6 +78,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 48 | Chat queue: a message sent while the agent is still replying waits above the composer (Next, #2…) and goes out when the run ends; Send now stops the run and sends it first; ✕ drops it. The Send button reads Queue while a reply streams | v0.1.55 |
 | 49 | Images agents attach to replies show inline in Chat (click to enlarge): the message's image artifact is resolved with `artifacts.download` over the WebSocket, the ticketed HTTP URL fetched by Go and handed over as a data URL, cached; legacy `MEDIA:` lines are hidden | v0.1.56 |
 | 50 | Servers page (no OpenClaw involved): SSH profiles kept locally (agent, key file or password; host keys trusted on first use in ClawHQ's own known_hosts), a health page per server (system, disk, memory, git, Node, Claude Code installed/version/login), one-click Claude Code install (Anthropic's native installer), and an xterm terminal over SSH that lands in the project folder. Next: a chat page backed by headless Claude Code, more coding agents | v0.1.57 |
+| 51 | Top bar is a real drag region: the stylesheet used Electron's `-webkit-app-region`, which the Wails runtime ignores; `--wails-draggable` added everywhere, interactive controls excluded | v0.1.58 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now

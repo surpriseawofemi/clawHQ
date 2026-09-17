@@ -122,6 +122,7 @@ code,
   flex: none;
   /* Lets the window be dragged by the sidebar header on macOS. */
   -webkit-app-region: drag;
+  --wails-draggable: drag;
 }
 
 /* The traffic lights sit in the top-left of the frameless window, over the
@@ -150,6 +151,7 @@ html.is-mac .sidebar-head {
   border-bottom: 1px solid var(--border);
   background: var(--bg-sunken);
   -webkit-app-region: drag;
+  --wails-draggable: drag;
 }
 
 html.is-mac .topbar {
@@ -158,6 +160,7 @@ html.is-mac .topbar {
 
 .topbar button {
   -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .topbar .brand {
@@ -626,6 +629,7 @@ html.is-mac .topbar {
 
 .chat-head button {
   -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .chat-avatar {
@@ -876,6 +880,7 @@ html.is-mac .topbar {
 
 .settings-nav-head .icon-btn {
   -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .settings-nav-group {
@@ -932,6 +937,7 @@ html.is-mac .topbar {
   align-items: center;
   margin-bottom: 8px;
   -webkit-app-region: drag;
+  --wails-draggable: drag;
 }
 
 .settings-main > header h2 {
@@ -1306,6 +1312,7 @@ html.is-mac .topbar {
   height: 100%;
   padding: 24px;
   -webkit-app-region: drag;
+  --wails-draggable: drag;
 }
 
 .onboard-card {
@@ -1316,6 +1323,7 @@ html.is-mac .topbar {
   gap: 12px;
   text-align: center;
   -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .onboard-mark {
@@ -1555,6 +1563,7 @@ html.is-mac .topbar {
   display: flex;
   gap: 6px;
   -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .desk-stage {
@@ -1691,6 +1700,7 @@ html.is-mac .topbar {
   border-radius: 8px;
   background: var(--bg-sunken);
   -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .agent-tab {
@@ -2117,6 +2127,7 @@ html.is-mac .topbar {
   font-size: 12.5px;
   cursor: pointer;
   -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .back-btn:hover {
@@ -2985,6 +2996,7 @@ html.is-mac .topbar {
   color: var(--text-dim);
   cursor: pointer;
   -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .desk-btn:hover,
@@ -3083,6 +3095,7 @@ html.is-mac .topbar {
   padding: 0 10px;
   gap: 8px;
   -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .desk-compact .chat-title p {
@@ -3515,3 +3528,6 @@ input[type='radio']:disabled {
 .term-host { flex: 1; min-height: 0; padding: 6px; }
 .term-host .xterm { height: 100%; }
 .term-error { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; background: color-mix(in srgb, var(--danger, #e5484d) 20%, #0b0d13); color: #fff; font-size: 12.5px; }
+
+/* Interactive parts of drag regions stay clickable (Wails: --wails-draggable). */
+.topbar button, .topbar input, .topbar select, .topbar a, .topbar .conn-pill { --wails-draggable: no-drag; -webkit-app-region: no-drag; }
