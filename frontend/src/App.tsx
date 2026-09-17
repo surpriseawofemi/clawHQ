@@ -103,7 +103,10 @@ function App(): React.JSX.Element {
     refreshFleet,
     sendMessage,
     abortRun,
-    openSession
+    openSession,
+    queued,
+    removeQueued,
+    sendQueuedNow
   } = fleet
 
   // Nothing works before a connection lands, so onboarding owns the whole window
@@ -295,6 +298,9 @@ function App(): React.JSX.Element {
         connected={connected}
         onSend={sendMessage}
         onAbort={abortRun}
+        queued={queued}
+        onRemoveQueued={removeQueued}
+        onSendQueuedNow={sendQueuedNow}
         onSettings={() => selectedAgentId && setAgentSettingsId(selectedAgentId)}
       />
       )}

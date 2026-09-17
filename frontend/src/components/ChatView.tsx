@@ -3,6 +3,7 @@ import { api } from '../api'
 import type { Agent, Attachment, ChatMessage, SessionInfo, StreamingReply } from '../types'
 import { agentLabel, messageText } from '../types'
 import { renderMarkdown } from '../markdown'
+import type { QueuedMessage } from '../state/useFleet'
 import { AgentHeader, type AgentTab } from './AgentHeader'
 import { ToolCalls, indexToolResults, toolCallsOf } from './ToolCalls'
 import { getPrefs, onPrefs } from '../prefs'
@@ -27,6 +28,11 @@ type Props = {
   onSend: (text: string, paths?: string[]) => void
   onAbort: () => void
   onSettings: () => void
+  /** Messages waiting for the current run to finish. */
+  queued: QueuedMessage[]
+  onRemoveQueued: (id: string) => void
+  /** Stops the run and sends this one first. */
+  onSendQueuedNow: (id: string) => void
 }
 
 const timeOf = (ts?: number): string =>
@@ -62,6 +68,9 @@ export function ChatView({
   connected,
   onSend,
   onAbort,
+  queued,
+  onRemoveQueued,
+  onSendQueuedNow,
   onSettings
 }: Props): React.JSX.Element {
   const [draft, setDraft] = useState('')
@@ -233,6 +242,26 @@ export function ChatView({
       </div>
 
       <div className="composer-wrap">
+        {queued.length > 0 && (
+          <div className="queue">
+            {queued.map((q, i) => (
+              <div key={q.id} className="queue-item" title={q.text}>
+                <span className="queue-badge">{i === 0 ? 'Next' : `#${i + 1}`}</span>
+                <span className="queue-text">
+                  {q.text || '(attachments only)'}
+                  {q.paths.length > 0 && <span className="chip-note"> · {q.paths.length} file{q.paths.length === 1 ? '' : 's'}</span>}
+                </span>
+                <button className="btn btn-sm" onClick={() => onSendQueuedNow(q.id)} title="Stop the current run and send this now">
+                  Send now
+                </button>
+                <button className="btn btn-sm btn-ghost" onClick={() => onRemoveQueued(q.id)} title="Drop this message">
+                  ✕
+                </button>
+              </div>
+            ))}
+            <p className="field-hint queue-hint">Waiting for {agentLabel(agent)} to finish the current reply. It sends by itself after that.</p>
+          </div>
+        )}
         {attachments.length > 0 && (
           <div className="chips">
             {attachments.map((a) => (
@@ -285,9 +314,19 @@ export function ChatView({
             }}
           />
           {stream ? (
-            <button className="btn btn-stop" onClick={onAbort} title="Stop this run">
-              ■ Stop
-            </button>
+            <>
+              <button
+                className="btn btn-send"
+                onClick={submit}
+                disabled={!connected || (!draft.trim() && sendable.length === 0)}
+                title="Queue it; it goes out when the current reply ends"
+              >
+                Queue
+              </button>
+              <button className="btn btn-stop" onClick={onAbort} title="Stop this run">
+                ■ Stop
+              </button>
+            </>
           ) : (
             <button
               className="btn btn-send"

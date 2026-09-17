@@ -463,27 +463,66 @@ export function useFleet() {
   }, [selectedKey, connected, selectedAgentId, sessions, refreshFleet])
 
   // ---- actions ----------------------------------------------------------
+  // ---- outgoing queue -----------------------------------------------------
+  // A message typed while the agent is still answering the previous one waits
+  // here and goes out the moment that run ends (or is stopped). "Send now"
+  // stops the run first.
+  const [queue, setQueue] = useState<Record<string, QueuedMessage[]>>({})
+  const queueRef = useRef(queue)
+  queueRef.current = queue
+  const streamingRef = useRef(streaming)
+  streamingRef.current = streaming
+
+  const deliver = useCallback(async (key: string, text: string, paths: string[]) => {
+    setBusy(true)
+    try {
+      if (paths.length > 0) {
+        const reply = await api().rpc.sendChatWithFiles(key, text, paths)
+        if (reply.skipped?.length) setError(`Not sent: ${reply.skipped.join('; ')}`)
+        else setError(null)
+      } else {
+        await api().rpc.sendChat(key, text)
+        setError(null)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
   const sendMessage = useCallback(
     async (text: string, paths: string[] = []) => {
       if (!selectedKey || (!text.trim() && paths.length === 0)) return
-      setBusy(true)
-      try {
-        if (paths.length > 0) {
-          const reply = await api().rpc.sendChatWithFiles(selectedKey, text, paths)
-          if (reply.skipped?.length) setError(`Not sent: ${reply.skipped.join('; ')}`)
-          else setError(null)
-        } else {
-          await api().rpc.sendChat(selectedKey, text)
-          setError(null)
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
-      } finally {
-        setBusy(false)
+      const live = streamingRef.current
+      if (live && live.sessionKey === selectedKey) {
+        const item: QueuedMessage = { id: `q-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, text, paths, atMs: Date.now() }
+        setQueue((prev) => ({ ...prev, [selectedKey]: [...(prev[selectedKey] ?? []), item] }))
+        return
       }
+      await deliver(selectedKey, text, paths)
     },
-    [selectedKey]
+    [selectedKey, deliver]
   )
+
+  const removeQueued = useCallback((id: string) => {
+    setQueue((prev) => Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, v.filter((q) => q.id !== id)])))
+  }, [])
+
+  // The next queued message for a session goes out once nothing streams there.
+  const flushing = useRef(false)
+  useEffect(() => {
+    if (streaming || flushing.current) return
+    const entry = Object.entries(queueRef.current).find(([, v]) => v.length > 0)
+    if (!entry) return
+    const [key, items] = entry
+    const next = items[0]
+    flushing.current = true
+    setQueue((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((q) => q.id !== next.id) }))
+    void deliver(key, next.text, next.paths).finally(() => {
+      flushing.current = false
+    })
+  }, [streaming, queue, deliver])
 
   // Sessions the picker offers for the selected agent: main first, then the rest by
   // recency. Cron-driven automation threads are left out; they are not conversations.
@@ -537,6 +576,20 @@ export function useFleet() {
     }
   }, [selectedKey])
 
+  /** Stops the current run and sends this queued message first. */
+  const sendQueuedNow = useCallback(
+    async (id: string) => {
+      if (!selectedKey) return
+      setQueue((prev) => {
+        const list = prev[selectedKey] ?? []
+        const hit = list.find((q) => q.id === id)
+        return hit ? { ...prev, [selectedKey]: [hit, ...list.filter((q) => q.id !== id)] } : prev
+      })
+      await abortRun()
+    },
+    [selectedKey, abortRun]
+  )
+
   const selectedAgent = useMemo(
     () => agents.find((a) => a.id === selectedAgentId) ?? null,
     [agents, selectedAgentId]
@@ -574,9 +627,14 @@ export function useFleet() {
     refreshFleet,
     sendMessage,
     abortRun,
-    openSession
+    openSession,
+    queued: selectedKey ? (queue[selectedKey] ?? []) : [],
+    removeQueued,
+    sendQueuedNow
   }
 }
+
+export type QueuedMessage = { id: string; text: string; paths: string[]; atMs: number }
 
 // ---- last open chat, per gateway, on this machine ------------------------------
 type LastChat = { agentId: string; sessionKey: string | null }

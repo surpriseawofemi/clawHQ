@@ -75,6 +75,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 45 | Plugin 0.2.5: state store reads fresh and writes under a cross-process lock; the gateway process and the CLI tool-bridge process each load the plugin and the cached copy in one erased issues/tasks/posts written by the other (CEO's diagnosis, confirmed by 3-process test: 120/120 kept) | plugin 0.2.5 |
 | 46 | Live pages: Issues, Team Chat, Tasks, Activity, Office and Digest poll while visible (6–30s), refresh when the window comes to the front, and have a refresh button in the header; plugin events raised in the tool-bridge process never reached ClawHQ | v0.1.53 |
 | 47 | Chat sidebar: sort by last message (default), name or department order; department grouping can be switched off for one flat list; both remembered per machine; a relative time on each agent | v0.1.54 |
+| 48 | Chat queue: a message sent while the agent is still replying waits above the composer (Next, #2…) and goes out when the run ends; Send now stops the run and sends it first; ✕ drops it. The Send button reads Queue while a reply streams | v0.1.55 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now

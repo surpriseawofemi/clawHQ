@@ -3473,3 +3473,10 @@ input[type='radio']:disabled {
 .group-toggle.is-on { opacity: 1; color: var(--accent); }
 .agent-when { color: var(--text-faint); }
 .dept.is-flat { padding-top: 2px; }
+
+/* Outgoing queue above the composer */
+.queue { display: flex; flex-direction: column; gap: 6px; }
+.queue-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px dashed var(--border); border-radius: 10px; background: var(--bg-sunken); }
+.queue-badge { font-size: 10.5px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; color: var(--accent); flex: none; }
+.queue-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.queue-hint { padding-left: 4px; }
