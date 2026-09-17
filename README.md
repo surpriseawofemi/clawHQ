@@ -255,6 +255,18 @@ commands and refuses the rest, manual allows reads only. Headless Claude Code
 cannot ask questions mid-run, so a refused action shows as a refusal in the
 transcript; answer it in your next message or use the terminal.
 
+#### Actions tab
+
+Saved commands per server, run from a button: name, command, and whether to
+ask first. Templates cover git status and pull, disk usage, recent logs,
+running services, Docker, PM2 and an nginx restart; a box runs one-off
+commands. Commands run through the login shell in the project folder; output
+streams into the page with the exit status, Stop interrupts, and the last
+eight runs stay selectable.
+
+Terminals are kept in a registry outside the page tree, so several can be open
+per server and they survive switching pages; an ended one offers Reconnect.
+
 #### Files tab
 
 The Files tab on a server is an SFTP browser: breadcrumbs, a path box, a

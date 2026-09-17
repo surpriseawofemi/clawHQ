@@ -23,6 +23,7 @@ type ServerService struct {
 	app    *application.App
 	mu     sync.Mutex
 	shells map[string]*openShell
+	cmds   map[string]*openCommand
 	seq    int
 }
 
@@ -31,19 +32,25 @@ type openShell struct {
 	shell  *sshx.Shell
 }
 
+type openCommand struct {
+	client *ssh.Client
+	cmd    *sshx.Command
+}
+
 // ServerView is a profile without its secret.
 type ServerView struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	User        string `json:"user"`
-	Auth        string `json:"auth"`
-	KeyPath     string `json:"keyPath,omitempty"`
-	HasPassword bool   `json:"hasPassword"`
-	Dir         string `json:"dir,omitempty"`
-	AddedAtMs   int64  `json:"addedAtMs"`
-	LastOkAtMs  int64  `json:"lastOkAtMs,omitempty"`
+	ID          string               `json:"id"`
+	Name        string               `json:"name"`
+	Host        string               `json:"host"`
+	Port        int                  `json:"port"`
+	User        string               `json:"user"`
+	Auth        string               `json:"auth"`
+	KeyPath     string               `json:"keyPath,omitempty"`
+	HasPassword bool                 `json:"hasPassword"`
+	Dir         string               `json:"dir,omitempty"`
+	AddedAtMs   int64                `json:"addedAtMs"`
+	LastOkAtMs  int64                `json:"lastOkAtMs,omitempty"`
+	Actions     []store.ServerAction `json:"actions"`
 }
 
 // ServerInput is what the page sends to save a server.
@@ -107,7 +114,11 @@ func knownHostsPath() string {
 }
 
 func viewOf(p store.ServerProfile) ServerView {
-	return ServerView{ID: p.ID, Name: p.Name, Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, HasPassword: p.Password != "", Dir: p.Dir, AddedAtMs: p.AddedAtMs, LastOkAtMs: p.LastOkAtMs}
+	actions := p.Actions
+	if actions == nil {
+		actions = []store.ServerAction{}
+	}
+	return ServerView{ID: p.ID, Name: p.Name, Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, HasPassword: p.Password != "", Dir: p.Dir, AddedAtMs: p.AddedAtMs, LastOkAtMs: p.LastOkAtMs, Actions: actions}
 }
 
 func (s *ServerService) List() []ServerView {
@@ -141,6 +152,9 @@ func (s *ServerService) Save(in ServerInput) ([]ServerView, error) {
 		in.ID = fmt.Sprintf("srv-%d", time.Now().UnixMilli())
 	}
 	p := store.ServerProfile{ID: in.ID, Name: in.Name, Host: in.Host, Port: in.Port, User: in.User, Auth: in.Auth, KeyPath: strings.TrimSpace(in.KeyPath), Password: in.Password, Dir: strings.TrimSpace(in.Dir), AddedAtMs: time.Now().UnixMilli()}
+	if cur, err := s.profile(in.ID); err == nil {
+		p.Actions, p.ClaudeMode, p.ClaudeSessionID = cur.Actions, cur.ClaudeMode, cur.ClaudeSessionID
+	}
 	if _, err := s.store.UpsertServer(p); err != nil {
 		return nil, err
 	}
@@ -398,6 +412,121 @@ func (s *ServerService) CloseShell(shellID string) error {
 	if ok {
 		sh.shell.Close()
 		_ = sh.client.Close()
+	}
+	return nil
+}
+
+// ---- quick actions ----------------------------------------------------------
+
+// SaveAction adds or updates a saved command.
+func (s *ServerService) SaveAction(serverID string, a store.ServerAction) ([]store.ServerAction, error) {
+	p, err := s.profile(serverID)
+	if err != nil {
+		return nil, err
+	}
+	a.Name = strings.TrimSpace(a.Name)
+	a.Command = strings.TrimSpace(a.Command)
+	if a.Name == "" || a.Command == "" {
+		return nil, fmt.Errorf("a name and a command are required")
+	}
+	if a.ID == "" {
+		a.ID = fmt.Sprintf("act-%d", time.Now().UnixMilli())
+	}
+	found := false
+	for i := range p.Actions {
+		if p.Actions[i].ID == a.ID {
+			p.Actions[i] = a
+			found = true
+		}
+	}
+	if !found {
+		p.Actions = append(p.Actions, a)
+	}
+	if _, err := s.store.SetServerActions(serverID, p.Actions); err != nil {
+		return nil, err
+	}
+	return p.Actions, nil
+}
+
+func (s *ServerService) RemoveAction(serverID, actionID string) ([]store.ServerAction, error) {
+	p, err := s.profile(serverID)
+	if err != nil {
+		return nil, err
+	}
+	kept := []store.ServerAction{}
+	for _, a := range p.Actions {
+		if a.ID != actionID {
+			kept = append(kept, a)
+		}
+	}
+	if _, err := s.store.SetServerActions(serverID, kept); err != nil {
+		return nil, err
+	}
+	return kept, nil
+}
+
+// RunCommand runs one command on the server, streaming output as action:out and
+// finishing with action:exit. Saved actions and one-off commands both use it.
+func (s *ServerService) RunCommand(ctx context.Context, serverID, command string) (string, error) {
+	p, err := s.profile(serverID)
+	if err != nil {
+		return "", err
+	}
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return "", fmt.Errorf("nothing to run")
+	}
+	client, err := sshx.Dial(ctx, target(p), knownHostsPath())
+	if err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	s.seq++
+	runID := fmt.Sprintf("run-%d-%d", time.Now().UnixMilli(), s.seq)
+	s.mu.Unlock()
+	full := command
+	if p.Dir != "" {
+		full = "cd " + shq(p.Dir) + " 2>/dev/null; " + command
+	}
+	cmd, err := sshx.StartCommand(client, full,
+		func(b64 string) {
+			if s.app != nil {
+				s.app.Event.Emit("action:out", map[string]any{"serverId": serverID, "runId": runID, "data": b64})
+			}
+		},
+		func(code int, exitErr error) {
+			msg := ""
+			if exitErr != nil {
+				msg = exitErr.Error()
+			}
+			if s.app != nil {
+				s.app.Event.Emit("action:exit", map[string]any{"serverId": serverID, "runId": runID, "code": code, "error": msg})
+			}
+			s.mu.Lock()
+			delete(s.cmds, runID)
+			s.mu.Unlock()
+			_ = client.Close()
+		})
+	if err != nil {
+		_ = client.Close()
+		return "", err
+	}
+	s.mu.Lock()
+	if s.cmds == nil {
+		s.cmds = map[string]*openCommand{}
+	}
+	s.cmds[runID] = &openCommand{client: client, cmd: cmd}
+	s.mu.Unlock()
+	log.Printf("servers: %s: running %q", p.Name, command)
+	return runID, nil
+}
+
+func (s *ServerService) StopCommand(runID string) error {
+	s.mu.Lock()
+	c, ok := s.cmds[runID]
+	s.mu.Unlock()
+	if ok {
+		c.cmd.Stop()
 	}
 	return nil
 }

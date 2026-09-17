@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
 import type { ServerHealth, ServerProfile } from '../types'
-import { TerminalView } from './TerminalView'
+import { TerminalTabs } from './TerminalView'
+import { ActionsView } from './ActionsView'
 import { FilesView } from './FilesView'
 import { ClaudeChat } from './ClaudeChat'
 
 type Props = { shell: ShellProps }
-type Tab = 'health' | 'chat' | 'files' | 'terminal'
+type Tab = 'health' | 'chat' | 'files' | 'actions' | 'terminal'
 
 const empty = (): ServerProfile => ({ id: '', name: '', host: '', port: 22, user: 'root', auth: 'agent', keyPath: '', password: '', dir: '', addedAtMs: 0 })
 
@@ -35,7 +36,6 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [installLog, setInstallLog] = useState<string | null>(null)
-  const [termStatus, setTermStatus] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -242,8 +242,11 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               <button className={tab === 'files' ? 'is-active' : ''} onClick={() => setTab('files')}>
                 Files
               </button>
+              <button className={tab === 'actions' ? 'is-active' : ''} onClick={() => setTab('actions')}>
+                Actions
+              </button>
               <button className={tab === 'terminal' ? 'is-active' : ''} onClick={() => setTab('terminal')}>
-                Terminal{termStatus === 'connected' ? ' ·' : ''}
+                Terminal
               </button>
             </div>
             <button className="btn btn-sm btn-ghost" onClick={() => setEditing({ ...selected, password: '' })}>
@@ -263,15 +266,23 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                 <ClaudeChat serverId={selected.id} serverName={selected.name} />
               )}
             </div>
+          ) : tab === 'actions' ? (
+            <div className="content-body acts-body">
+              <ActionsView
+                serverId={selected.id}
+                actions={selected.actions ?? []}
+                onActions={(a) => setServers((prev) => prev.map((s) => (s.id === selected.id ? { ...s, actions: a } : s)))}
+              />
+            </div>
           ) : tab === 'files' ? (
             <div className="content-body files-body">
               <FilesView serverId={selected.id} startDir={selected.dir || undefined} />
             </div>
           ) : tab === 'terminal' ? (
             <div className="content-body term-body">
-              <TerminalView serverId={selected.id} onStatus={setTermStatus} />
+              <TerminalTabs serverId={selected.id} />
               <p className="field-hint">
-                A login shell on the server. Run <code>claude</code> here for the full Claude Code, or <code>claude</code> then <code>/login</code> once to sign in.
+                Login shells on the server; they stay open when you leave this page. Run <code>claude</code> here for the full Claude Code, or <code>claude</code> then <code>/login</code> once to sign in.
               </p>
             </div>
           ) : (

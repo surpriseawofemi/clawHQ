@@ -37,6 +37,7 @@ import type {
   NodeNotification,
   ServerProfile,
   ServerHealth,
+  ServerAction,
   DirListing,
   FileContent,
   Transfer,
@@ -189,8 +190,23 @@ export const api = {
     openShell: (id: string, cols: number, rows: number): Promise<string> => ServerService.OpenShell(id, cols, rows),
     write: (shellId: string, b64: string): Promise<void> => ServerService.Write(shellId, b64),
     resize: (shellId: string, cols: number, rows: number): Promise<void> => ServerService.Resize(shellId, cols, rows),
-    closeShell: (shellId: string): Promise<void> => ServerService.CloseShell(shellId)
+    closeShell: (shellId: string): Promise<void> => ServerService.CloseShell(shellId),
+    saveAction: (serverId: string, a: ServerAction): Promise<ServerAction[]> => ServerService.SaveAction(serverId, a as never).then((r) => (r ?? []) as ServerAction[]),
+    removeAction: (serverId: string, actionId: string): Promise<ServerAction[]> => ServerService.RemoveAction(serverId, actionId).then((r) => (r ?? []) as ServerAction[]),
+    /** Runs one command; output arrives as action:out, the end as action:exit. */
+    run: (serverId: string, command: string): Promise<string> => ServerService.RunCommand(serverId, command),
+    stop: (runId: string): Promise<void> => ServerService.StopCommand(runId)
   },
+  onActionOut: (cb: (e: { serverId: string; runId: string; data: string }) => void): (() => void) =>
+    Events.On('action:out', (raw: any) => {
+      const e = eventPayload<{ serverId: string; runId: string; data: string }>(raw)
+      if (e) cb(e)
+    }),
+  onActionExit: (cb: (e: { serverId: string; runId: string; code: number; error?: string }) => void): (() => void) =>
+    Events.On('action:exit', (raw: any) => {
+      const e = eventPayload<{ serverId: string; runId: string; code: number; error?: string }>(raw)
+      if (e) cb(e)
+    }),
   claude: {
     state: (serverId: string): Promise<ClaudeState> => ClaudeService.State(serverId) as Promise<ClaudeState>,
     setMode: (serverId: string, mode: string): Promise<ClaudeState> => ClaudeService.SetMode(serverId, mode) as Promise<ClaudeState>,

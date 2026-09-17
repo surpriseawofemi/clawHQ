@@ -305,3 +305,60 @@ func (s *Shell) Close() {
 	_ = s.stdin.Close()
 	_ = s.sess.Close()
 }
+
+// Command is a running non-interactive command whose output streams back.
+type Command struct {
+	sess *ssh.Session
+}
+
+// StartCommand runs a command through the login shell without a PTY; stdout and
+// stderr arrive interleaved through onData (base64), onExit carries the exit code
+// (-1 when the session died) once.
+func StartCommand(c *ssh.Client, command string, onData func(string), onExit func(code int, err error)) (*Command, error) {
+	sess, err := c.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	pr, pw := io.Pipe()
+	sess.Stdout = pw
+	sess.Stderr = pw
+	if err := sess.Start("bash -lc " + shellQuote(command)); err != nil {
+		_ = sess.Close()
+		return nil, err
+	}
+	cmd := &Command{sess: sess}
+	go func() {
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := pr.Read(buf)
+			if n > 0 {
+				onData(base64.StdEncoding.EncodeToString(buf[:n]))
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	go func() {
+		werr := sess.Wait()
+		_ = pw.Close()
+		code := 0
+		if werr != nil {
+			code = -1
+			var ee *ssh.ExitError
+			if errors.As(werr, &ee) {
+				code = ee.ExitStatus()
+				werr = nil
+			}
+		}
+		onExit(code, werr)
+		_ = sess.Close()
+	}()
+	return cmd, nil
+}
+
+// Stop interrupts the command.
+func (c *Command) Stop() {
+	_ = c.sess.Signal(ssh.SIGINT)
+	time.AfterFunc(2*time.Second, func() { _ = c.sess.Close() })
+}

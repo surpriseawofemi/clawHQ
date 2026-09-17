@@ -3605,3 +3605,39 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .cc-tool-name { font-weight: 600; white-space: nowrap; }
 .cc-tool-short { color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
 .cc-tool-body { margin: 0; padding: 8px 10px; border-top: 1px solid var(--border); font-size: 11.5px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+
+/* Terminal tabs */
+.term-tabs-wrap { flex: 1; min-height: 320px; display: flex; flex-direction: column; gap: 6px; }
+.term-tabs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.term-tab { display: flex; align-items: center; gap: 7px; padding: 5px 8px 5px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); cursor: pointer; font-size: 12.5px; color: var(--text-dim); }
+.term-tab.is-active { color: var(--text); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); background: color-mix(in srgb, var(--accent) 12%, var(--bg-raised)); }
+.term-tab .desk-dot { position: static; }
+.term-tab-close { border: none; background: none; color: var(--text-faint); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+.term-tab-close:hover { color: var(--text); }
+.term-tab-add { border: 1px dashed var(--border); background: none; color: var(--text-dim); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+.term-ended { background: color-mix(in srgb, var(--text-dim) 25%, #0b0d13); }
+
+/* Quick actions */
+.acts-body { display: flex; flex-direction: column; padding-bottom: 12px; }
+.acts { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
+.acts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.act-card { position: relative; display: flex; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raised); overflow: hidden; }
+.act-run { flex: 1; display: flex; flex-direction: column; gap: 3px; align-items: flex-start; border: none; background: none; padding: 10px 12px; color: var(--text); cursor: pointer; text-align: left; min-width: 0; }
+.act-run:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.act-name { font-weight: 600; font-size: 13px; }
+.act-cmd { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.act-tools { position: absolute; top: 6px; right: 6px; display: none; gap: 2px; }
+.act-card:hover .act-tools { display: flex; }
+.act-add { border-style: dashed; justify-content: center; align-items: center; padding: 10px; color: var(--text-dim); cursor: pointer; background: none; font-size: 13px; }
+.acts-templates { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.act-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raised); }
+.act-confirm { align-self: flex-end; padding-bottom: 8px; }
+.act-adhoc { display: flex; gap: 8px; }
+.act-adhoc input { flex: 1; padding: 7px 10px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+.act-out { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 200px; }
+.act-out-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
+.act-out-name { font-weight: 600; }
+.act-out-cmd { font-size: 11.5px; color: var(--text-faint); background: var(--bg-sunken); padding: 2px 6px; border-radius: 4px; max-width: 480px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-exit.is-ok { color: var(--ok); }
+.act-exit.is-bad { color: var(--danger, #e5484d); }
+.act-out-body { flex: 1; min-height: 160px; max-height: 60vh; margin: 0; padding: 10px 12px; background: #0b0d13; color: #e6e9f0; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; overflow: auto; }

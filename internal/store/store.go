@@ -138,6 +138,17 @@ type ServerProfile struct {
 	ClaudeMode string `json:"claudeMode,omitempty"`
 	// ClaudeSessionID is the Claude Code session the chat tab resumes.
 	ClaudeSessionID string `json:"claudeSessionId,omitempty"`
+	// Actions are saved commands run from a button.
+	Actions []ServerAction `json:"actions,omitempty"`
+}
+
+// ServerAction is one saved command on a server.
+type ServerAction struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Command string `json:"command"`
+	// Confirm asks before running (for restarts and the like).
+	Confirm bool `json:"confirm"`
 }
 
 func defaults() Config {
@@ -434,6 +445,19 @@ func (s *Store) SetServerClaude(id, mode, sessionID string, keepSession bool) (C
 			if !keepSession {
 				cfg.Servers[i].ClaudeSessionID = sessionID
 			}
+		}
+	}
+	return s.writeLocked(cfg)
+}
+
+// SetServerActions replaces a server's saved commands.
+func (s *Store) SetServerActions(id string, actions []ServerAction) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	for i := range cfg.Servers {
+		if cfg.Servers[i].ID == id {
+			cfg.Servers[i].Actions = actions
 		}
 	}
 	return s.writeLocked(cfg)

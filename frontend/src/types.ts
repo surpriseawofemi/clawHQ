@@ -403,7 +403,11 @@ export type ServerProfile = {
   dir?: string
   addedAtMs: number
   lastOkAtMs?: number
+  actions?: ServerAction[]
 }
+
+/** A saved command on a server, run from a button. */
+export type ServerAction = { id: string; name: string; command: string; confirm: boolean }
 
 export type ServerCheck = { id: string; label: string; ok: boolean; value: string; hint?: string }
 
