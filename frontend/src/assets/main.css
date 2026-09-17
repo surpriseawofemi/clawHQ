@@ -3531,3 +3531,11 @@ input[type='radio']:disabled {
 
 /* Interactive parts of drag regions stay clickable (Wails: --wails-draggable). */
 .topbar button, .topbar input, .topbar select, .topbar a, .topbar .conn-pill { --wails-draggable: no-drag; -webkit-app-region: no-drag; }
+
+/* Live resize: long lists are the expensive part of a relayout. Skip layout and
+   paint for rows that are off screen; WebKit keeps a placeholder of the given size. */
+.msg, .team-post, .issue-row, .issue-msg, .agent-row, .activity-item, .kanban-card, .gw-row, .srv-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
+.msg-image, .lightbox img { contain: paint; }

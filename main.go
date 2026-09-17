@@ -14,6 +14,7 @@ import (
 	"github.com/surpriseawofemi/clawhq/internal/node"
 	"github.com/surpriseawofemi/clawhq/internal/store"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
 
@@ -243,6 +244,16 @@ func main() {
 		BackgroundColour: application.NewRGB(14, 16, 21),
 		URL:              "/",
 	})
+	// Once the window exists natively, make it opaque so live resizing stays smooth.
+	mainWin.OnWindowEvent(events.Common.WindowShow, func(*application.WindowEvent) {
+		tuneWindowForResize(mainWin, 14, 16, 21)
+	})
+	// And once more shortly after launch, in case the show event fired before the
+	// web view was attached.
+	go func() {
+		time.Sleep(2 * time.Second)
+		tuneWindowForResize(mainWin, 14, 16, 21)
+	}()
 
 	// Auto-connect to the last used gateway: a paired install should come up
 	// connected without the user opening settings. A gateway that is down at launch
