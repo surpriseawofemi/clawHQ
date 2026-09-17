@@ -3,7 +3,7 @@ import { api } from '../api'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
 import type { Agent, SessionInfo } from '../types'
 
-export type Page = 'menu' | 'chat' | 'team' | 'issues' | 'activity' | 'office' | 'tasks' | 'digest' | 'settings'
+export type Page = 'menu' | 'chat' | 'team' | 'issues' | 'activity' | 'office' | 'tasks' | 'digest' | 'servers' | 'settings'
 
 type Props = {
   shell: ShellProps
@@ -83,6 +83,18 @@ const ENTRIES: Entry[] = [
         <rect x="3" y="4" width="5" height="16" rx="1" />
         <rect x="10" y="4" width="5" height="10" rx="1" />
         <rect x="17" y="4" width="4" height="7" rx="1" />
+      </svg>
+    )
+  },
+  {
+    page: 'servers',
+    title: 'Servers',
+    blurb: 'Your machines over SSH: health, Claude Code installed and logged in, and a terminal. No OpenClaw needed.',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="7" rx="2" />
+        <rect x="3" y="13" width="18" height="7" rx="2" />
+        <path d="M7 7.5h.01M7 16.5h.01" />
       </svg>
     )
   },

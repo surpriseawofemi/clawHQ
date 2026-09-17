@@ -387,3 +387,40 @@ export type Issue = {
   sessionKey?: string
   replies: IssueReply[]
 }
+
+/** A machine reached over SSH. Local to this ClawHQ. */
+export type ServerProfile = {
+  id: string
+  name: string
+  host: string
+  port: number
+  user: string
+  auth: 'agent' | 'key' | 'password'
+  keyPath?: string
+  /** Only ever sent up; the list never returns it. */
+  password?: string
+  hasPassword?: boolean
+  dir?: string
+  addedAtMs: number
+  lastOkAtMs?: number
+}
+
+export type ServerCheck = { id: string; label: string; ok: boolean; value: string; hint?: string }
+
+export type ServerHealth = {
+  ok: boolean
+  error?: string
+  checkedAtMs: number
+  hostname: string
+  os: string
+  user: string
+  uptime: string
+  load: string
+  disk: string
+  memory: string
+  home: string
+  node: { installed: boolean; version: string }
+  git: { installed: boolean; version: string }
+  claude: { installed: boolean; version: string; path: string; loggedIn: boolean; account: string }
+  checks: ServerCheck[]
+}

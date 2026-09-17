@@ -92,7 +92,7 @@ type NodeConfig struct {
 }
 
 // configVersion is bumped when a saved config needs migrating on read.
-const configVersion = 5
+const configVersion = 6
 
 type Config struct {
 	Version int `json:"version"`
@@ -112,6 +112,26 @@ type Config struct {
 	Departments []Department `json:"departments"`
 	// Assignments maps agentId to departmentId. Agents with no entry are "Unassigned".
 	Assignments map[string]string `json:"assignments"`
+	// Servers are machines ClawHQ reaches over SSH: health, Claude Code, a terminal.
+	// Local to this machine; the gateway never sees them.
+	Servers []ServerProfile `json:"servers"`
+}
+
+// ServerProfile is one SSH target. The password (or key passphrase) is kept in this
+// file, which is 0600; prefer the agent or a key.
+type ServerProfile struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	User     string `json:"user"`
+	Auth     string `json:"auth"` // agent | key | password
+	KeyPath  string `json:"keyPath,omitempty"`
+	Password string `json:"password,omitempty"`
+	// Dir is the folder Claude Code opens in by default.
+	Dir        string `json:"dir,omitempty"`
+	AddedAtMs  int64  `json:"addedAtMs"`
+	LastOkAtMs int64  `json:"lastOkAtMs,omitempty"`
 }
 
 func defaults() Config {
@@ -356,6 +376,56 @@ func (s *Store) SetMenuBar(on bool) (Config, error) {
 	cfg := s.readLocked()
 	cfg.MenuBar = on
 	return s.writeLocked(cfg)
+}
+
+// UpsertServer adds or updates an SSH server. An empty password on an update keeps
+// the stored one, so editing a name never wipes a secret.
+func (s *Store) UpsertServer(p ServerProfile) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	for i, cur := range cfg.Servers {
+		if cur.ID == p.ID {
+			if p.Password == "" {
+				p.Password = cur.Password
+			}
+			if p.AddedAtMs == 0 {
+				p.AddedAtMs = cur.AddedAtMs
+			}
+			cfg.Servers[i] = p
+			return s.writeLocked(cfg)
+		}
+	}
+	cfg.Servers = append(cfg.Servers, p)
+	return s.writeLocked(cfg)
+}
+
+// RemoveServer forgets an SSH server.
+func (s *Store) RemoveServer(id string) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	kept := cfg.Servers[:0]
+	for _, cur := range cfg.Servers {
+		if cur.ID != id {
+			kept = append(kept, cur)
+		}
+	}
+	cfg.Servers = kept
+	return s.writeLocked(cfg)
+}
+
+// MarkServerOK records a successful health check.
+func (s *Store) MarkServerOK(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	for i := range cfg.Servers {
+		if cfg.Servers[i].ID == id {
+			cfg.Servers[i].LastOkAtMs = time.Now().UnixMilli()
+		}
+	}
+	_, _ = s.writeLocked(cfg)
 }
 
 // SetAutoConnect stores whether ClawHQ reconnects to the last gateway at launch.

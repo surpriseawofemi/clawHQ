@@ -18,6 +18,7 @@ import { Office } from './components/Office'
 import { TasksBoard } from './components/TasksBoard'
 import { TeamChat } from './components/TeamChat'
 import { IssuesPage } from './components/IssuesPage'
+import { ServersPage } from './components/ServersPage'
 import { Digest } from './components/Digest'
 import type { SettingsSection } from './components/settings/SettingsPage'
 import { api } from './api'
@@ -199,6 +200,8 @@ function App(): React.JSX.Element {
             setPage('chat')
           }}
         />
+      ) : page === 'servers' ? (
+        <ServersPage shell={shellProps} />
       ) : page === 'tasks' ? (
         <TasksBoard
           shell={shellProps}

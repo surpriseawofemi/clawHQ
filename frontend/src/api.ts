@@ -11,6 +11,7 @@ import {
   MediaService,
   NodeService,
   PluginService,
+  ServerService,
   UpdateService,
   WindowService
 } from '../bindings/github.com/surpriseawofemi/clawhq'
@@ -31,7 +32,9 @@ import type {
   NodeStatus,
   PluginStatus,
   UpdateStatus,
-  NodeNotification
+  NodeNotification,
+  ServerProfile,
+  ServerHealth
 } from './types'
 
 /**
@@ -168,6 +171,28 @@ export const api = {
     status: (): Promise<LoginStatus> => LoginService.Status() as Promise<LoginStatus>,
     set: (on: boolean): Promise<LoginStatus> => LoginService.Set(on) as Promise<LoginStatus>
   },
+  servers: {
+    list: (): Promise<ServerProfile[]> => ServerService.List() as Promise<ServerProfile[]>,
+    save: (p: ServerProfile): Promise<ServerProfile[]> => ServerService.Save(p as never) as Promise<ServerProfile[]>,
+    remove: (id: string): Promise<ServerProfile[]> => ServerService.Remove(id) as Promise<ServerProfile[]>,
+    health: (id: string): Promise<ServerHealth> => ServerService.Health(id) as Promise<ServerHealth>,
+    installClaude: (id: string): Promise<string> => ServerService.InstallClaude(id),
+    openShell: (id: string, cols: number, rows: number): Promise<string> => ServerService.OpenShell(id, cols, rows),
+    write: (shellId: string, b64: string): Promise<void> => ServerService.Write(shellId, b64),
+    resize: (shellId: string, cols: number, rows: number): Promise<void> => ServerService.Resize(shellId, cols, rows),
+    closeShell: (shellId: string): Promise<void> => ServerService.CloseShell(shellId)
+  },
+  /** Terminal output (base64 chunks) and exits for open shells. */
+  onShellOut: (cb: (e: { id: string; data: string }) => void): (() => void) =>
+    Events.On('ssh:out', (raw: any) => {
+      const e = eventPayload<{ id: string; data: string }>(raw)
+      if (e) cb(e)
+    }),
+  onShellExit: (cb: (e: { id: string; error?: string }) => void): (() => void) =>
+    Events.On('ssh:exit', (raw: any) => {
+      const e = eventPayload<{ id: string; error?: string }>(raw)
+      if (e) cb(e)
+    }),
   media: {
     /** A data: URL for an artifact an agent attached to a reply. Cached in Go. */
     fetch: (artifactId: string, sessionKey: string): Promise<string> => MediaService.Fetch(artifactId, sessionKey) as Promise<string>

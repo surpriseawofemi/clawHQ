@@ -224,6 +224,22 @@ to `tools.alsoAllow` when it finds the plugin, after installing it and after an
 upgrade, so agents never silently lack `clawhq_issue_create` and friends. It only
 ever extends the list.
 
+### Servers
+
+Servers are machines ClawHQ reaches over SSH, with nothing to do with OpenClaw.
+Add one under Servers (host, port, user, and the SSH agent, a key file or a
+password); the profile stays on this machine in `~/.openclaw/clawhq.json`, and
+host keys are trusted on first use in ClawHQ's own `known_hosts` under the app's
+config folder, so a changed key is refused until you forget and re-add the server.
+
+The health page runs one script through the user's login shell and reports the
+system, uptime, load, disk, memory, git, Node.js, and Claude Code: installed,
+version, path, and whether it is logged in (credentials file or API key) and as
+whom. "Install Claude Code" runs Anthropic's native installer for that user.
+The Terminal tab is a real login shell (xterm in the page, a PTY over SSH in
+Go) that opens in the project folder; run `claude` there for the full Claude
+Code, and `/login` once to sign in.
+
 ### Images in replies
 
 When an agent attaches an image to a reply (the gateway stores it as an image
