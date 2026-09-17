@@ -1,6 +1,7 @@
 import { Events } from '@wailsio/runtime'
 import {
   CacheService,
+  ClaudeService,
   ConfigService,
   DaemonService,
   DiagService,
@@ -38,7 +39,11 @@ import type {
   ServerHealth,
   DirListing,
   FileContent,
-  Transfer
+  Transfer,
+  ClaudeEvent,
+  ClaudeMsg,
+  ClaudeSession,
+  ClaudeState
 } from './types'
 
 /**
@@ -186,6 +191,20 @@ export const api = {
     resize: (shellId: string, cols: number, rows: number): Promise<void> => ServerService.Resize(shellId, cols, rows),
     closeShell: (shellId: string): Promise<void> => ServerService.CloseShell(shellId)
   },
+  claude: {
+    state: (serverId: string): Promise<ClaudeState> => ClaudeService.State(serverId) as Promise<ClaudeState>,
+    setMode: (serverId: string, mode: string): Promise<ClaudeState> => ClaudeService.SetMode(serverId, mode) as Promise<ClaudeState>,
+    setSession: (serverId: string, sessionId: string): Promise<ClaudeState> => ClaudeService.SetSession(serverId, sessionId) as Promise<ClaudeState>,
+    send: (serverId: string, text: string): Promise<string> => ClaudeService.Send(serverId, text),
+    abort: (serverId: string): Promise<void> => ClaudeService.Abort(serverId),
+    sessions: (serverId: string): Promise<ClaudeSession[]> => ClaudeService.Sessions(serverId).then((r) => (r ?? []) as ClaudeSession[]),
+    history: (serverId: string): Promise<ClaudeMsg[]> => ClaudeService.History(serverId).then((r) => (r ?? []) as ClaudeMsg[])
+  },
+  onClaudeEvent: (cb: (e: ClaudeEvent) => void): (() => void) =>
+    Events.On('claude:event', (raw: any) => {
+      const e = eventPayload<ClaudeEvent>(raw)
+      if (e) cb(e)
+    }),
   files: {
     list: (serverId: string, dir: string): Promise<DirListing> => FileService.List(serverId, dir) as Promise<DirListing>,
     read: (serverId: string, path: string): Promise<FileContent> => FileService.Read(serverId, path) as Promise<FileContent>,

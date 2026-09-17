@@ -132,6 +132,12 @@ type ServerProfile struct {
 	Dir        string `json:"dir,omitempty"`
 	AddedAtMs  int64  `json:"addedAtMs"`
 	LastOkAtMs int64  `json:"lastOkAtMs,omitempty"`
+	// ClaudeMode is how headless Claude Code handles permissions here:
+	// auto (never asks), semi (edits and safe reads allowed, the rest refused) or
+	// manual (only reads). Empty means semi.
+	ClaudeMode string `json:"claudeMode,omitempty"`
+	// ClaudeSessionID is the Claude Code session the chat tab resumes.
+	ClaudeSessionID string `json:"claudeSessionId,omitempty"`
 }
 
 func defaults() Config {
@@ -412,6 +418,24 @@ func (s *Store) RemoveServer(id string) (Config, error) {
 		}
 	}
 	cfg.Servers = kept
+	return s.writeLocked(cfg)
+}
+
+// SetServerClaude stores the chat tab's permission mode and session for a server.
+func (s *Store) SetServerClaude(id, mode, sessionID string, keepSession bool) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	for i := range cfg.Servers {
+		if cfg.Servers[i].ID == id {
+			if mode != "" {
+				cfg.Servers[i].ClaudeMode = mode
+			}
+			if !keepSession {
+				cfg.Servers[i].ClaudeSessionID = sessionID
+			}
+		}
+	}
 	return s.writeLocked(cfg)
 }
 

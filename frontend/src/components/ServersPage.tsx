@@ -4,9 +4,10 @@ import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
 import type { ServerHealth, ServerProfile } from '../types'
 import { TerminalView } from './TerminalView'
 import { FilesView } from './FilesView'
+import { ClaudeChat } from './ClaudeChat'
 
 type Props = { shell: ShellProps }
-type Tab = 'health' | 'files' | 'terminal'
+type Tab = 'health' | 'chat' | 'files' | 'terminal'
 
 const empty = (): ServerProfile => ({ id: '', name: '', host: '', port: 22, user: 'root', auth: 'agent', keyPath: '', password: '', dir: '', addedAtMs: 0 })
 
@@ -71,6 +72,11 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
     if (selected && !health[selected.id] && busy === null) void check(selected.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id])
+  // A server with a working Claude Code opens on its chat.
+  useEffect(() => {
+    if (h && h.ok && h.claude.installed && h.claude.loggedIn && tab === 'health' && !editing) setTab('chat')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [h?.checkedAtMs])
 
   const save = async (): Promise<void> => {
     if (!editing) return
@@ -230,6 +236,9 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               <button className={tab === 'health' ? 'is-active' : ''} onClick={() => setTab('health')}>
                 Health
               </button>
+              <button className={tab === 'chat' ? 'is-active' : ''} onClick={() => setTab('chat')}>
+                Chat
+              </button>
               <button className={tab === 'files' ? 'is-active' : ''} onClick={() => setTab('files')}>
                 Files
               </button>
@@ -244,7 +253,17 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               Forget
             </button>
           </ContentHead>
-          {tab === 'files' ? (
+          {tab === 'chat' ? (
+            <div className="content-body cc-body">
+              {h && h.ok && !h.claude.installed ? (
+                <p className="field-hint">Claude Code is not installed on this server yet. Install it from the Health tab.</p>
+              ) : h && h.ok && !h.claude.loggedIn ? (
+                <p className="field-hint">Claude Code is not logged in on this server. Open the terminal, run <code>claude</code> and <code>/login</code> once.</p>
+              ) : (
+                <ClaudeChat serverId={selected.id} serverName={selected.name} />
+              )}
+            </div>
+          ) : tab === 'files' ? (
             <div className="content-body files-body">
               <FilesView serverId={selected.id} startDir={selected.dir || undefined} />
             </div>
@@ -290,6 +309,11 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                     {h.claude.installed && !h.claude.loggedIn && (
                       <button className="btn btn-primary" onClick={() => setTab('terminal')}>
                         Open terminal to log in
+                      </button>
+                    )}
+                    {h.claude.installed && h.claude.loggedIn && (
+                      <button className="btn btn-primary" onClick={() => setTab('chat')}>
+                        Open chat
                       </button>
                     )}
                     <button className="btn" onClick={() => setTab('terminal')}>

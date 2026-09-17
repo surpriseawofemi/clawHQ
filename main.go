@@ -197,6 +197,7 @@ func main() {
 
 	serverSvc := &ServerService{store: cfgStore}
 	fileSvc := &FileService{store: cfgStore}
+	claudeSvc := &ClaudeService{store: cfgStore, files: fileSvc}
 	app = application.New(application.Options{
 		Name:        "ClawHQ",
 		Description: "Desktop command center for your OpenClaw agent org",
@@ -217,6 +218,7 @@ func main() {
 			application.NewService(&MediaService{conn: conn, store: cfgStore}),
 			application.NewService(serverSvc),
 			application.NewService(fileSvc),
+			application.NewService(claudeSvc),
 			application.NewService(&DiagService{}),
 		},
 		Assets: application.AssetOptions{
@@ -296,6 +298,8 @@ func main() {
 	bridge.app = app
 	serverSvc.app = app
 	fileSvc.app = app
+	claudeSvc.app = app
+	claudeSvc.notify = notify
 
 	// Menu bar presence: the node keeps serving after the window is closed.
 	bar := newMenuBar(app, cfgStore, loginSvc, updateSvc, windowSvc)

@@ -240,6 +240,21 @@ The Terminal tab is a real login shell (xterm in the page, a PTY over SSH in
 Go) that opens in the project folder; run `claude` there for the full Claude
 Code, and `/login` once to sign in.
 
+#### Chat tab
+
+The Chat tab talks to Claude Code on the server without a terminal. Each
+message is one headless run over SSH (`claude -p` with streaming JSON that
+resumes the same session), so the chat and the terminal share one
+conversation; the session picker lists what Claude Code has for the project
+folder and history is read from its session file. Text streams in, tool calls
+and results fold, the cost of each run shows in the bar, and the bell rings
+when a run ends. Messages typed while it works queue and send when the run
+ends; Send now stops the run first. Permission modes map to Claude Code's
+flags: auto never asks, semi-auto allows reads, edits and a list of safe
+commands and refuses the rest, manual allows reads only. Headless Claude Code
+cannot ask questions mid-run, so a refused action shows as a refusal in the
+transcript; answer it in your next message or use the terminal.
+
 #### Files tab
 
 The Files tab on a server is an SFTP browser: breadcrumbs, a path box, a

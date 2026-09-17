@@ -3586,3 +3586,22 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .files-ask-card h3 { margin: 0; font-size: 14px; }
 .files-ask-card input { padding: 8px 10px; background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 8px; outline: none; }
 .files-ask-card input:focus { border-color: var(--accent); }
+
+/* Claude Code chat on a server */
+.cc-body { display: flex; flex-direction: column; padding-bottom: 12px; }
+.cc { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+.cc-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cc-session { position: relative; }
+.cc-sessions { position: absolute; top: calc(100% + 6px); left: 0; z-index: 6; min-width: 360px; max-width: 520px; max-height: 50vh; overflow: auto; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.3); padding: 4px; display: flex; flex-direction: column; gap: 2px; }
+.cc-sess { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 10px; border: none; background: none; border-radius: 6px; cursor: pointer; text-align: left; color: var(--text); }
+.cc-sess:hover, .cc-sess.is-active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.cc-sess-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 480px; }
+.cc-sess-sub { font-size: 11px; color: var(--text-faint); }
+.cc-dir { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+.cc-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.cc-tool { margin-top: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-sunken); overflow: hidden; max-width: 720px; }
+.cc-tool.is-bad { border-color: color-mix(in srgb, var(--danger, #e5484d) 45%, var(--border)); }
+.cc-tool-head { display: flex; gap: 10px; align-items: baseline; width: 100%; border: none; background: none; padding: 6px 10px; color: var(--text); cursor: pointer; text-align: left; font-size: 12px; }
+.cc-tool-name { font-weight: 600; white-space: nowrap; }
+.cc-tool-short { color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+.cc-tool-body { margin: 0; padding: 8px 10px; border-top: 1px solid var(--border); font-size: 11.5px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }

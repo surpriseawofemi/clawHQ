@@ -429,3 +429,18 @@ export type FileEntry = { name: string; path: string; isDir: boolean; size: numb
 export type DirListing = { path: string; parent: string; home: string; entries: FileEntry[] }
 export type FileContent = { path: string; size: number; modMs: number; mime: string; isText: boolean; text?: string; truncated: boolean; dataUrl?: string }
 export type Transfer = { serverId: string; name: string; done: number; total: number; finished: boolean; error?: string }
+
+/** Headless Claude Code on a server. */
+export type ClaudeBlock = { type: 'text' | 'tool_use' | 'tool_result'; text?: string; name?: string; input?: unknown; isError?: boolean }
+export type ClaudeMsg = { role: 'user' | 'assistant'; atMs: number; blocks: ClaudeBlock[] }
+export type ClaudeSession = { id: string; modMs: number; size: number; prompt: string }
+export type ClaudeState = { mode: 'auto' | 'semi' | 'manual'; sessionId: string; running: boolean; dir: string }
+export type ClaudeEvent = {
+  serverId: string
+  runId: string
+  type: 'init' | 'delta' | 'assistant' | 'user' | 'result' | 'error' | 'done'
+  sessionId?: string
+  text?: string
+  message?: { role?: string; content?: unknown }
+  result?: { total_cost_usd?: number; duration_ms?: number; num_turns?: number; is_error?: boolean; subtype?: string }
+}
