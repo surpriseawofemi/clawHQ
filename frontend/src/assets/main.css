@@ -3465,3 +3465,11 @@ input[type='radio']:disabled {
 
 .refresh-btn.is-spinning svg { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Chat sidebar tools: sort + grouping toggle in the side head */
+.sidebar-tools { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.sidebar-tools select { font-size: 11.5px; padding: 3px 22px 3px 8px; background-size: 8px 5px; background-position: right 7px center; }
+.group-toggle { opacity: 0.55; }
+.group-toggle.is-on { opacity: 1; color: var(--accent); }
+.agent-when { color: var(--text-faint); }
+.dept.is-flat { padding-top: 2px; }

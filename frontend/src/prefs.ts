@@ -12,9 +12,13 @@ export type Prefs = {
   showToolCalls: boolean
   /** Activity: hide automation (cron) runs and runs that said nothing. On by default. */
   hideActivityNoise: boolean
+  /** Chat sidebar: order of agents. recent = who spoke last, first. */
+  sidebarSort: 'recent' | 'name' | 'department'
+  /** Chat sidebar: group agents under their departments. */
+  sidebarGroup: boolean
 }
 
-const DEFAULTS: Prefs = { showToolCalls: false, hideActivityNoise: true }
+const DEFAULTS: Prefs = { showToolCalls: false, hideActivityNoise: true, sidebarSort: 'recent', sidebarGroup: true }
 
 export function getPrefs(): Prefs {
   try {

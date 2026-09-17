@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Agent, ClawHQConfig, SessionInfo } from '../types'
 import { UNASSIGNED, agentEmoji, agentLabel } from '../types'
 import { SideHead } from './layout/Shell'
+import { getPrefs, setPref } from '../prefs'
 
 type Props = {
   agents: Agent[]
@@ -21,10 +22,19 @@ type Group = {
   agents: Agent[]
 }
 
+const ago = (ms: number): string => {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000))
+  if (s < 60) return 'now'
+  if (s < 3600) return `${Math.round(s / 60)}m`
+  if (s < 86_400) return `${Math.round(s / 3600)}h`
+  return `${Math.round(s / 86_400)}d`
+}
+
 /**
- * The Chat page's side panel: agents grouped by department, collapsible, with a
- * pulsing dot on the ones with a run in flight. Everything global (search, bell,
- * desktops, gateway, settings) lives in the top bar, not here.
+ * The Chat page's side panel: agents, by default ordered by who spoke last and
+ * grouped under their departments (both switchable and remembered per machine),
+ * with a pulsing dot on the ones with a run in flight. Everything global (search,
+ * bell, desktops, gateway, settings) lives in the top bar, not here.
  */
 export function AgentSidebar({ agents, sessions, config, connected, selectedAgentId, onSelect, onAgentSettings }: Props): React.JSX.Element {
   // Collapsed groups are remembered per machine.
@@ -50,8 +60,31 @@ export function AgentSidebar({ agents, sessions, config, connected, selectedAgen
     })
   }
 
+  const [sort, setSort] = useState(getPrefs().sidebarSort)
+  const [grouped, setGrouped] = useState(getPrefs().sidebarGroup)
+
+  /** When each agent last said or heard anything: the newest of its sessions, automations aside. */
+  const lastAt = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const s of sessions) {
+      if (!s.agentId || s.key.includes(':cron:')) continue
+      const at = s.updatedAt ?? 0
+      if (at > (m.get(s.agentId) ?? 0)) m.set(s.agentId, at)
+    }
+    return m
+  }, [sessions])
+
+  const rosterIndex = useMemo(() => new Map(agents.map((a, i) => [a.id, i])), [agents])
+  const orderAgents = (list: Agent[]): Agent[] =>
+    [...list].sort((a, b) => {
+      if (sort === 'recent') return (lastAt.get(b.id) ?? 0) - (lastAt.get(a.id) ?? 0) || agentLabel(a).localeCompare(agentLabel(b))
+      if (sort === 'name') return agentLabel(a).localeCompare(agentLabel(b))
+      return (rosterIndex.get(a.id) ?? 0) - (rosterIndex.get(b.id) ?? 0)
+    })
+
   /** Agents grouped by department, with an "Unassigned" bucket that hides when empty. */
   const groups = useMemo<Group[]>(() => {
+    if (!grouped) return agents.length ? [{ id: 'all', name: 'Agents', emoji: '', order: 0, agents: orderAgents(agents) }] : []
     const departments = config?.departments ?? []
     const assignments = config?.assignments ?? {}
     const byId = new Map<string, Group>(departments.map((d) => [d.id, { ...d, agents: [] as Agent[] }]))
@@ -63,8 +96,15 @@ export function AgentSidebar({ agents, sessions, config, connected, selectedAgen
     }
     const result = [...byId.values()].filter((g) => g.agents.length > 0)
     if (unassigned.agents.length > 0) result.push(unassigned)
+    for (const g of result) g.agents = orderAgents(g.agents)
+    // With "recent", the department that spoke last floats up as well.
+    if (sort === 'recent') {
+      const newest = (g: Group): number => Math.max(0, ...g.agents.map((a) => lastAt.get(a.id) ?? 0))
+      return result.sort((a, b) => newest(b) - newest(a) || a.order - b.order)
+    }
     return result.sort((a, b) => a.order - b.order)
-  }, [agents, config])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sort, grouped, lastAt, rosterIndex, agents, config])
 
   const activeAgents = useMemo(() => {
     const set = new Set<string>()
@@ -74,12 +114,44 @@ export function AgentSidebar({ agents, sessions, config, connected, selectedAgen
 
   return (
     <>
-      <SideHead>Agents</SideHead>
+      <SideHead>
+        <span className="side-title">Agents</span>
+        <span className="sidebar-tools">
+          <select
+            value={sort}
+            onChange={(e) => {
+              const v = e.target.value as typeof sort
+              setSort(v)
+              setPref('sidebarSort', v)
+            }}
+            aria-label="Sort agents"
+            title="Order of agents"
+          >
+            <option value="recent">Last message</option>
+            <option value="name">Name</option>
+            <option value="department">Department order</option>
+          </select>
+          <button
+            className={`icon-btn group-toggle${grouped ? ' is-on' : ''}`}
+            onClick={() => {
+              setGrouped(!grouped)
+              setPref('sidebarGroup', !grouped)
+            }}
+            title={grouped ? 'Grouped by department: click for one flat list' : 'Flat list: click to group by department'}
+            aria-pressed={grouped}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 6h16M4 12h10M4 18h16" />
+            </svg>
+          </button>
+        </span>
+      </SideHead>
       <nav className="agent-list">
         {groups.length === 0 && <p className="sidebar-empty">{connected ? 'No agents found on this gateway.' : 'Not connected.'}</p>}
 
         {groups.map((group) => (
-          <section key={group.id} className={`dept${collapsed.has(group.id) ? ' is-collapsed' : ''}`}>
+          <section key={group.id} className={`dept${collapsed.has(group.id) ? ' is-collapsed' : ''}${group.id === 'all' ? ' is-flat' : ''}`}>
+            {group.id !== 'all' && (
             <h2 className="dept-title">
               <button
                 className="dept-toggle"
@@ -95,7 +167,8 @@ export function AgentSidebar({ agents, sessions, config, connected, selectedAgen
                 </span>
               </button>
             </h2>
-            {!collapsed.has(group.id) &&
+            )}
+            {(group.id === 'all' || !collapsed.has(group.id)) &&
               group.agents.map((agent) => {
                 const selected = agent.id === selectedAgentId
                 return (
@@ -115,7 +188,10 @@ export function AgentSidebar({ agents, sessions, config, connected, selectedAgen
                         {agentLabel(agent)}
                         {activeAgents.has(agent.id) && <i className="dot-active" title="Working" />}
                       </span>
-                      <span className="agent-sub">{agent.id}</span>
+                      <span className="agent-sub">
+                        {agent.id}
+                        {lastAt.get(agent.id) ? <span className="agent-when"> · {ago(lastAt.get(agent.id) as number)}</span> : null}
+                      </span>
                     </span>
                     <button
                       className="icon-btn agent-gear"
