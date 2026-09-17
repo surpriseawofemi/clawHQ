@@ -3641,3 +3641,10 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .act-exit.is-ok { color: var(--ok); }
 .act-exit.is-bad { color: var(--danger, #e5484d); }
 .act-out-body { flex: 1; min-height: 160px; max-height: 60vh; margin: 0; padding: 10px 12px; background: #0b0d13; color: #e6e9f0; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; overflow: auto; }
+
+/* Projects on a server */
+.proj-bar { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.proj-select { font-size: 12px; padding: 3px 24px 3px 8px; max-width: 420px; }
+.proj-form { display: flex; flex-direction: column; gap: 10px; margin: 12px 22px 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raised); }
+.srv-h4 { margin: 8px 0 0; font-size: 12px; letter-spacing: .3px; text-transform: uppercase; color: var(--text-faint); }
+.srv-agent-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

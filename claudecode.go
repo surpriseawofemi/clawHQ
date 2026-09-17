@@ -74,10 +74,12 @@ type ClaudeSession struct {
 }
 
 type ClaudeState struct {
+	Agent     string `json:"agent"`
 	Mode      string `json:"mode"`
 	SessionID string `json:"sessionId"`
 	Running   bool   `json:"running"`
 	Dir       string `json:"dir"`
+	ProjectID string `json:"projectId"`
 }
 
 func (s *ClaudeService) emit(e ClaudeEvent) {
@@ -95,24 +97,34 @@ func (s *ClaudeService) profile(id string) (store.ServerProfile, error) {
 	return store.ServerProfile{}, fmt.Errorf("unknown server %q", id)
 }
 
-func modeOf(p store.ServerProfile) string {
-	switch p.ClaudeMode {
+func modeOfProject(pr store.ServerProject) string {
+	switch pr.Mode {
 	case "semi", "manual":
-		return p.ClaudeMode
+		return pr.Mode
 	}
 	return "auto"
 }
 
-// State is what the chat tab needs to draw itself.
+func agentOfProject(pr store.ServerProject) string {
+	switch pr.Agent {
+	case "codex", "gemini", "grok":
+		return pr.Agent
+	}
+	return "claude"
+}
+
+// State is what the chat tab needs to draw itself, for the server's active project.
 func (s *ClaudeService) State(id string) (ClaudeState, error) {
 	p, err := s.profile(id)
 	if err != nil {
 		return ClaudeState{}, err
 	}
+	pr := p.Active()
 	s.mu.Lock()
 	_, running := s.runs[id]
 	s.mu.Unlock()
-	return ClaudeState{Mode: modeOf(p), SessionID: p.ClaudeSessionID, Running: running, Dir: p.Dir}, nil
+	agent := agentOfProject(pr)
+	return ClaudeState{Agent: agent, Mode: modeOfProject(pr), SessionID: pr.Sessions[agent], Running: running, Dir: pr.Dir, ProjectID: pr.ID}, nil
 }
 
 func (s *ClaudeService) SetMode(id, mode string) (ClaudeState, error) {
@@ -121,15 +133,34 @@ func (s *ClaudeService) SetMode(id, mode string) (ClaudeState, error) {
 	default:
 		return ClaudeState{}, fmt.Errorf("mode must be auto, semi or manual")
 	}
-	if _, err := s.store.SetServerClaude(id, mode, "", true); err != nil {
+	if _, err := s.store.UpdateProject(id, "", func(pr *store.ServerProject) { pr.Mode = mode }); err != nil {
 		return ClaudeState{}, err
 	}
 	return s.State(id)
 }
 
-// SetSession picks a Claude Code session to continue; empty starts a new one.
+// SetSession picks a session to continue for the active project's agent; empty starts a new one.
 func (s *ClaudeService) SetSession(id, sessionID string) (ClaudeState, error) {
-	if _, err := s.store.SetServerClaude(id, "", strings.TrimSpace(sessionID), false); err != nil {
+	sessionID = strings.TrimSpace(sessionID)
+	if _, err := s.store.UpdateProject(id, "", func(pr *store.ServerProject) {
+		if pr.Sessions == nil {
+			pr.Sessions = map[string]string{}
+		}
+		pr.Sessions[agentOfProject(*pr)] = sessionID
+	}); err != nil {
+		return ClaudeState{}, err
+	}
+	return s.State(id)
+}
+
+// SetAgent picks which coding agent the active project's chat drives.
+func (s *ClaudeService) SetAgent(id, agent string) (ClaudeState, error) {
+	switch agent {
+	case "claude", "codex", "gemini", "grok":
+	default:
+		return ClaudeState{}, fmt.Errorf("unknown agent %q", agent)
+	}
+	if _, err := s.store.UpdateProject(id, "", func(pr *store.ServerProject) { pr.Agent = agent }); err != nil {
 		return ClaudeState{}, err
 	}
 	return s.State(id)
@@ -148,7 +179,64 @@ var semiAllowedTools = []string{
 
 func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// Send starts one headless turn. Records stream back as claude:event.
+// agentCommand builds the headless command for one turn. The prompt always goes
+// through stdin, so it never touches the shell.
+func agentCommand(agent, sessionID, mode string) []string {
+	switch agent {
+	case "codex":
+		// codex exec reads the prompt from stdin with "-"; resume keeps the thread.
+		args := []string{"codex", "exec", "--json", "--skip-git-repo-check"}
+		switch mode {
+		case "auto":
+			args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+		case "semi":
+			args = append(args, "--full-auto")
+		default:
+			args = append(args, "--sandbox", "read-only")
+		}
+		if sessionID != "" {
+			args = append(args, "resume", sessionID, "-")
+		} else {
+			args = append(args, "-")
+		}
+		return args
+	case "gemini":
+		args := []string{"gemini", "--output-format", "stream-json"}
+		switch mode {
+		case "auto":
+			args = append(args, "--yolo")
+		case "semi":
+			args = append(args, "--approval-mode", "auto_edit")
+		}
+		if sessionID != "" {
+			args = append(args, "--resume", sessionID)
+		}
+		return args
+	case "grok":
+		args := []string{"grok"}
+		if mode == "auto" {
+			args = append(args, "--auto-approve")
+		}
+		return args
+	default:
+		args := []string{"claude", "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+		if sessionID != "" {
+			args = append(args, "--resume", sessionID)
+		}
+		switch mode {
+		case "auto":
+			args = append(args, "--permission-mode", "bypassPermissions", "--dangerously-skip-permissions")
+		case "semi":
+			args = append(args, "--permission-mode", "acceptEdits", "--allowedTools")
+			args = append(args, semiAllowedTools...)
+		default:
+			args = append(args, "--permission-mode", "default")
+		}
+		return args
+	}
+}
+
+// Send starts one headless turn for the active project. Records stream back as claude:event.
 func (s *ClaudeService) Send(ctx context.Context, id, text string) (string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -158,10 +246,12 @@ func (s *ClaudeService) Send(ctx context.Context, id, text string) (string, erro
 	if err != nil {
 		return "", err
 	}
+	pr := p.Active()
+	agent := agentOfProject(pr)
 	s.mu.Lock()
 	if _, busy := s.runs[id]; busy {
 		s.mu.Unlock()
-		return "", fmt.Errorf("Claude Code is still working on the previous message")
+		return "", fmt.Errorf("%s is still working on the previous message", agentLabel(agent))
 	}
 	s.mu.Unlock()
 
@@ -174,24 +264,12 @@ func (s *ClaudeService) Send(ctx context.Context, id, text string) (string, erro
 		client.Close()
 		return "", err
 	}
-	args := []string{"claude", "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
-	if p.ClaudeSessionID != "" {
-		args = append(args, "--resume", p.ClaudeSessionID)
-	}
-	switch modeOf(p) {
-	case "auto":
-		args = append(args, "--permission-mode", "bypassPermissions", "--dangerously-skip-permissions")
-	case "semi":
-		args = append(args, "--permission-mode", "acceptEdits", "--allowedTools")
-		args = append(args, semiAllowedTools...)
-	default:
-		args = append(args, "--permission-mode", "default")
-	}
+	args := agentCommand(agent, pr.Sessions[agent], modeOfProject(pr))
 	var b strings.Builder
-	if p.Dir != "" {
-		b.WriteString("cd " + shq(p.Dir) + " && ")
+	if pr.Dir != "" {
+		b.WriteString("cd " + shq(pr.Dir) + " && ")
 	}
-	b.WriteString(`export PATH="$HOME/.local/bin:$PATH"; `)
+	b.WriteString(`export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; `)
 	for i, a := range args {
 		if i > 0 {
 			b.WriteString(" ")
@@ -229,13 +307,28 @@ func (s *ClaudeService) Send(ctx context.Context, id, text string) (string, erro
 
 	go func() {
 		_, _ = io.WriteString(stdin, text)
+		if agent == "gemini" || agent == "grok" {
+			_, _ = io.WriteString(stdin, "\n")
+		}
 		_ = stdin.Close()
 	}()
-	go s.pump(id, runID, p, stdout, sess, client, &stderr)
+	go s.pump(id, runID, p, pr, agent, stdout, sess, client, &stderr)
 	return runID, nil
 }
 
-func (s *ClaudeService) pump(id, runID string, p store.ServerProfile, stdout io.Reader, sess *ssh.Session, client *ssh.Client, stderr *strings.Builder) {
+func agentLabel(agent string) string {
+	switch agent {
+	case "codex":
+		return "Codex"
+	case "gemini":
+		return "Gemini CLI"
+	case "grok":
+		return "Grok CLI"
+	}
+	return "Claude Code"
+}
+
+func (s *ClaudeService) pump(id, runID string, p store.ServerProfile, pr store.ServerProject, agent string, stdout io.Reader, sess *ssh.Session, client *ssh.Client, stderr *strings.Builder) {
 	defer func() {
 		s.mu.Lock()
 		if r, ok := s.runs[id]; ok && r.id == runID {
@@ -246,54 +339,131 @@ func (s *ClaudeService) pump(id, runID string, p store.ServerProfile, stdout io.
 		client.Close()
 		s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "done"})
 	}()
-	sc := bufio.NewScanner(stdout)
-	sc.Buffer(make([]byte, 1<<20), 32<<20)
 	sessionID := ""
-	finalText := ""
+	remember := func(sid string) {
+		if sid == "" || sessionID != "" {
+			return
+		}
+		sessionID = sid
+		_, _ = s.store.UpdateProject(id, pr.ID, func(x *store.ServerProject) {
+			if x.Sessions == nil {
+				x.Sessions = map[string]string{}
+			}
+			x.Sessions[agent] = sid
+		})
+	}
+	var finalText strings.Builder
 	gotResult := false
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || line[0] != '{' {
-			continue
+
+	switch agent {
+	case "claude":
+		sc := bufio.NewScanner(stdout)
+		sc.Buffer(make([]byte, 1<<20), 32<<20)
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line == "" || line[0] != '{' {
+				continue
+			}
+			var rec struct {
+				Type      string          `json:"type"`
+				Subtype   string          `json:"subtype"`
+				SessionID string          `json:"session_id"`
+				Event     json.RawMessage `json:"event"`
+				Message   json.RawMessage `json:"message"`
+				Result    string          `json:"result"`
+			}
+			if err := json.Unmarshal([]byte(line), &rec); err != nil {
+				continue
+			}
+			remember(rec.SessionID)
+			switch rec.Type {
+			case "system":
+				if rec.Subtype == "init" {
+					s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "init", SessionID: sessionID})
+				}
+			case "stream_event":
+				var ev struct {
+					Type  string `json:"type"`
+					Delta struct {
+						Type string `json:"type"`
+						Text string `json:"text"`
+					} `json:"delta"`
+				}
+				if json.Unmarshal(rec.Event, &ev) == nil && ev.Type == "content_block_delta" && ev.Delta.Type == "text_delta" && ev.Delta.Text != "" {
+					s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "delta", Text: ev.Delta.Text})
+				}
+			case "assistant", "user":
+				s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: rec.Type, Message: rec.Message})
+			case "result":
+				gotResult = true
+				finalText.Reset()
+				finalText.WriteString(rec.Result)
+				s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "result", SessionID: sessionID, Text: rec.Result, Result: json.RawMessage(line)})
+			}
 		}
-		var rec struct {
-			Type      string          `json:"type"`
-			Subtype   string          `json:"subtype"`
-			SessionID string          `json:"session_id"`
-			Event     json.RawMessage `json:"event"`
-			Message   json.RawMessage `json:"message"`
-			Result    string          `json:"result"`
-			IsError   bool            `json:"is_error"`
-		}
-		if err := json.Unmarshal([]byte(line), &rec); err != nil {
-			continue
-		}
-		if rec.SessionID != "" && sessionID == "" {
-			sessionID = rec.SessionID
-			_, _ = s.store.SetServerClaude(id, "", sessionID, false)
-		}
-		switch rec.Type {
-		case "system":
-			if rec.Subtype == "init" {
+	case "codex":
+		sc := bufio.NewScanner(stdout)
+		sc.Buffer(make([]byte, 1<<20), 32<<20)
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line == "" || line[0] != '{' {
+				continue
+			}
+			var rec struct {
+				Type     string `json:"type"`
+				ThreadID string `json:"thread_id"`
+				Item     struct {
+					Type             string `json:"type"`
+					Text             string `json:"text"`
+					Command          string `json:"command"`
+					AggregatedOutput string `json:"aggregated_output"`
+					ExitCode         *int   `json:"exit_code"`
+				} `json:"item"`
+				Usage   json.RawMessage `json:"usage"`
+				Message string          `json:"message"`
+			}
+			if json.Unmarshal([]byte(line), &rec) != nil {
+				continue
+			}
+			switch rec.Type {
+			case "thread.started":
+				remember(rec.ThreadID)
 				s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "init", SessionID: sessionID})
+			case "item.completed":
+				switch rec.Item.Type {
+				case "agent_message":
+					finalText.Reset()
+					finalText.WriteString(rec.Item.Text)
+					s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "delta", Text: rec.Item.Text + "\n\n"})
+				case "command_execution":
+					msg, _ := json.Marshal(map[string]any{"role": "assistant", "content": []map[string]any{{"type": "tool_use", "name": "Bash", "input": map[string]any{"command": rec.Item.Command}}}})
+					s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "assistant", Message: msg})
+					res, _ := json.Marshal(map[string]any{"role": "user", "content": []map[string]any{{"type": "tool_result", "content": rec.Item.AggregatedOutput, "is_error": rec.Item.ExitCode != nil && *rec.Item.ExitCode != 0}}})
+					s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "user", Message: res})
+				}
+			case "turn.completed":
+				gotResult = true
+				s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "result", SessionID: sessionID, Text: finalText.String(), Result: json.RawMessage(line)})
+			case "error":
+				stderr.WriteString(rec.Message)
 			}
-		case "stream_event":
-			var ev struct {
-				Type  string `json:"type"`
-				Delta struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				} `json:"delta"`
+		}
+	default: // gemini, grok: text streams; one chunk at a time
+		buf := make([]byte, 4096)
+		for {
+			n, err := stdout.Read(buf)
+			if n > 0 {
+				chunk := string(buf[:n])
+				finalText.WriteString(chunk)
+				s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "delta", Text: chunk})
 			}
-			if json.Unmarshal(rec.Event, &ev) == nil && ev.Type == "content_block_delta" && ev.Delta.Type == "text_delta" && ev.Delta.Text != "" {
-				s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "delta", Text: ev.Delta.Text})
+			if err != nil {
+				break
 			}
-		case "assistant", "user":
-			s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: rec.Type, Message: rec.Message})
-		case "result":
+		}
+		if finalText.Len() > 0 {
 			gotResult = true
-			finalText = rec.Result
-			s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "result", SessionID: sessionID, Text: rec.Result, Result: json.RawMessage(line)})
+			s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "result", Text: finalText.String(), Result: json.RawMessage(`{"type":"result"}`)})
 		}
 	}
 	err := sess.Wait()
@@ -303,24 +473,24 @@ func (s *ClaudeService) pump(id, runID string, p store.ServerProfile, stdout io.
 			msg = err.Error()
 		}
 		if msg == "" {
-			msg = "Claude Code ended without a result"
+			msg = agentLabel(agent) + " ended without a result"
 		}
 		if len(msg) > 2000 {
 			msg = msg[len(msg)-2000:]
 		}
 		s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "error", Text: msg})
-		log.Printf("claude: %s: %s", p.Name, msg)
+		log.Printf("agents: %s: %s", p.Name, msg)
 		return
 	}
 	if s.notify != nil {
-		body := strings.TrimSpace(finalText)
+		body := strings.TrimSpace(finalText.String())
 		if len(body) > 240 {
 			body = body[:240] + "…"
 		}
 		if body == "" {
 			body = "Finished."
 		}
-		s.notify.show(store.Notice{Title: "Claude Code · " + p.Name, Body: body, AgentName: "Claude Code", AgentEmoji: "🧑‍💻", Origin: "server:" + p.ID, AtMs: time.Now().UnixMilli()})
+		s.notify.show(store.Notice{Title: agentLabel(agent) + " · " + p.Name + " · " + pr.Name, Body: body, AgentName: agentLabel(agent), AgentEmoji: "🧑‍💻", Origin: "server:" + p.ID, AtMs: time.Now().UnixMilli()})
 	}
 }
 
@@ -357,8 +527,12 @@ func (s *ClaudeService) Sessions(ctx context.Context, id string) ([]ClaudeSessio
 	if err != nil {
 		return nil, err
 	}
+	pr := p.Active()
+	if agentOfProject(pr) != "claude" {
+		return []ClaudeSession{}, nil
+	}
 	home, _ := c.sftp.Getwd()
-	dir := p.Dir
+	dir := pr.Dir
 	if dir == "" {
 		dir = home
 	}
@@ -438,7 +612,9 @@ func (s *ClaudeService) History(ctx context.Context, id string) ([]ClaudeMsg, er
 	if err != nil {
 		return nil, err
 	}
-	if p.ClaudeSessionID == "" {
+	pr := p.Active()
+	sid := pr.Sessions["claude"]
+	if agentOfProject(pr) != "claude" || sid == "" {
 		return []ClaudeMsg{}, nil
 	}
 	c, err := s.files.conn(ctx, id)
@@ -446,11 +622,11 @@ func (s *ClaudeService) History(ctx context.Context, id string) ([]ClaudeMsg, er
 		return nil, err
 	}
 	home, _ := c.sftp.Getwd()
-	dir := p.Dir
+	dir := pr.Dir
 	if dir == "" {
 		dir = home
 	}
-	f, err := c.sftp.Open(path.Join(projectDir(home, dir), p.ClaudeSessionID+".jsonl"))
+	f, err := c.sftp.Open(path.Join(projectDir(home, dir), sid+".jsonl"))
 	if err != nil {
 		return []ClaudeMsg{}, nil
 	}

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { renderMarkdown } from '../markdown'
-import type { ClaudeBlock, ClaudeMsg, ClaudeSession, ClaudeState } from '../types'
+import type { AgentID, ClaudeBlock, ClaudeMsg, ClaudeSession, ClaudeState } from '../types'
+
+const AGENT_LABEL: Record<AgentID, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI', grok: 'Grok CLI' }
 
 type Queued = { id: string; text: string }
 
@@ -184,6 +186,13 @@ export function ClaudeChat({ serverId, serverName }: { serverId: string; serverN
   return (
     <div className="cc">
       <div className="cc-bar">
+        <select value={state?.agent ?? 'claude'} onChange={(e) => void api.claude.setAgent(serverId, e.target.value).then((st) => { setState(st); setMsgs([]); void reload() }).catch((err) => setError(String(err)))} aria-label="Agent" title="Which coding agent answers in this project">
+          <option value="claude">Claude Code</option>
+          <option value="codex">Codex</option>
+          <option value="gemini">Gemini CLI (experimental)</option>
+          <option value="grok">Grok CLI (experimental)</option>
+        </select>
+        {(state?.agent ?? 'claude') === 'claude' && (
         <div className="cc-session">
           <button className="btn btn-sm" onClick={() => { setShowSessions((s) => !s); if (!showSessions) void api.claude.sessions(serverId).then(setSessions).catch(() => undefined) }}>
             {state?.sessionId ? `Session ${state.sessionId.slice(0, 8)}` : 'New session'} ▾
@@ -203,6 +212,12 @@ export function ClaudeChat({ serverId, serverName }: { serverId: string; serverN
             </div>
           )}
         </div>
+        )}
+        {(state?.agent ?? 'claude') !== 'claude' && (
+          <button className="btn btn-sm" onClick={() => { void api.claude.setSession(serverId, '').then(() => { setMsgs([]); void reload() }) }} title="Forget the current thread and start fresh">
+            {state?.sessionId ? `Thread ${state.sessionId.slice(0, 8)} · New` : 'New thread'}
+          </button>
+        )}
         <select value={state?.mode ?? 'auto'} onChange={(e) => void api.claude.setMode(serverId, e.target.value).then(setState).catch((err) => setError(String(err)))} aria-label="Permission mode" title="Auto: runs anything. Semi: reads, edits and safe commands. Manual: reads only.">
           <option value="auto">Auto</option>
           <option value="semi">Semi</option>
@@ -214,7 +229,7 @@ export function ClaudeChat({ serverId, serverName }: { serverId: string; serverN
       </div>
       {error && <p className="error-text">{error}</p>}
       <div className="cc-scroll" ref={scroller}>
-        {msgs.length === 0 && !live && <p className="field-hint team-empty">{loading ? 'Loading…' : `Talk to Claude Code on ${serverName}. Same session as the terminal; pick one from the menu above or start fresh.`}</p>}
+        {msgs.length === 0 && !live && <p className="field-hint team-empty">{loading ? 'Loading…' : `Talk to ${AGENT_LABEL[state?.agent ?? 'claude']} on ${serverName}${(state?.agent ?? 'claude') === 'claude' ? '. Same session as the terminal; pick one from the menu above or start fresh.' : '. History for this agent shows only what happened in this window.'}`}</p>}
         {msgs.map((m, i) => (
           <article key={i} className={`msg ${m.role === 'user' ? 'msg-user' : 'msg-agent'}`}>
             {m.blocks.map((b, j) =>
@@ -228,7 +243,7 @@ export function ClaudeChat({ serverId, serverName }: { serverId: string; serverN
                 <ToolRow key={j} b={b} />
               )
             )}
-            <div className="msg-meta">{m.role === 'user' ? 'You' : 'Claude Code'}{m.atMs ? ` · ${timeOf(m.atMs)}` : ''}</div>
+            <div className="msg-meta">{m.role === 'user' ? 'You' : AGENT_LABEL[state?.agent ?? 'claude']}{m.atMs ? ` · ${timeOf(m.atMs)}` : ''}</div>
           </article>
         ))}
         {live && (
@@ -237,7 +252,7 @@ export function ClaudeChat({ serverId, serverName }: { serverId: string; serverN
               {live.text ? <span dangerouslySetInnerHTML={{ __html: renderMarkdown(live.text) }} /> : <span className="thinking">working…</span>}
               <span className="caret" />
             </div>
-            <div className="msg-meta">Claude Code · now</div>
+            <div className="msg-meta">{AGENT_LABEL[state?.agent ?? 'claude']} · now</div>
           </article>
         )}
       </div>
@@ -258,7 +273,7 @@ export function ClaudeChat({ serverId, serverName }: { serverId: string; serverN
           ref={box}
           rows={1}
           value={draft}
-          placeholder={running ? 'Type the next message; it sends when this run ends…' : `Message Claude Code on ${serverName}…`}
+          placeholder={running ? 'Type the next message; it sends when this run ends…' : `Message ${AGENT_LABEL[state?.agent ?? 'claude']} on ${serverName}…`}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {

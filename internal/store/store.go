@@ -140,6 +140,38 @@ type ServerProfile struct {
 	ClaudeSessionID string `json:"claudeSessionId,omitempty"`
 	// Actions are saved commands run from a button.
 	Actions []ServerAction `json:"actions,omitempty"`
+	// Projects are folders on the server, each with its own agent, session and mode.
+	Projects        []ServerProject `json:"projects,omitempty"`
+	ActiveProjectID string          `json:"activeProjectId,omitempty"`
+	// MonitorOff stops the periodic health check and its warnings.
+	MonitorOff bool `json:"monitorOff,omitempty"`
+}
+
+// ServerProject is one folder on a server the coding agents work in.
+type ServerProject struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Dir  string `json:"dir"`
+	// Agent drives the chat tab here: claude (default), codex, gemini or grok.
+	Agent string `json:"agent,omitempty"`
+	// Sessions holds the resumable session per agent.
+	Sessions map[string]string `json:"sessions,omitempty"`
+	// Mode is the permission mode: auto (default), semi or manual.
+	Mode string `json:"mode,omitempty"`
+}
+
+// Active returns the current project, creating a view of the legacy fields when
+// a server predates projects.
+func (p ServerProfile) Active() ServerProject {
+	for _, pr := range p.Projects {
+		if pr.ID == p.ActiveProjectID {
+			return pr
+		}
+	}
+	if len(p.Projects) > 0 {
+		return p.Projects[0]
+	}
+	return ServerProject{ID: "", Name: "Home", Dir: p.Dir, Agent: "claude", Sessions: map[string]string{"claude": p.ClaudeSessionID}, Mode: p.ClaudeMode}
 }
 
 // ServerAction is one saved command on a server.
@@ -207,6 +239,28 @@ func (s *Store) readLocked() Config {
 	}
 	if cfg.Assignments == nil {
 		cfg.Assignments = map[string]string{}
+	}
+	for i := range cfg.Servers {
+		sv := &cfg.Servers[i]
+		if len(sv.Projects) == 0 {
+			name := "Home"
+			if sv.Dir != "" {
+				name = filepath.Base(sv.Dir)
+			}
+			sv.Projects = []ServerProject{{ID: "proj-1", Name: name, Dir: sv.Dir, Agent: "claude", Sessions: map[string]string{"claude": sv.ClaudeSessionID}, Mode: sv.ClaudeMode}}
+			sv.ActiveProjectID = "proj-1"
+		}
+		if sv.ActiveProjectID == "" {
+			sv.ActiveProjectID = sv.Projects[0].ID
+		}
+		for j := range sv.Projects {
+			if sv.Projects[j].Sessions == nil {
+				sv.Projects[j].Sessions = map[string]string{}
+			}
+			if sv.Projects[j].Agent == "" {
+				sv.Projects[j].Agent = "claude"
+			}
+		}
 	}
 	if cfg.Departments == nil {
 		cfg.Departments = defaults().Departments
@@ -432,19 +486,114 @@ func (s *Store) RemoveServer(id string) (Config, error) {
 	return s.writeLocked(cfg)
 }
 
-// SetServerClaude stores the chat tab's permission mode and session for a server.
-func (s *Store) SetServerClaude(id, mode, sessionID string, keepSession bool) (Config, error) {
+// UpdateProject edits a project's session (per agent), mode or agent on a server.
+func (s *Store) UpdateProject(serverID, projectID string, fn func(*ServerProject)) (Config, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cfg := s.readLocked()
 	for i := range cfg.Servers {
-		if cfg.Servers[i].ID == id {
-			if mode != "" {
-				cfg.Servers[i].ClaudeMode = mode
+		if cfg.Servers[i].ID != serverID {
+			continue
+		}
+		sv := &cfg.Servers[i]
+		if projectID == "" {
+			projectID = sv.ActiveProjectID
+		}
+		for j := range sv.Projects {
+			if sv.Projects[j].ID == projectID {
+				fn(&sv.Projects[j])
+				if sv.Projects[j].ID == sv.ActiveProjectID {
+					// Legacy fields mirror the active project.
+					sv.Dir = sv.Projects[j].Dir
+					sv.ClaudeSessionID = sv.Projects[j].Sessions["claude"]
+					sv.ClaudeMode = sv.Projects[j].Mode
+				}
 			}
-			if !keepSession {
-				cfg.Servers[i].ClaudeSessionID = sessionID
+		}
+	}
+	return s.writeLocked(cfg)
+}
+
+// AddProject adds a folder to a server and makes it active.
+func (s *Store) AddProject(serverID string, pr ServerProject) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	for i := range cfg.Servers {
+		if cfg.Servers[i].ID != serverID {
+			continue
+		}
+		sv := &cfg.Servers[i]
+		if pr.ID == "" {
+			pr.ID = fmt.Sprintf("proj-%d", time.Now().UnixMilli())
+		}
+		if pr.Sessions == nil {
+			pr.Sessions = map[string]string{}
+		}
+		if pr.Agent == "" {
+			pr.Agent = "claude"
+		}
+		sv.Projects = append(sv.Projects, pr)
+		sv.ActiveProjectID = pr.ID
+		sv.Dir, sv.ClaudeSessionID, sv.ClaudeMode = pr.Dir, pr.Sessions["claude"], pr.Mode
+	}
+	return s.writeLocked(cfg)
+}
+
+// RemoveProject drops a folder; the first remaining one becomes active.
+func (s *Store) RemoveProject(serverID, projectID string) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	for i := range cfg.Servers {
+		if cfg.Servers[i].ID != serverID {
+			continue
+		}
+		sv := &cfg.Servers[i]
+		kept := sv.Projects[:0]
+		for _, pr := range sv.Projects {
+			if pr.ID != projectID {
+				kept = append(kept, pr)
 			}
+		}
+		sv.Projects = kept
+		if len(sv.Projects) > 0 && sv.ActiveProjectID == projectID {
+			sv.ActiveProjectID = sv.Projects[0].ID
+			a := sv.Projects[0]
+			sv.Dir, sv.ClaudeSessionID, sv.ClaudeMode = a.Dir, a.Sessions["claude"], a.Mode
+		}
+	}
+	return s.writeLocked(cfg)
+}
+
+// SelectProject makes a folder the active one for a server.
+func (s *Store) SelectProject(serverID, projectID string) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	for i := range cfg.Servers {
+		if cfg.Servers[i].ID != serverID {
+			continue
+		}
+		sv := &cfg.Servers[i]
+		for _, pr := range sv.Projects {
+			if pr.ID == projectID {
+				sv.ActiveProjectID = pr.ID
+				sv.Dir, sv.ClaudeSessionID, sv.ClaudeMode = pr.Dir, pr.Sessions["claude"], pr.Mode
+			}
+		}
+	}
+	return s.writeLocked(cfg)
+}
+
+// SetServerMonitor turns the periodic health check on or off.
+func (s *Store) SetServerMonitor(serverID string, on bool) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	for i := range cfg.Servers {
+		if cfg.Servers[i].ID == serverID {
+			cfg.Servers[i].MonitorOff = !on
 		}
 	}
 	return s.writeLocked(cfg)

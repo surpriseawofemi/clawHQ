@@ -404,7 +404,16 @@ export type ServerProfile = {
   addedAtMs: number
   lastOkAtMs?: number
   actions?: ServerAction[]
+  projects?: ServerProject[]
+  activeProjectId?: string
+  /** Periodic health check with warnings in the bell. */
+  monitor?: boolean
 }
+
+/** A folder on a server the coding agents work in. */
+export type ServerProject = { id: string; name: string; dir: string; agent?: AgentID; sessions?: Record<string, string>; mode?: string }
+export type AgentID = 'claude' | 'codex' | 'gemini' | 'grok'
+export type AgentStatus = { id: AgentID; label: string; installed: boolean; version: string; path: string; loggedIn: boolean; account?: string; install: string; loginHint: string }
 
 /** A saved command on a server, run from a button. */
 export type ServerAction = { id: string; name: string; command: string; confirm: boolean }
@@ -412,6 +421,8 @@ export type ServerAction = { id: string; name: string; command: string; confirm:
 export type ServerCheck = { id: string; label: string; ok: boolean; value: string; hint?: string }
 
 export type ServerHealth = {
+  agents: AgentStatus[]
+  cores: number
   ok: boolean
   error?: string
   checkedAtMs: number
@@ -438,7 +449,7 @@ export type Transfer = { serverId: string; name: string; done: number; total: nu
 export type ClaudeBlock = { type: 'text' | 'tool_use' | 'tool_result'; text?: string; name?: string; input?: unknown; isError?: boolean }
 export type ClaudeMsg = { role: 'user' | 'assistant'; atMs: number; blocks: ClaudeBlock[] }
 export type ClaudeSession = { id: string; modMs: number; size: number; prompt: string }
-export type ClaudeState = { mode: 'auto' | 'semi' | 'manual'; sessionId: string; running: boolean; dir: string }
+export type ClaudeState = { agent: AgentID; mode: 'auto' | 'semi' | 'manual'; sessionId: string; running: boolean; dir: string; projectId: string }
 export type ClaudeEvent = {
   serverId: string
   runId: string

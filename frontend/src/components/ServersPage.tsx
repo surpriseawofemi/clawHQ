@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
-import type { ServerHealth, ServerProfile } from '../types'
+import type { AgentStatus, ServerHealth, ServerProfile, ServerProject } from '../types'
 import { TerminalTabs } from './TerminalView'
 import { ActionsView } from './ActionsView'
 import { FilesView } from './FilesView'
@@ -10,7 +10,7 @@ import { ClaudeChat } from './ClaudeChat'
 type Props = { shell: ShellProps }
 type Tab = 'health' | 'chat' | 'files' | 'actions' | 'terminal'
 
-const empty = (): ServerProfile => ({ id: '', name: '', host: '', port: 22, user: 'root', auth: 'agent', keyPath: '', password: '', dir: '', addedAtMs: 0 })
+const empty = (): ServerProfile => ({ id: '', name: '', host: '', port: 22, user: 'root', auth: 'agent', keyPath: '', password: '', dir: '', addedAtMs: 0, monitor: true })
 
 const ago = (ms?: number): string => {
   if (!ms) return 'never'
@@ -36,6 +36,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [installLog, setInstallLog] = useState<string | null>(null)
+  const [projForm, setProjForm] = useState<{ id: string; name: string; dir: string; agent: string } | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -111,15 +112,29 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
     }
   }
 
-  const install = async (id: string): Promise<void> => {
-    setBusy(`install:${id}`)
-    setInstallLog('Running the Claude Code installer… this takes a minute.')
+  const install = async (id: string, agent: AgentStatus['id'] = 'claude'): Promise<void> => {
+    setBusy(`install:${id}:${agent}`)
+    setInstallLog(`Installing… this takes a minute.`)
     try {
-      const out = await api.servers.installClaude(id)
+      const out = await api.servers.installAgent(id, agent)
       setInstallLog(out)
       await check(id)
     } catch (err) {
       setInstallLog(`${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const activeProject = (s: ServerProfile): ServerProject | undefined => (s.projects ?? []).find((p) => p.id === s.activeProjectId) ?? s.projects?.[0]
+  const projectAction = async (fn: () => Promise<ServerProfile[]>): Promise<void> => {
+    setBusy('project')
+    setError(null)
+    try {
+      setServers(await fn())
+      setProjForm(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(null)
     }
@@ -201,8 +216,12 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                 <input type="password" value={editing.password ?? ''} onChange={(e) => setEditing({ ...editing, password: e.target.value })} placeholder={editing.hasPassword ? 'unchanged' : ''} />
               </div>
             )}
+            <label className="check-row">
+              <input type="checkbox" checked={editing.monitor !== false} onChange={(e) => setEditing({ ...editing, monitor: e.target.checked })} />
+              <span>Watch health every 10 minutes and warn in the bell (not answering, disk over 90%, high load)</span>
+            </label>
             <div className="field">
-              <span>Project folder (optional)</span>
+              <span>{editing.id ? 'Active project folder' : 'Project folder (optional)'}</span>
               <input value={editing.dir ?? ''} onChange={(e) => setEditing({ ...editing, dir: e.target.value })} placeholder="/var/www/emailmanager" spellCheck={false} />
               <p className="field-hint">The terminal opens here, and Claude Code will work in it.</p>
             </div>
@@ -223,7 +242,32 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
         <>
           <ContentHead
             title={selected.name}
-            subtitle={`${selected.user}@${selected.host}${selected.port !== 22 ? `:${selected.port}` : ''}${selected.dir ? ` · ${selected.dir}` : ''}`}
+            subtitle={
+              <span className="proj-bar">
+                <span>{selected.user}@{selected.host}{selected.port !== 22 ? `:${selected.port}` : ''}</span>
+                <span className="files-sep">·</span>
+                <select
+                  className="proj-select"
+                  value={selected.activeProjectId ?? ''}
+                  onChange={(e) => void projectAction(() => api.servers.selectProject(selected.id, e.target.value))}
+                  aria-label="Project"
+                  title="Project folder: chat, files, actions and new terminals use it"
+                >
+                  {(selected.projects ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}{p.dir ? ` — ${p.dir}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <button className="icon-btn" title="Add a project folder" onClick={() => setProjForm({ id: '', name: '', dir: '', agent: 'claude' })}>＋</button>
+                {activeProject(selected) && (
+                  <button className="icon-btn" title="Edit this project" onClick={() => { const p = activeProject(selected) as ServerProject; setProjForm({ id: p.id, name: p.name, dir: p.dir, agent: p.agent ?? 'claude' }) }}>✎</button>
+                )}
+                {(selected.projects?.length ?? 0) > 1 && activeProject(selected) && (
+                  <button className="icon-btn" title="Remove this project from the list (files stay on the server)" onClick={() => void projectAction(() => api.servers.removeProject(selected.id, (activeProject(selected) as ServerProject).id))}>🗑</button>
+                )}
+              </span>
+            }
             onRefresh={tab === 'health' ? () => void check(selected.id) : undefined}
             refreshing={busy === `health:${selected.id}`}
           >
@@ -251,15 +295,48 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               Forget
             </button>
           </ContentHead>
+          {projForm && (
+            <form
+              className="proj-form"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void projectAction(() => (projForm.id ? api.servers.updateProject(selected.id, projForm.id, projForm.name, projForm.dir) : api.servers.addProject(selected.id, projForm.name, projForm.dir, projForm.agent)))
+              }}
+            >
+              <div className="field">
+                <span>Name</span>
+                <input value={projForm.name} onChange={(e) => setProjForm({ ...projForm, name: e.target.value })} placeholder="emailmanager.pro" autoFocus />
+              </div>
+              <div className="field">
+                <span>Folder on the server</span>
+                <input value={projForm.dir} onChange={(e) => setProjForm({ ...projForm, dir: e.target.value })} placeholder="/var/www/emailmanager" spellCheck={false} />
+              </div>
+              {!projForm.id && (
+                <div className="field">
+                  <span>Agent</span>
+                  <select value={projForm.agent} onChange={(e) => setProjForm({ ...projForm, agent: e.target.value })}>
+                    <option value="claude">Claude Code</option>
+                    <option value="codex">Codex</option>
+                    <option value="gemini">Gemini CLI</option>
+                    <option value="grok">Grok CLI</option>
+                  </select>
+                </div>
+              )}
+              <div className="btn-row">
+                <button type="submit" className="btn btn-primary" disabled={busy === 'project' || (!projForm.name.trim() && !projForm.dir.trim())}>{projForm.id ? 'Save' : 'Add'}</button>
+                <button type="button" className="btn" onClick={() => setProjForm(null)}>Cancel</button>
+              </div>
+            </form>
+          )}
           {tab === 'chat' ? (
             <div className="content-body cc-body">
-              {h && h.ok && !h.claude.installed ? (
-                <p className="field-hint">Claude Code is not installed on this server yet. Install it from the Health tab.</p>
-              ) : h && h.ok && !h.claude.loggedIn ? (
-                <p className="field-hint">Claude Code is not logged in on this server. Open the terminal, run <code>claude</code> and <code>/login</code> once.</p>
-              ) : (
-                <ClaudeChat serverId={selected.id} serverName={selected.name} />
-              )}
+              {(() => {
+                const agentId = activeProject(selected)?.agent ?? 'claude'
+                const st = h?.agents?.find((a) => a.id === agentId)
+                if (h && h.ok && st && !st.installed) return <p className="field-hint">{st.label} is not installed on this server yet. Install it from the Health tab.</p>
+                if (h && h.ok && st && !st.loggedIn) return <p className="field-hint">{st.label} is not logged in on this server. Open the terminal and {st.loginHint}.</p>
+                return <ClaudeChat key={`${selected.id}:${selected.activeProjectId ?? ''}`} serverId={selected.id} serverName={selected.name} />
+              })()}
             </div>
           ) : tab === 'actions' ? (
             <div className="content-body acts-body">
@@ -306,22 +383,35 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                       </div>
                     ))}
                   </div>
+                  <h4 className="srv-h4">Coding agents</h4>
+                  <div className="srv-checks">
+                    {(h.agents ?? []).map((a) => (
+                      <div key={a.id} className={`srv-check${a.installed && a.loggedIn ? ' is-ok' : ' is-bad'}`}>
+                        <span className="srv-check-icon">{a.installed && a.loggedIn ? '✅' : a.installed ? '🟡' : '⬜'}</span>
+                        <span className="srv-check-label">{a.label}</span>
+                        <span className="srv-check-value">
+                          {a.installed ? `${a.version || 'installed'} · ${a.loggedIn ? (a.account ? `logged in as ${a.account}` : 'logged in') : 'not logged in'}` : 'not installed'}
+                        </span>
+                        <span className="srv-check-hint srv-agent-actions">
+                          {!a.installed && (
+                            <button className="btn btn-sm btn-primary" onClick={() => void install(selected.id, a.id)} disabled={busy !== null}>
+                              {busy === `install:${selected.id}:${a.id}` ? 'Installing…' : `Install ${a.label}`}
+                            </button>
+                          )}
+                          {a.installed && !a.loggedIn && (
+                            <span>
+                              Not logged in: open the terminal and {a.loginHint}.{' '}
+                              <button className="btn btn-sm" onClick={() => setTab('terminal')}>Terminal</button>
+                            </span>
+                          )}
+                          {a.installed && a.loggedIn && (activeProject(selected)?.agent ?? 'claude') === a.id && (
+                            <button className="btn btn-sm" onClick={() => setTab('chat')}>Open chat</button>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                   <div className="btn-row">
-                    {!h.claude.installed && (
-                      <button className="btn btn-primary" onClick={() => void install(selected.id)} disabled={busy !== null}>
-                        {busy === `install:${selected.id}` ? 'Installing…' : 'Install Claude Code'}
-                      </button>
-                    )}
-                    {h.claude.installed && !h.claude.loggedIn && (
-                      <button className="btn btn-primary" onClick={() => setTab('terminal')}>
-                        Open terminal to log in
-                      </button>
-                    )}
-                    {h.claude.installed && h.claude.loggedIn && (
-                      <button className="btn btn-primary" onClick={() => setTab('chat')}>
-                        Open chat
-                      </button>
-                    )}
                     <button className="btn" onClick={() => setTab('terminal')}>
                       Open terminal
                     </button>

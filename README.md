@@ -240,6 +240,31 @@ The Terminal tab is a real login shell (xterm in the page, a PTY over SSH in
 Go) that opens in the project folder; run `claude` there for the full Claude
 Code, and `/login` once to sign in.
 
+#### Projects
+
+A server can hold several project folders. The picker in the server header
+switches between them; chat, files, actions and new terminals follow the
+active one, and each project keeps its own agent, permission mode and
+sessions. Add, edit or remove projects from the header (removing only drops
+the entry; files stay on the server).
+
+#### Health monitor
+
+With "Watch health" on (the default), ClawHQ re-checks each server every ten
+minutes and rings the bell when a server misses two checks in a row (and again
+when it answers), when the root disk is 90% used or more, or when the load
+average exceeds twice the core count. Each warning repeats at most every six
+hours.
+
+#### Other coding agents
+
+The health page lists Claude Code, Codex, Gemini CLI and Grok CLI with
+version and login state, and installs any of them (Claude through Anthropic's
+installer, the others through npm). A project's agent is chosen when it is
+added or from the chat bar. Codex chat runs `codex exec --json` and keeps the
+thread id for resume; Gemini and Grok chats stream plain text and are marked
+experimental until verified on a real server.
+
 #### Chat tab
 
 The Chat tab talks to Claude Code on the server without a terminal. Each

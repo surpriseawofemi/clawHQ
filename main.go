@@ -300,6 +300,7 @@ func main() {
 	fileSvc.app = app
 	claudeSvc.app = app
 	claudeSvc.notify = notify
+	go (&serverMonitor{servers: serverSvc, notify: notify}).run()
 
 	// Menu bar presence: the node keeps serving after the window is closed.
 	bar := newMenuBar(app, cfgStore, loginSvc, updateSvc, windowSvc)

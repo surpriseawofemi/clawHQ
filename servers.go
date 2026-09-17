@@ -39,18 +39,21 @@ type openCommand struct {
 
 // ServerView is a profile without its secret.
 type ServerView struct {
-	ID          string               `json:"id"`
-	Name        string               `json:"name"`
-	Host        string               `json:"host"`
-	Port        int                  `json:"port"`
-	User        string               `json:"user"`
-	Auth        string               `json:"auth"`
-	KeyPath     string               `json:"keyPath,omitempty"`
-	HasPassword bool                 `json:"hasPassword"`
-	Dir         string               `json:"dir,omitempty"`
-	AddedAtMs   int64                `json:"addedAtMs"`
-	LastOkAtMs  int64                `json:"lastOkAtMs,omitempty"`
-	Actions     []store.ServerAction `json:"actions"`
+	ID              string                `json:"id"`
+	Name            string                `json:"name"`
+	Host            string                `json:"host"`
+	Port            int                   `json:"port"`
+	User            string                `json:"user"`
+	Auth            string                `json:"auth"`
+	KeyPath         string                `json:"keyPath,omitempty"`
+	HasPassword     bool                  `json:"hasPassword"`
+	Dir             string                `json:"dir,omitempty"`
+	AddedAtMs       int64                 `json:"addedAtMs"`
+	LastOkAtMs      int64                 `json:"lastOkAtMs,omitempty"`
+	Actions         []store.ServerAction  `json:"actions"`
+	Projects        []store.ServerProject `json:"projects"`
+	ActiveProjectID string                `json:"activeProjectId"`
+	Monitor         bool                  `json:"monitor"`
 }
 
 // ServerInput is what the page sends to save a server.
@@ -64,6 +67,7 @@ type ServerInput struct {
 	KeyPath  string `json:"keyPath"`
 	Password string `json:"password"`
 	Dir      string `json:"dir"`
+	Monitor  *bool  `json:"monitor"`
 }
 
 type ServerCheck struct {
@@ -87,7 +91,22 @@ type ClaudeStatus struct {
 	Account   string `json:"account"`
 }
 
+// AgentStatus is one coding agent CLI on the server.
+type AgentStatus struct {
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	Installed bool   `json:"installed"`
+	Version   string `json:"version"`
+	Path      string `json:"path"`
+	LoggedIn  bool   `json:"loggedIn"`
+	Account   string `json:"account,omitempty"`
+	Install   string `json:"install"`
+	LoginHint string `json:"loginHint"`
+}
+
 type ServerHealth struct {
+	Agents      []AgentStatus `json:"agents"`
+	Cores       int           `json:"cores"`
 	OK          bool          `json:"ok"`
 	Error       string        `json:"error,omitempty"`
 	CheckedAtMs int64         `json:"checkedAtMs"`
@@ -118,7 +137,11 @@ func viewOf(p store.ServerProfile) ServerView {
 	if actions == nil {
 		actions = []store.ServerAction{}
 	}
-	return ServerView{ID: p.ID, Name: p.Name, Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, HasPassword: p.Password != "", Dir: p.Dir, AddedAtMs: p.AddedAtMs, LastOkAtMs: p.LastOkAtMs, Actions: actions}
+	projects := p.Projects
+	if projects == nil {
+		projects = []store.ServerProject{}
+	}
+	return ServerView{ID: p.ID, Name: p.Name, Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, HasPassword: p.Password != "", Dir: p.Active().Dir, AddedAtMs: p.AddedAtMs, LastOkAtMs: p.LastOkAtMs, Actions: actions, Projects: projects, ActiveProjectID: p.ActiveProjectID, Monitor: !p.MonitorOff}
 }
 
 func (s *ServerService) List() []ServerView {
@@ -154,6 +177,17 @@ func (s *ServerService) Save(in ServerInput) ([]ServerView, error) {
 	p := store.ServerProfile{ID: in.ID, Name: in.Name, Host: in.Host, Port: in.Port, User: in.User, Auth: in.Auth, KeyPath: strings.TrimSpace(in.KeyPath), Password: in.Password, Dir: strings.TrimSpace(in.Dir), AddedAtMs: time.Now().UnixMilli()}
 	if cur, err := s.profile(in.ID); err == nil {
 		p.Actions, p.ClaudeMode, p.ClaudeSessionID = cur.Actions, cur.ClaudeMode, cur.ClaudeSessionID
+		p.Projects, p.ActiveProjectID, p.MonitorOff = cur.Projects, cur.ActiveProjectID, cur.MonitorOff
+		if p.Dir != "" && p.Dir != cur.Active().Dir {
+			for i := range p.Projects {
+				if p.Projects[i].ID == p.ActiveProjectID {
+					p.Projects[i].Dir = p.Dir
+				}
+			}
+		}
+	}
+	if in.Monitor != nil {
+		p.MonitorOff = !*in.Monitor
 	}
 	if _, err := s.store.UpsertServer(p); err != nil {
 		return nil, err
@@ -192,7 +226,15 @@ echo "uptime=$(uptime -p 2>/dev/null || uptime 2>/dev/null)"
 echo "load=$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null)"
 echo "disk=$(df -h / 2>/dev/null | awk 'NR==2{print $4" free of "$2" ("$5" used)"}')"
 echo "memory=$(free -h 2>/dev/null | awk '/^Mem/{print $7" available of "$2}')"
+echo "cores=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null)"
 echo "node=$(command -v node >/dev/null 2>&1 && node -v 2>/dev/null)"
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+CX="$(command -v codex 2>/dev/null)"; echo "codex_path=$CX"; [ -n "$CX" ] && echo "codex_version=$("$CX" --version 2>/dev/null | head -1)"
+[ -s "$HOME/.codex/auth.json" ] && echo "codex_login=1"; [ -n "$OPENAI_API_KEY" ] && echo "codex_login=1"
+GM="$(command -v gemini 2>/dev/null)"; echo "gemini_path=$GM"; [ -n "$GM" ] && echo "gemini_version=$("$GM" --version 2>/dev/null | head -1)"
+[ -s "$HOME/.gemini/oauth_creds.json" ] && echo "gemini_login=1"; [ -n "$GEMINI_API_KEY" ] && echo "gemini_login=1"; [ -n "$GOOGLE_API_KEY" ] && echo "gemini_login=1"
+GK="$(command -v grok 2>/dev/null)"; echo "grok_path=$GK"; [ -n "$GK" ] && echo "grok_version=$("$GK" --version 2>/dev/null | head -1)"
+[ -s "$HOME/.grok/user-settings.json" ] && grep -q apiKey "$HOME/.grok/user-settings.json" 2>/dev/null && echo "grok_login=1"; [ -n "$GROK_API_KEY" ] && echo "grok_login=1"
 echo "git=$(command -v git >/dev/null 2>&1 && git --version 2>/dev/null | sed 's/git version //')"
 CL="$(command -v claude 2>/dev/null)"
 [ -z "$CL" ] && [ -x "$HOME/.local/bin/claude" ] && CL="$HOME/.local/bin/claude"
@@ -245,6 +287,13 @@ func (s *ServerService) Health(ctx context.Context, id string) ServerHealth {
 	h.Node = ServerTool{Installed: kv["node"] != "", Version: kv["node"]}
 	h.Git = ServerTool{Installed: kv["git"] != "", Version: kv["git"]}
 	h.Claude = ClaudeStatus{Installed: kv["claude_path"] != "", Version: kv["claude_version"], Path: kv["claude_path"], LoggedIn: kv["claude_creds"] == "1" || kv["claude_apikey"] == "1", Account: kv["claude_account"]}
+	fmt.Sscanf(kv["cores"], "%d", &h.Cores)
+	h.Agents = []AgentStatus{
+		{ID: "claude", Label: "Claude Code", Installed: h.Claude.Installed, Version: h.Claude.Version, Path: h.Claude.Path, LoggedIn: h.Claude.LoggedIn, Account: h.Claude.Account, Install: "curl -fsSL https://claude.ai/install.sh | bash", LoginHint: "run: claude, then /login"},
+		{ID: "codex", Label: "Codex", Installed: kv["codex_path"] != "", Version: kv["codex_version"], Path: kv["codex_path"], LoggedIn: kv["codex_login"] == "1", Install: "npm install -g @openai/codex", LoginHint: "run: codex login"},
+		{ID: "gemini", Label: "Gemini CLI", Installed: kv["gemini_path"] != "", Version: kv["gemini_version"], Path: kv["gemini_path"], LoggedIn: kv["gemini_login"] == "1", Install: "npm install -g @google/gemini-cli", LoginHint: "run: gemini, then sign in"},
+		{ID: "grok", Label: "Grok CLI", Installed: kv["grok_path"] != "", Version: kv["grok_version"], Path: kv["grok_path"], LoggedIn: kv["grok_login"] == "1", Install: "npm install -g @vibe-kit/grok-cli", LoginHint: "set GROK_API_KEY or run: grok and enter the key"},
+	}
 
 	h.Checks = append(h.Checks, ServerCheck{ID: "ssh", Label: "SSH connection", OK: true, Value: fmt.Sprintf("%s@%s", h.User, h.Hostname)})
 	h.Checks = append(h.Checks, ServerCheck{ID: "os", Label: "System", OK: true, Value: h.OS})
@@ -256,19 +305,6 @@ func (s *ServerService) Health(ctx context.Context, id string) ServerHealth {
 	}
 	h.Checks = append(h.Checks, ServerCheck{ID: "git", Label: "Git", OK: h.Git.Installed, Value: orDash(h.Git.Version), Hint: "Claude Code works better in a git checkout."})
 	h.Checks = append(h.Checks, ServerCheck{ID: "node", Label: "Node.js", OK: h.Node.Installed, Value: orDash(h.Node.Version), Hint: "Not required by the native Claude Code installer, but many projects need it."})
-	if h.Claude.Installed {
-		h.Checks = append(h.Checks, ServerCheck{ID: "claude", Label: "Claude Code", OK: true, Value: fmt.Sprintf("%s (%s)", orDash(h.Claude.Version), h.Claude.Path)})
-		switch {
-		case h.Claude.LoggedIn && h.Claude.Account != "":
-			h.Checks = append(h.Checks, ServerCheck{ID: "claude-login", Label: "Claude login", OK: true, Value: h.Claude.Account})
-		case h.Claude.LoggedIn:
-			h.Checks = append(h.Checks, ServerCheck{ID: "claude-login", Label: "Claude login", OK: true, Value: "credentials present"})
-		default:
-			h.Checks = append(h.Checks, ServerCheck{ID: "claude-login", Label: "Claude login", OK: false, Value: "not logged in", Hint: "Open the terminal and run: claude, then /login."})
-		}
-	} else {
-		h.Checks = append(h.Checks, ServerCheck{ID: "claude", Label: "Claude Code", OK: false, Value: "not installed", Hint: "Install it from here; it goes to ~/.local/bin for this user."})
-	}
 	s.store.MarkServerOK(id)
 	return h
 }
@@ -301,6 +337,80 @@ func (s *ServerService) InstallClaude(ctx context.Context, id string) (string, e
 		out = "…" + out[len(out)-6000:]
 	}
 	return out, nil
+}
+
+// InstallAgent installs one of the coding agent CLIs for the SSH user and returns the tail of the output.
+func (s *ServerService) InstallAgent(ctx context.Context, id, agent string) (string, error) {
+	var cmd string
+	switch agent {
+	case "claude":
+		return s.InstallClaude(ctx, id)
+	case "codex":
+		cmd = "npm install -g @openai/codex 2>&1; echo \"exit=$?\"; codex --version 2>&1"
+	case "gemini":
+		cmd = "npm install -g @google/gemini-cli 2>&1; echo \"exit=$?\"; gemini --version 2>&1"
+	case "grok":
+		cmd = "npm install -g @vibe-kit/grok-cli 2>&1; echo \"exit=$?\"; grok --version 2>&1"
+	default:
+		return "", fmt.Errorf("unknown agent %q", agent)
+	}
+	p, err := s.profile(id)
+	if err != nil {
+		return "", err
+	}
+	client, err := sshx.Dial(ctx, target(p), knownHostsPath())
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+	res, err := sshx.Run(ctx, client, "command -v npm >/dev/null 2>&1 || { echo 'npm is not installed on this server; install Node.js first'; exit 1; }; "+cmd, 8*time.Minute)
+	out := strings.TrimSpace(res.Stdout + "\n" + res.Stderr)
+	if len(out) > 6000 {
+		out = "…" + out[len(out)-6000:]
+	}
+	return out, err
+}
+
+// ---- projects ----------------------------------------------------------------
+
+func (s *ServerService) AddProject(id, name, dir, agent string) ([]ServerView, error) {
+	name, dir = strings.TrimSpace(name), strings.TrimSpace(dir)
+	if name == "" {
+		name = dir
+	}
+	if name == "" {
+		return nil, fmt.Errorf("a name or folder is required")
+	}
+	if _, err := s.store.AddProject(id, store.ServerProject{Name: name, Dir: dir, Agent: agent}); err != nil {
+		return nil, err
+	}
+	return s.List(), nil
+}
+
+func (s *ServerService) UpdateProject(id, projectID, name, dir string) ([]ServerView, error) {
+	if _, err := s.store.UpdateProject(id, projectID, func(pr *store.ServerProject) {
+		if strings.TrimSpace(name) != "" {
+			pr.Name = strings.TrimSpace(name)
+		}
+		pr.Dir = strings.TrimSpace(dir)
+	}); err != nil {
+		return nil, err
+	}
+	return s.List(), nil
+}
+
+func (s *ServerService) RemoveProject(id, projectID string) ([]ServerView, error) {
+	if _, err := s.store.RemoveProject(id, projectID); err != nil {
+		return nil, err
+	}
+	return s.List(), nil
+}
+
+func (s *ServerService) SelectProject(id, projectID string) ([]ServerView, error) {
+	if _, err := s.store.SelectProject(id, projectID); err != nil {
+		return nil, err
+	}
+	return s.List(), nil
 }
 
 // OpenShell starts an interactive login shell and streams it as ssh:out events.
