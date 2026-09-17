@@ -20,3 +20,6 @@ out/
 frontend/bindings/
 plugin/node_modules/
 plugin/dist/
+
+# Private planning notes
+SERVER-IDEAS.md
