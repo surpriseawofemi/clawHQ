@@ -240,6 +240,17 @@ The Terminal tab is a real login shell (xterm in the page, a PTY over SSH in
 Go) that opens in the project folder; run `claude` there for the full Claude
 Code, and `/login` once to sign in.
 
+#### Files tab
+
+The Files tab on a server is an SFTP browser: breadcrumbs, a path box, a
+filter, folders first. Clicking a text file opens it in an editor with Save
+(⌘S) that writes to a temporary name and renames over the original; Markdown
+gets a preview above the editor, images a preview, binaries a download
+button. Upload opens the Mac's file picker and shows progress per file;
+Download opens a save dialog. Rename, delete (folders recursively), new folder
+and new file are on each row. ClawHQ keeps one SFTP connection per server open
+and drops it after five idle minutes; the editor refuses files over 2 MB.
+
 ### Images in replies
 
 When an agent attaches an image to a reply (the gateway stores it as an image

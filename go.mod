@@ -3,6 +3,7 @@ module github.com/surpriseawofemi/clawhq
 go 1.26.0
 
 require (
+	github.com/pkg/sftp v1.13.11
 	github.com/wailsapp/wails/v3 v3.0.0-beta.21
 	golang.org/x/crypto v0.57.0
 	modernc.org/sqlite v1.59.0
@@ -13,6 +14,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/mod v0.38.0 // indirect

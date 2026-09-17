@@ -424,3 +424,8 @@ export type ServerHealth = {
   claude: { installed: boolean; version: string; path: string; loggedIn: boolean; account: string }
   checks: ServerCheck[]
 }
+
+export type FileEntry = { name: string; path: string; isDir: boolean; size: number; modMs: number; mode: string; link: boolean }
+export type DirListing = { path: string; parent: string; home: string; entries: FileEntry[] }
+export type FileContent = { path: string; size: number; modMs: number; mime: string; isText: boolean; text?: string; truncated: boolean; dataUrl?: string }
+export type Transfer = { serverId: string; name: string; done: number; total: number; finished: boolean; error?: string }

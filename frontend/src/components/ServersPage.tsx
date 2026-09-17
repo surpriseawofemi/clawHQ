@@ -3,9 +3,10 @@ import { api } from '../api'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
 import type { ServerHealth, ServerProfile } from '../types'
 import { TerminalView } from './TerminalView'
+import { FilesView } from './FilesView'
 
 type Props = { shell: ShellProps }
-type Tab = 'health' | 'terminal'
+type Tab = 'health' | 'files' | 'terminal'
 
 const empty = (): ServerProfile => ({ id: '', name: '', host: '', port: 22, user: 'root', auth: 'agent', keyPath: '', password: '', dir: '', addedAtMs: 0 })
 
@@ -229,6 +230,9 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               <button className={tab === 'health' ? 'is-active' : ''} onClick={() => setTab('health')}>
                 Health
               </button>
+              <button className={tab === 'files' ? 'is-active' : ''} onClick={() => setTab('files')}>
+                Files
+              </button>
               <button className={tab === 'terminal' ? 'is-active' : ''} onClick={() => setTab('terminal')}>
                 Terminal{termStatus === 'connected' ? ' ·' : ''}
               </button>
@@ -240,7 +244,11 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               Forget
             </button>
           </ContentHead>
-          {tab === 'terminal' ? (
+          {tab === 'files' ? (
+            <div className="content-body files-body">
+              <FilesView serverId={selected.id} startDir={selected.dir || undefined} />
+            </div>
+          ) : tab === 'terminal' ? (
             <div className="content-body term-body">
               <TerminalView serverId={selected.id} onStatus={setTermStatus} />
               <p className="field-hint">

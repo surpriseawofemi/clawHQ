@@ -80,6 +80,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 50 | Servers page (no OpenClaw involved): SSH profiles kept locally (agent, key file or password; host keys trusted on first use in ClawHQ's own known_hosts), a health page per server (system, disk, memory, git, Node, Claude Code installed/version/login), one-click Claude Code install (Anthropic's native installer), and an xterm terminal over SSH that lands in the project folder. Next: a chat page backed by headless Claude Code, more coding agents | v0.1.57 |
 | 51 | Top bar is a real drag region: the stylesheet used Electron's `-webkit-app-region`, which the Wails runtime ignores; `--wails-draggable` added everywhere, interactive controls excluded | v0.1.58 |
 | 52 | Smoother live resize: the macOS window is made opaque with a solid backing colour (Wails creates every window transparent), and long lists use `content-visibility: auto` so off-screen rows skip layout during a resize | v0.1.59 |
+| 53 | Servers → Files: SFTP browser with breadcrumbs, path box and filter; text editor with save (⌘S), Markdown and image preview; upload from the native picker with progress, download to a save dialog, rename, delete, new folder and file; one SFTP connection per server kept open five idle minutes | v0.1.60 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now

@@ -5,6 +5,7 @@ import {
   DaemonService,
   DiagService,
   ExecLogService,
+  FileService,
   GatewayService,
   InboxService,
   LoginService,
@@ -34,7 +35,10 @@ import type {
   UpdateStatus,
   NodeNotification,
   ServerProfile,
-  ServerHealth
+  ServerHealth,
+  DirListing,
+  FileContent,
+  Transfer
 } from './types'
 
 /**
@@ -182,6 +186,23 @@ export const api = {
     resize: (shellId: string, cols: number, rows: number): Promise<void> => ServerService.Resize(shellId, cols, rows),
     closeShell: (shellId: string): Promise<void> => ServerService.CloseShell(shellId)
   },
+  files: {
+    list: (serverId: string, dir: string): Promise<DirListing> => FileService.List(serverId, dir) as Promise<DirListing>,
+    read: (serverId: string, path: string): Promise<FileContent> => FileService.Read(serverId, path) as Promise<FileContent>,
+    write: (serverId: string, path: string, text: string): Promise<FileContent> => FileService.Write(serverId, path, text) as Promise<FileContent>,
+    mkdir: (serverId: string, path: string): Promise<void> => FileService.Mkdir(serverId, path),
+    touch: (serverId: string, path: string): Promise<void> => FileService.Touch(serverId, path),
+    rename: (serverId: string, from: string, to: string): Promise<void> => FileService.Rename(serverId, from, to),
+    remove: (serverId: string, path: string): Promise<void> => FileService.Delete(serverId, path),
+    /** Opens the native picker and uploads the chosen files into the folder. */
+    upload: (serverId: string, dir: string): Promise<string[]> => FileService.Upload(serverId, dir).then((r) => r ?? []),
+    download: (serverId: string, path: string): Promise<string> => FileService.Download(serverId, path)
+  },
+  onFileProgress: (cb: (t: Transfer) => void): (() => void) =>
+    Events.On('files:progress', (raw: any) => {
+      const t = eventPayload<Transfer>(raw)
+      if (t) cb(t)
+    }),
   /** Terminal output (base64 chunks) and exits for open shells. */
   onShellOut: (cb: (e: { id: string; data: string }) => void): (() => void) =>
     Events.On('ssh:out', (raw: any) => {
