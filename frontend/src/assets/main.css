@@ -3608,13 +3608,13 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 
 /* Terminal tabs */
 .term-tabs-wrap { flex: 1; min-height: 320px; display: flex; flex-direction: column; gap: 6px; }
-.term-tabs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.term-tab { display: flex; align-items: center; gap: 7px; padding: 5px 8px 5px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); cursor: pointer; font-size: 12.5px; color: var(--text-dim); }
+.term-tabs { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.term-tab { display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px 2px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); cursor: pointer; font-size: 11.5px; line-height: 1.2; color: var(--text-dim); }
 .term-tab.is-active { color: var(--text); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); background: color-mix(in srgb, var(--accent) 12%, var(--bg-raised)); }
-.term-tab .desk-dot { position: static; }
-.term-tab-close { border: none; background: none; color: var(--text-faint); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+.term-tab .desk-dot { position: static; width: 6px; height: 6px; }
+.term-tab-close { border: none; background: none; color: var(--text-faint); cursor: pointer; font-size: 12px; line-height: 1; padding: 0 2px; }
 .term-tab-close:hover { color: var(--text); }
-.term-tab-add { border: 1px dashed var(--border); background: none; color: var(--text-dim); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+.term-tab-add { border: 1px dashed var(--border); background: none; color: var(--text-dim); border-radius: 6px; padding: 1px 7px; cursor: pointer; font-size: 12px; line-height: 1.2; }
 .term-ended { background: color-mix(in srgb, var(--text-dim) 25%, #0b0d13); }
 
 /* Quick actions */

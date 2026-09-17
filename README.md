@@ -250,8 +250,8 @@ folder and history is read from its session file. Text streams in, tool calls
 and results fold, the cost of each run shows in the bar, and the bell rings
 when a run ends. Messages typed while it works queue and send when the run
 ends; Send now stops the run first. Permission modes map to Claude Code's
-flags: auto never asks, semi-auto allows reads, edits and a list of safe
-commands and refuses the rest, manual allows reads only. Headless Claude Code
+flags: Auto (the default) never asks, Semi allows reads, edits and a list of
+safe commands and refuses the rest, Manual allows reads only. Headless Claude Code
 cannot ask questions mid-run, so a refused action shows as a refusal in the
 transcript; answer it in your next message or use the terminal.
 

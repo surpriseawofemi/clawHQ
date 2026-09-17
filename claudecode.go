@@ -97,10 +97,10 @@ func (s *ClaudeService) profile(id string) (store.ServerProfile, error) {
 
 func modeOf(p store.ServerProfile) string {
 	switch p.ClaudeMode {
-	case "auto", "manual":
+	case "semi", "manual":
 		return p.ClaudeMode
 	}
-	return "semi"
+	return "auto"
 }
 
 // State is what the chat tab needs to draw itself.

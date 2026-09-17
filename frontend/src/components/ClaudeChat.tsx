@@ -203,10 +203,10 @@ export function ClaudeChat({ serverId, serverName }: { serverId: string; serverN
             </div>
           )}
         </div>
-        <select value={state?.mode ?? 'semi'} onChange={(e) => void api.claude.setMode(serverId, e.target.value).then(setState).catch((err) => setError(String(err)))} aria-label="Permission mode" title="What Claude Code may do here without asking">
-          <option value="auto">Auto: runs anything</option>
-          <option value="semi">Semi-auto: reads and edits, safe commands</option>
-          <option value="manual">Manual: reads only</option>
+        <select value={state?.mode ?? 'auto'} onChange={(e) => void api.claude.setMode(serverId, e.target.value).then(setState).catch((err) => setError(String(err)))} aria-label="Permission mode" title="Auto: runs anything. Semi: reads, edits and safe commands. Manual: reads only.">
+          <option value="auto">Auto</option>
+          <option value="semi">Semi</option>
+          <option value="manual">Manual</option>
         </select>
         <span className="plugin-desc cc-dir">{state?.dir || '~'}</span>
         {cost && <span className="plugin-desc">{cost}</span>}

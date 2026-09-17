@@ -134,7 +134,7 @@ type ServerProfile struct {
 	LastOkAtMs int64  `json:"lastOkAtMs,omitempty"`
 	// ClaudeMode is how headless Claude Code handles permissions here:
 	// auto (never asks), semi (edits and safe reads allowed, the rest refused) or
-	// manual (only reads). Empty means semi.
+	// manual (only reads). Empty means auto.
 	ClaudeMode string `json:"claudeMode,omitempty"`
 	// ClaudeSessionID is the Claude Code session the chat tab resumes.
 	ClaudeSessionID string `json:"claudeSessionId,omitempty"`

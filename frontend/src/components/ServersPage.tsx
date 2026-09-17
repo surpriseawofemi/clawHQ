@@ -72,11 +72,6 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
     if (selected && !health[selected.id] && busy === null) void check(selected.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id])
-  // A server with a working Claude Code opens on its chat.
-  useEffect(() => {
-    if (h && h.ok && h.claude.installed && h.claude.loggedIn && tab === 'health' && !editing) setTab('chat')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [h?.checkedAtMs])
 
   const save = async (): Promise<void> => {
     if (!editing) return
