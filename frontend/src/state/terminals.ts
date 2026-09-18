@@ -22,6 +22,7 @@ export type Term = {
   status: 'connecting' | 'connected' | 'ended' | 'error'
   error?: string
   attached: HTMLElement | null
+  menuWired?: boolean
 }
 
 const terms: Term[] = []
@@ -137,13 +138,16 @@ export const terminals = {
   attach(id: string, el: HTMLElement): void {
     const t = terms.find((x) => x.id === id)
     if (!t) return
-    if (!t.term.element) {
-      t.term.open(el)
-      t.term.element?.addEventListener('contextmenu', (e) => {
+    if (!t.term.element) t.term.open(el)
+    else el.appendChild(t.term.element)
+    if (!t.menuWired) {
+      t.menuWired = true
+      const node = t.term.element as HTMLElement | undefined
+      node?.addEventListener('contextmenu', (e) => {
         e.preventDefault()
         void terminals.paste(t.id)
       })
-    } else el.appendChild(t.term.element)
+    }
     t.attached = el
     t.fit.fit()
     t.term.focus()
