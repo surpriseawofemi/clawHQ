@@ -22,6 +22,8 @@ import (
 type ServerService struct {
 	store  *store.Store
 	app    *application.App
+	files  *FileService
+	claude *ClaudeService
 	mu     sync.Mutex
 	shells map[string]*openShell
 	cmds   map[string]*openCommand
