@@ -44,7 +44,9 @@ import type {
   ClaudeEvent,
   ClaudeMsg,
   ClaudeSession,
-  ClaudeState
+  ClaudeState,
+  ServerRun,
+  SessionUsage
 } from './types'
 
 /**
@@ -220,7 +222,9 @@ export const api = {
     send: (serverId: string, text: string): Promise<string> => ClaudeService.Send(serverId, text),
     abort: (serverId: string): Promise<void> => ClaudeService.Abort(serverId),
     sessions: (serverId: string): Promise<ClaudeSession[]> => ClaudeService.Sessions(serverId).then((r) => (r ?? []) as ClaudeSession[]),
-    history: (serverId: string): Promise<ClaudeMsg[]> => ClaudeService.History(serverId).then((r) => (r ?? []) as ClaudeMsg[])
+    history: (serverId: string): Promise<ClaudeMsg[]> => ClaudeService.History(serverId).then((r) => (r ?? []) as ClaudeMsg[]),
+    runsSince: (atMs: number): Promise<ServerRun[]> => ClaudeService.RunsSince(atMs).then((r) => (r ?? []) as ServerRun[]),
+    usageSince: (serverId: string, atMs: number): Promise<SessionUsage[]> => ClaudeService.UsageSince(serverId, atMs).then((r) => (r ?? []) as SessionUsage[])
   },
   onClaudeEvent: (cb: (e: ClaudeEvent) => void): (() => void) =>
     Events.On('claude:event', (raw: any) => {

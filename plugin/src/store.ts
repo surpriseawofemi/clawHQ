@@ -114,6 +114,26 @@ export type Issue = {
   replies: IssueReply[];
 };
 
+/** A ClawHQ's servers, as it registers them (names only, never credentials). */
+export type ServerEntry = { id: string; name: string; projects: { id: string; name: string; agent: string }[] };
+export type ServerRegistration = { clawhqId: string; atMs: number; servers: ServerEntry[] };
+
+/** A task an agent handed to a server's coding agent; a ClawHQ runs it. */
+export type ServerTask = {
+  id: string;
+  serverId: string;
+  serverName: string;
+  projectId?: string;
+  task: string;
+  from: string;
+  status: "queued" | "running" | "done" | "failed";
+  claimedBy?: string;
+  result?: string;
+  costUsd?: number;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
 export type State = {
   version: number;
   departments: Department[];
@@ -128,9 +148,11 @@ export type State = {
   /** Per agent: the board post its current Team Chat turn answers. */
   teamTurn: Record<string, { postId: string; hops: number; atMs: number }>;
   issues: Issue[];
+  serverRegistry: Record<string, ServerRegistration>;
+  serverTasks: ServerTask[];
 };
 
-const LIMITS = { notices: 1000, execLog: 5000, activity: 2000, tasks: 2000, team: 2000, issues: 2000 };
+const LIMITS = { notices: 1000, execLog: 5000, activity: 2000, tasks: 2000, team: 2000, issues: 2000, serverTasks: 500 };
 
 const empty = (): State => ({
   version: 1,
@@ -144,6 +166,8 @@ const empty = (): State => ({
   teamSeen: {},
   teamTurn: {},
   issues: [],
+  serverRegistry: {},
+  serverTasks: [],
 });
 
 export class Store {
@@ -195,6 +219,8 @@ export class Store {
         s.teamSeen = s.teamSeen ?? {};
         s.teamTurn = s.teamTurn ?? {};
         s.issues = (s.issues ?? []).slice(-LIMITS.issues);
+      s.serverRegistry = s.serverRegistry ?? {};
+      s.serverTasks = (s.serverTasks ?? []).slice(-LIMITS.serverTasks);
         const tmp = `${this.file}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.tmp`;
         await fs.writeFile(tmp, JSON.stringify(s), "utf8");
         await fs.rename(tmp, this.file);

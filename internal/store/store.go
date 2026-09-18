@@ -115,6 +115,9 @@ type Config struct {
 	// Servers are machines ClawHQ reaches over SSH: health, Claude Code, a terminal.
 	// Local to this machine; the gateway never sees them.
 	Servers []ServerProfile `json:"servers"`
+	// InstanceID names this ClawHQ install to the gateway plugin (server tasks are
+	// claimed by the install that owns the server).
+	InstanceID string `json:"instanceId,omitempty"`
 }
 
 // ServerProfile is one SSH target. The password (or key passphrase) is kept in this
@@ -584,6 +587,20 @@ func (s *Store) SelectProject(serverID, projectID string) (Config, error) {
 		}
 	}
 	return s.writeLocked(cfg)
+}
+
+// EnsureInstanceID returns this install's id, minting one the first time.
+func (s *Store) EnsureInstanceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	if cfg.InstanceID != "" {
+		return cfg.InstanceID
+	}
+	host, _ := os.Hostname()
+	cfg.InstanceID = fmt.Sprintf("%s-%d", strings.ToLower(strings.SplitN(host, ".", 2)[0]), time.Now().UnixMilli()%1000000)
+	_, _ = s.writeLocked(cfg)
+	return cfg.InstanceID
 }
 
 // SetServerMonitor turns the periodic health check on or off.

@@ -4,7 +4,7 @@ import { useLiveRefresh } from '../state/useLiveRefresh'
 import { plugin, splitReport, teamPrompt, teamSessionKey } from '../state/plugin'
 import { bossSessionKey } from '../state/useFleet'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
-import type { Agent, ChatMessage, Presence, TeamPost } from '../types'
+import type { Agent, ChatMessage, Presence, ServerProfile, TeamPost } from '../types'
 import { agentEmoji, agentLabel, messageText } from '../types'
 import { renderMarkdown } from '../markdown'
 
@@ -21,6 +21,9 @@ type Props = {
 
 type Channel = 'room' | 'boss'
 
+/** How a server is addressed on the board: @its-name, lowercased, spaces to dashes. */
+export const serverSlug = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'server'
+
 /** Agent-to-agent replies stop after this many hops, so two agents cannot loop. */
 const MAX_HOPS = 3
 
@@ -33,14 +36,14 @@ const timeOf = (ms: number): string => {
 }
 
 /** Markdown (bold, lists, code) with @mentions turned into chips. */
-function PostText({ text, agents }: { text: string; agents: Agent[] }): React.JSX.Element {
+function PostText({ text, agents, servers = [] }: { text: string; agents: Agent[]; servers?: ServerProfile[] }): React.JSX.Element {
   const html = useMemo(() => {
-    const known = new Set([...agents.map((a) => a.id.toLowerCase()), 'all', 'boss'])
+    const known = new Set([...agents.map((a) => a.id.toLowerCase()), ...servers.map((sv) => serverSlug(sv.name)), 'all', 'boss'])
     return renderMarkdown(text).replace(/(^|[\s>(])@([\w.-]+)/g, (_m, pre: string, id: string) => {
       const cls = known.has(id.toLowerCase()) ? 'mention' : 'mention is-unknown'
       return `${pre}<span class="${cls}">@${id}</span>`
     })
-  }, [text, agents])
+  }, [text, agents, servers])
   return <div className="md-body team-md" dangerouslySetInnerHTML={{ __html: html }} />
 }
 
@@ -65,6 +68,16 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
   const [channel, setChannel] = useState<Channel>('room')
   const [posts, setPosts] = useState<TeamPost[]>([])
   const [presence, setPresence] = useState<Record<string, Presence>>({})
+  // Servers join the room as members: @name runs a turn on that machine's coding
+  // agent and its reply is posted back to the board.
+  const [servers, setServers] = useState<ServerProfile[]>([])
+  const [serverRuns, setServerRuns] = useState<Record<string, { serverId: string; slug: string; hops: number }>>({})
+  const serverRunsRef = useRef(serverRuns)
+  serverRunsRef.current = serverRuns
+  useEffect(() => {
+    api.servers.list().then(setServers).catch(() => undefined)
+  }, [])
+  const serverBySlug = useCallback((slug: string) => servers.find((sv) => serverSlug(sv.name) === slug.toLowerCase()), [servers])
   const [pluginPresent, setPluginPresent] = useState<boolean | null>(null)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
@@ -111,6 +124,42 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
   )
 
   const live = useLiveRefresh(refresh, 6000)
+  const giveServerTurn = useCallback(
+    async (post: TeamPost, sv: ServerProfile, from: string) => {
+      const mark = `${post.id}:${sv.id}`
+      if (handled.current.has(mark)) return
+      handled.current.add(mark)
+      const prompt = `Team Chat message from ${from} to you (the coding agent on the server "${sv.name}"), via ClawHQ:\n\n${post.text}\n\nYour reply is posted to the shared Team Chat board. Keep it short; do the work in the project if the message asks for it.`
+      try {
+        const runId = await api.claude.send(sv.id, prompt)
+        setServerRuns((prev) => ({ ...prev, [runId]: { serverId: sv.id, slug: serverSlug(sv.name), hops: (post.hops ?? 0) + 1 } }))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    []
+  )
+  useEffect(
+    () =>
+      api.onClaudeEvent((e) => {
+        const link = serverRunsRef.current[e.runId]
+        if (!link) return
+        if (e.type === 'result' || e.type === 'error') {
+          const text = (e.text || '').trim() || (e.type === 'error' ? 'The run failed without output.' : 'Done.')
+          void plugin.team
+            .post(e.type === 'error' ? `❌ ${text}` : text, [], { from: link.slug, fromKind: 'agent', hops: link.hops })
+            .then(() => refresh())
+            .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+          setServerRuns((prev) => {
+            const n = { ...prev }
+            delete n[e.runId]
+            return n
+          })
+        }
+      }),
+    [refresh]
+  )
+
   useEffect(() => {
     void refresh()
     const off = api.onGatewayEvent(({ event, payload }) => {
@@ -127,18 +176,20 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
         const mentions = (p.mentions ?? []).map((m) => m.toLowerCase())
         const toAll = mentions.includes('all')
         const targets = agents.filter((a) => a.id !== p.from && (toAll || mentions.includes(a.id.toLowerCase())))
-        if (targets.length === 0) return
+        const serverTargets = servers.filter((sv) => serverSlug(sv.name) !== p.from && mentions.includes(serverSlug(sv.name)))
+        if (targets.length === 0 && serverTargets.length === 0) return
         void plugin.team.list(50).then((list) => {
           const post = list.find((x) => x.id === p.id)
           if (!post) return
           const fromAgent = agents.find((a) => a.id === p.from)
           const from = `${fromAgent ? agentLabel(fromAgent) : p.from} (agent @${p.from})`
           for (const t of targets) void giveTurn(post, t.id, toAll, from).catch((err) => setError(err instanceof Error ? err.message : String(err)))
+          for (const sv of serverTargets) void giveServerTurn(post, sv, from)
         })
       }
     })
     return off
-  }, [refresh, agents, giveTurn])
+  }, [refresh, agents, servers, giveTurn, giveServerTurn])
 
   // Super Boss: keep every agent's boss session loaded and subscribed.
   useEffect(() => {
@@ -151,7 +202,8 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
     if (channel === 'room') {
       return posts.map((p) => {
         const a = p.fromKind === 'agent' ? agents.find((x) => x.id === p.from) : undefined
-        return { id: p.id, atMs: p.atMs, agent: a, from: p.fromKind === 'human' ? 'You' : a ? agentLabel(a) : p.from, mine: p.fromKind === 'human', text: p.text, sessionKey: p.sessionKey }
+        const sv = !a && p.fromKind === 'agent' ? serverBySlug(p.from) : undefined
+        return { id: p.id, atMs: p.atMs, agent: a, from: p.fromKind === 'human' ? 'You' : a ? agentLabel(a) : sv ? `🖥 ${sv.name}` : p.from, mine: p.fromKind === 'human', text: p.text, sessionKey: p.sessionKey }
       })
     }
     const out: Line[] = []
@@ -166,7 +218,7 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
       }
     }
     return out.sort((x, y) => x.atMs - y.atMs)
-  }, [channel, posts, agents, messages])
+  }, [channel, posts, agents, messages, serverBySlug])
 
   useEffect(() => {
     const el = scroller.current
@@ -206,9 +258,13 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
   const candidates = useMemo(() => {
     if (!mentionQuery) return []
     const q = mentionQuery.q
-    const all = [{ id: 'all', label: 'Everyone', emoji: '📣' }, ...agents.map((a) => ({ id: a.id, label: agentLabel(a), emoji: agentEmoji(a) }))]
+    const all = [
+      { id: 'all', label: 'Everyone', emoji: '📣' },
+      ...agents.map((a) => ({ id: a.id, label: agentLabel(a), emoji: agentEmoji(a) })),
+      ...servers.map((sv) => ({ id: serverSlug(sv.name), label: `${sv.name} (server)`, emoji: '🖥' }))
+    ]
     return all.filter((c) => c.id.toLowerCase().startsWith(q) || c.label.toLowerCase().includes(q)).slice(0, 8)
-  }, [mentionQuery, agents])
+  }, [mentionQuery, agents, servers])
   const [hi, setHi] = useState(0)
   useEffect(() => setHi(0), [mentionQuery?.q])
 
@@ -257,7 +313,8 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
         const post = await plugin.team.post(text, all ? ['all'] : ids)
         setDraft('')
         void refresh()
-        await Promise.allSettled(ids.map((id) => giveTurn(post, id, all, 'the boss (human)')))
+        const mentionedServers = servers.filter((sv) => new RegExp(`(^|\\s)@${serverSlug(sv.name)}(?![\\w.-])`, 'i').test(text))
+        await Promise.allSettled([...ids.map((id) => giveTurn(post, id, all, 'the boss (human)')), ...mentionedServers.map((sv) => giveServerTurn(post, sv, 'the boss (human)'))])
       } else {
         setDraft('')
         await Promise.allSettled(
@@ -310,6 +367,26 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
         <button className={`team-channel${channel === 'boss' ? ' is-active' : ''}`} onClick={() => setChannel('boss')}>
           <span className="team-hash">✉</span> super boss
         </button>
+        {servers.length > 0 && (
+          <>
+            <div className="team-side-label">Servers · {servers.length}</div>
+            {servers.map((sv) => {
+              const busySv = Object.values(serverRuns).some((r) => r.serverId === sv.id)
+              return (
+                <button key={sv.id} className="team-member" onClick={() => insertMention(serverSlug(sv.name))} title={`Insert @${serverSlug(sv.name)}`}>
+                  <span className="team-member-avatar">
+                    🖥
+                    <i className={`desk-dot ${busySv ? 'is-working' : 'is-online'}`} />
+                  </span>
+                  <span className="team-member-meta">
+                    <span className="team-member-name">{sv.name}</span>
+                    <span className="team-member-sub">{busySv ? 'working…' : (sv.projects?.find((p) => p.id === sv.activeProjectId)?.agent ?? 'claude') + ' · @' + serverSlug(sv.name)}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </>
+        )}
         <div className="team-side-label">Agents · {agents.length}</div>
         {agents.map((a) => {
           const p = presence[a.id]
@@ -369,7 +446,7 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
                   )}
                 </div>
                 <div className="team-text">
-                  <PostText text={l.text} agents={agents} />
+                  <PostText text={l.text} agents={agents} servers={servers} />
                 </div>
               </div>
             </div>

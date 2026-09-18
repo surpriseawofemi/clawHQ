@@ -459,3 +459,8 @@ export type ClaudeEvent = {
   message?: { role?: string; content?: unknown }
   result?: { total_cost_usd?: number; duration_ms?: number; num_turns?: number; is_error?: boolean; subtype?: string }
 }
+
+/** One headless agent run on a server, from ClawHQ's local run log. */
+export type ServerRun = { serverId: string; serverName: string; projectId: string; project: string; agent: string; atMs: number; durationMs: number; costUsd: number; turns: number; ok: boolean; summary: string; source: 'chat' | 'task' }
+/** Token usage summed from Claude Code's session files on a server (terminal sessions included). */
+export type SessionUsage = { serverId: string; project: string; sessions: number; messages: number; inputTokens: number; outputTokens: number; cacheRead: number }

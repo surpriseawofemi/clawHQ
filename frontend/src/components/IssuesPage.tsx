@@ -5,7 +5,7 @@ import { renderMarkdown } from '../markdown'
 import { plugin } from '../state/plugin'
 import { bossSessionKey } from '../state/useFleet'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
-import type { Agent, Issue, IssueStatus, IssueUrgency } from '../types'
+import type { Agent, Issue, IssueStatus, IssueUrgency, ServerProfile } from '../types'
 import { agentEmoji, agentLabel } from '../types'
 
 type Props = {
@@ -44,7 +44,6 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent }: Props): Re
   const [error, setError] = useState<string | null>(null)
   const [composing, setComposing] = useState(false)
   const [nt, setNt] = useState({ title: '', body: '', agentId: '', urgency: 'normal' })
-
   const refresh = useCallback(async () => {
     try {
       const status = await api.plugin.status()
@@ -64,6 +63,57 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent }: Props): Re
     })
     return off
   }, [refresh])
+
+  // Servers: an issue can be handed to the coding agent on a machine; its answer
+  // comes back as a reply on the issue.
+  const [servers, setServers] = useState<ServerProfile[]>([])
+  const [serverRuns, setServerRuns] = useState<Record<string, { issueId: string; serverName: string }>>({})
+  useEffect(() => {
+    api.servers.list().then(setServers).catch(() => undefined)
+  }, [])
+  useEffect(
+    () =>
+      api.onClaudeEvent((e) => {
+        const link = serverRuns[e.runId]
+        if (!link) return
+        if (e.type === 'result' || e.type === 'error') {
+          const text = (e.text || '').trim() || (e.type === 'error' ? 'The run failed without output.' : 'Done, no summary given.')
+          void plugin.issues
+            .reply(link.issueId, e.type === 'error' ? `❌ ${text}` : text, { by: link.serverName, byKind: 'agent' })
+            .then(refresh)
+            .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+          setServerRuns((prev) => {
+            const n = { ...prev }
+            delete n[e.runId]
+            return n
+          })
+        }
+      }),
+    [serverRuns, refresh]
+  )
+  const sendToServer = async (issue: Issue, serverId: string): Promise<void> => {
+    const sv = servers.find((x) => x.id === serverId)
+    if (!sv) return
+    setBusy('server')
+    setError(null)
+    try {
+      const prompt = [
+        `Issue ${issue.id} from ClawHQ, handed to you by the boss: ${issue.title}`,
+        issue.body ? `\n${issue.body}` : '',
+        issue.replies.length ? `\nThread so far:\n${issue.replies.map((r) => `- ${r.by}: ${r.text}`).join('\n')}` : '',
+        '',
+        'Do what it asks in this project, then reply with a short report of what changed and anything still needing a decision.'
+      ].join('\n')
+      const runId = await api.claude.send(sv.id, prompt)
+      setServerRuns((prev) => ({ ...prev, [runId]: { issueId: issue.id, serverName: sv.name } }))
+      await plugin.issues.update(issue.id, { status: 'in-progress' })
+      void refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const ordered = useMemo(
     () =>
@@ -281,6 +331,24 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent }: Props): Re
                   <button className="btn btn-sm btn-ghost" onClick={() => onOpenAgent(a.id, selected.sessionKey)}>
                     Open {agentLabel(a)}
                   </button>
+                )}
+                {servers.length > 0 && (
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) void sendToServer(selected, e.target.value)
+                    }}
+                    disabled={busy !== null}
+                    aria-label="Send to a server"
+                    title="Hand this issue to the coding agent on a server; its report comes back as a reply"
+                  >
+                    <option value="">Send to server…</option>
+                    {servers.map((sv) => (
+                      <option key={sv.id} value={sv.id}>
+                        🖥 {sv.name}
+                      </option>
+                    ))}
+                  </select>
                 )}
                 <button className="btn btn-sm btn-ghost" onClick={() => void remove(selected)} disabled={busy !== null} title="Delete this issue">
                   Delete

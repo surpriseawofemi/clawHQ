@@ -197,7 +197,8 @@ func main() {
 
 	serverSvc := &ServerService{store: cfgStore}
 	fileSvc := &FileService{store: cfgStore}
-	claudeSvc := &ClaudeService{store: cfgStore, files: fileSvc}
+	runLog, _ := store.NewRunLog()
+	claudeSvc := &ClaudeService{store: cfgStore, files: fileSvc, runlog: runLog}
 	app = application.New(application.Options{
 		Name:        "ClawHQ",
 		Description: "Desktop command center for your OpenClaw agent org",
@@ -300,6 +301,7 @@ func main() {
 	fileSvc.app = app
 	claudeSvc.app = app
 	claudeSvc.notify = notify
+	bridge.claude = claudeSvc
 	go (&serverMonitor{servers: serverSvc, notify: notify}).run()
 
 	// Menu bar presence: the node keeps serving after the window is closed.

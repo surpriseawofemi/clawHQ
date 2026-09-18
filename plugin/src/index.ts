@@ -6,7 +6,7 @@ import type {
   OpenClawPluginToolContext,
 } from "openclaw/plugin-sdk/core";
 import { Store, newId } from "./store.js";
-import type { Activity, Department, ExecRecord, Issue, IssueKind, IssueStatus, IssueUrgency, Notice, State, Task, TaskStatus, TeamPost } from "./store.js";
+import type { Activity, Department, ExecRecord, Issue, IssueKind, IssueStatus, IssueUrgency, Notice, ServerEntry, ServerTask, State, Task, TaskStatus, TeamPost } from "./store.js";
 
 /** Live state of one agent, kept in memory: what it is doing right now. */
 type Presence = {
@@ -38,7 +38,7 @@ const ISSUE_KINDS: IssueKind[] = ["question", "task", "issue", "improvement"];
 const ISSUE_STATUSES: IssueStatus[] = ["open", "in-progress", "resolved"];
 const ISSUE_URGENCIES: IssueUrgency[] = ["low", "normal", "high", "urgent"];
 
-export const PLUGIN_VERSION = "0.2.5";
+export const PLUGIN_VERSION = "0.2.6";
 
 /**
  * Super Boss Chat: one session per agent reserved for the human operator. ClawHQ
@@ -176,6 +176,33 @@ function register(api: OpenClawPluginApi): void {
     return post;
   };
 
+  const allServers = (s: State): (ServerEntry & { clawhqId: string })[] => {
+    const out: (ServerEntry & { clawhqId: string })[] = [];
+    const fresh = Date.now() - 7 * 24 * 3600 * 1000;
+    for (const reg of Object.values(s.serverRegistry ?? {})) {
+      if (reg.atMs < fresh) continue;
+      for (const sv of reg.servers) out.push({ ...sv, clawhqId: reg.clawhqId });
+    }
+    return out;
+  };
+
+  const createServerTask = async (p: { server: string; project?: string; task: string; from: string }): Promise<ServerTask> => {
+    const s = await store.load();
+    const want = p.server.trim().toLowerCase();
+    const sv = allServers(s).find((x) => x.id === p.server || x.name.toLowerCase() === want);
+    if (!sv) throw new Error(`no server named "${p.server}"; call clawhq_servers_list`);
+    let projectId: string | undefined;
+    if (p.project?.trim()) {
+      const pw = p.project.trim().toLowerCase();
+      projectId = sv.projects.find((x) => x.id === p.project || x.name.toLowerCase() === pw)?.id;
+      if (!projectId) throw new Error(`server "${sv.name}" has no project "${p.project}"; projects: ${sv.projects.map((x) => x.name).join(", ") || "none"}`);
+    }
+    const t: ServerTask = { id: newId("st"), serverId: sv.id, serverName: sv.name, projectId, task: p.task.trim(), from: p.from, status: "queued", createdAtMs: Date.now(), updatedAtMs: Date.now() };
+    await store.update((st) => { st.serverTasks.push(t); });
+    emit("clawhq.server.task", { id: t.id, serverId: t.serverId, clawhqId: sv.clawhqId });
+    return t;
+  };
+
   const createIssue = async (p: {
     kind?: string; title: string; body?: string; from: string; fromKind: "human" | "agent"; assigneeAgentId?: string; urgency?: string; sessionKey?: string;
   }): Promise<Issue> => {
@@ -238,7 +265,7 @@ function register(api: OpenClawPluginApi): void {
 
   method("clawhq.version", "operator.read", async () => ({
     version: PLUGIN_VERSION,
-    features: ["org", "inbox", "exec", "activity", "events", "orgContext", "presence", "tasks", "superboss", "team", "issues"],
+    features: ["org", "inbox", "exec", "activity", "events", "orgContext", "presence", "tasks", "superboss", "team", "issues", "servers"],
     stateFile: store.file,
   }));
 
@@ -461,7 +488,8 @@ function register(api: OpenClawPluginApi): void {
   });
   method("clawhq.team.post", "operator.write", async (p) => {
     const mentions = Array.isArray(p.mentions) ? (p.mentions as unknown[]).filter((m): m is string => typeof m === "string") : [];
-    const post = await postTeam({ text: str(p, "text"), from: str(p, "from") || "boss", fromKind: "human", mentions });
+    const fromKind = str(p, "fromKind") === "agent" ? "agent" : "human";
+    const post = await postTeam({ text: str(p, "text"), from: str(p, "from") || (fromKind === "human" ? "boss" : "agent"), fromKind, mentions, hops: num(p, "hops", 0) });
     return { post };
   });
   method("clawhq.issues.list", "operator.read", async (p) => {
@@ -474,7 +502,7 @@ function register(api: OpenClawPluginApi): void {
     issue: await createIssue({ kind: str(p, "kind"), title: str(p, "title"), body: str(p, "body"), from: str(p, "from") || "boss", fromKind: (str(p, "fromKind") === "agent" ? "agent" : "human"), assigneeAgentId: str(p, "assigneeAgentId"), urgency: str(p, "urgency"), sessionKey: str(p, "sessionKey") || undefined }),
   }));
   method("clawhq.issues.reply", "operator.write", async (p) => ({
-    issue: await updateIssue(str(p, "id"), {}, { by: str(p, "by") || "boss", byKind: "human", text: str(p, "text") }),
+    issue: await updateIssue(str(p, "id"), {}, { by: str(p, "by") || "boss", byKind: str(p, "byKind") === "agent" ? "agent" : "human", text: str(p, "text") }),
   }));
   method("clawhq.issues.update", "operator.write", async (p) => ({
     issue: await updateIssue(str(p, "id"), { status: str(p, "status") as IssueStatus || undefined, urgency: str(p, "urgency") as IssueUrgency || undefined, assigneeAgentId: typeof p.assigneeAgentId === "string" ? (p.assigneeAgentId as string) : undefined, title: str(p, "title") || undefined, body: typeof p.body === "string" ? (p.body as string) : undefined }),
@@ -484,6 +512,59 @@ function register(api: OpenClawPluginApi): void {
     await store.update((s) => { s.issues = s.issues.filter((x) => x.id !== id); });
     emit("clawhq.issues.changed", { id, status: "deleted" });
     return { ok: true };
+  });
+  // ---- servers: registered by each ClawHQ, worked by the ClawHQ that owns them ----
+  method("clawhq.servers.register", "operator.write", async (p) => {
+    const clawhqId = str(p, "clawhqId");
+    if (!clawhqId) throw new Error("clawhqId is required");
+    const servers = (Array.isArray(p.servers) ? (p.servers as ServerEntry[]) : []).map((sv) => ({
+      id: String(sv.id ?? ""),
+      name: String(sv.name ?? ""),
+      projects: (Array.isArray(sv.projects) ? sv.projects : []).map((pr) => ({ id: String(pr.id ?? ""), name: String(pr.name ?? ""), agent: String(pr.agent ?? "claude") })),
+    })).filter((sv) => sv.id && sv.name);
+    await store.update((s) => {
+      s.serverRegistry[clawhqId] = { clawhqId, atMs: Date.now(), servers };
+    });
+    return { ok: true, count: servers.length };
+  });
+  method("clawhq.servers.list", "operator.read", async () => {
+    const s = await store.load();
+    return { servers: allServers(s) };
+  });
+  method("clawhq.server.tasks.list", "operator.read", async (p) => {
+    const s = await store.load();
+    const status = str(p, "status");
+    return { tasks: (s.serverTasks ?? []).filter((t) => !status || t.status === status).slice(-num(p, "limit", 100)) };
+  });
+  method("clawhq.server.task.claim", "operator.write", async (p) => {
+    const id = str(p, "id");
+    const clawhqId = str(p, "clawhqId");
+    const out = await store.update((s) => {
+      const t = s.serverTasks.find((x) => x.id === id);
+      if (!t) throw new Error(`no server task ${id}`);
+      if (t.status !== "queued") return { ok: false, status: t.status, claimedBy: t.claimedBy };
+      t.status = "running";
+      t.claimedBy = clawhqId;
+      t.updatedAtMs = Date.now();
+      return { ok: true, task: { ...t } };
+    });
+    if (out.ok) emit("clawhq.server.task.changed", { id, status: "running" });
+    return out;
+  });
+  method("clawhq.server.task.result", "operator.write", async (p) => {
+    const id = str(p, "id");
+    const ok = p.ok !== false;
+    const out = await store.update((s) => {
+      const t = s.serverTasks.find((x) => x.id === id);
+      if (!t) throw new Error(`no server task ${id}`);
+      t.status = ok ? "done" : "failed";
+      t.result = str(p, "text").slice(0, 20000);
+      if (typeof p.costUsd === "number") t.costUsd = p.costUsd as number;
+      t.updatedAtMs = Date.now();
+      return { ...t };
+    });
+    emit("clawhq.server.task.changed", { id, status: out.status });
+    return { task: out };
   });
   method("clawhq.team.turn", "operator.write", async (p) => {
     // ClawHQ says which post it is handing an agent; the reply inherits hops+1.
@@ -683,6 +764,58 @@ function register(api: OpenClawPluginApi): void {
         },
       },
       {
+        name: "clawhq_servers_list",
+        label: "List servers",
+        description: "Servers registered in ClawHQ where a coding agent (Claude Code, Codex, Gemini or Grok) can work, with their project folders. Use clawhq_server_task to hand one a task.",
+        parameters: Type.Object({}),
+        async execute() {
+          const s = await store.load();
+          return jsonResult({ servers: allServers(s).map((x) => ({ id: x.id, name: x.name, projects: x.projects })) });
+        },
+      },
+      {
+        name: "clawhq_server_task",
+        label: "Run a task on a server",
+        description: "Hand an engineering task to the coding agent on a ClawHQ server (Claude Code on the machine, in the project folder). Costs that agent's own tokens. Waits up to ten minutes for the result and returns it; if it takes longer, the result arrives later via clawhq_server_tasks_list. Give a complete, self-contained task: what to change, where, and what done looks like.",
+        parameters: Type.Object({
+          server: Type.String({ description: "Server name or id from clawhq_servers_list" }),
+          project: Type.Optional(Type.String({ description: "Project name on that server; defaults to the active one" })),
+          task: Type.String({ description: "The full task, self-contained" }),
+          wait: Type.Optional(Type.Boolean({ description: "Wait for the result (default true)" })),
+        }),
+        async execute(_id: string, params: { server: string; project?: string; task: string; wait?: boolean }) {
+          const t = await createServerTask({ server: params.server, project: params.project, task: params.task, from: ctx.agentId ?? "agent" });
+          if (params.wait === false) return jsonResult({ ok: true, task: { id: t.id, status: t.status, server: t.serverName } });
+          const deadline = Date.now() + 10 * 60 * 1000;
+          while (Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, 2500));
+            const s = await store.load();
+            const cur = s.serverTasks.find((x) => x.id === t.id);
+            if (!cur) break;
+            if (cur.status === "done" || cur.status === "failed") {
+              return jsonResult({ ok: cur.status === "done", task: { id: cur.id, status: cur.status, server: cur.serverName, costUsd: cur.costUsd }, result: cur.result ?? "" });
+            }
+            if (cur.status === "queued" && Date.now() - cur.createdAtMs > 60 * 1000) {
+              return jsonResult({ ok: false, task: { id: cur.id, status: "queued", server: cur.serverName }, error: "no ClawHQ picked this up within a minute; the ClawHQ that owns this server is probably closed" });
+            }
+          }
+          return jsonResult({ ok: false, task: { id: t.id, status: "running", server: t.serverName }, error: "still running after ten minutes; check clawhq_server_tasks_list later" });
+        },
+      },
+      {
+        name: "clawhq_server_tasks_list",
+        label: "List server tasks",
+        description: "Tasks handed to servers and their results.",
+        parameters: Type.Object({
+          status: Type.Optional(Type.String({ description: "queued, running, done or failed" })),
+        }),
+        async execute(_id: string, params: { status?: string }) {
+          const s = await store.load();
+          const list = (s.serverTasks ?? []).filter((t) => !params.status || t.status === params.status).slice(-30);
+          return jsonResult({ tasks: list.map((t) => ({ id: t.id, server: t.serverName, status: t.status, from: t.from, task: t.task.slice(0, 200), result: (t.result ?? "").slice(0, 2000), costUsd: t.costUsd, at: new Date(t.createdAtMs).toISOString() })) });
+        },
+      },
+      {
         name: "clawhq_team_read",
         label: "Read Team Chat",
         description: "Read the latest posts on the ClawHQ Team Chat board.",
@@ -710,6 +843,9 @@ function register(api: OpenClawPluginApi): void {
         "clawhq_issue_create",
         "clawhq_issues_list",
         "clawhq_issue_update",
+        "clawhq_servers_list",
+        "clawhq_server_task",
+        "clawhq_server_tasks_list",
       ],
     },
   );

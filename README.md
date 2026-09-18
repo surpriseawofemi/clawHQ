@@ -265,6 +265,28 @@ added or from the chat bar. Codex chat runs `codex exec --json` and keeps the
 thread id for resume; Gemini and Grok chats stream plain text and are marked
 experimental until verified on a real server.
 
+#### Servers in the rest of ClawHQ
+
+- **Team Chat** lists servers as members. `@name` (the server's name, lowercased,
+  spaces as dashes) gives that machine's coding agent a turn with your post and
+  its reply lands on the board. Agents can address servers the same way, within
+  the usual hop cap. Nothing is sent to a server unless it is mentioned.
+- **Issues** have "Send to server…": the issue and its thread go to the coding
+  agent on that server as one run, the issue moves to in progress, and the
+  agent's report comes back as a reply.
+- **Digest** has a Servers section: runs started from ClawHQ (chat and tasks)
+  with duration and cost from a local run log, plus token counts summed from
+  Claude Code's own session files on each server, so terminal sessions count.
+  Nothing in the digest calls a model.
+- **OpenClaw agents** can hand work to a server through the plugin (0.2.6):
+  `clawhq_servers_list` shows servers and projects each ClawHQ has registered
+  (names only), `clawhq_server_task` queues a task and waits up to ten minutes
+  for the result, `clawhq_server_tasks_list` shows results later. The ClawHQ
+  that owns the server claims the task, runs it in the project with that
+  project's mode, and posts the result back; the bell rings when it lands. The
+  three tool descriptions add roughly a hundred tokens to each OpenClaw agent
+  turn; a task costs the server agent's own tokens only when one is handed over.
+
 #### Chat tab
 
 The Chat tab talks to Claude Code on the server without a terminal. Each

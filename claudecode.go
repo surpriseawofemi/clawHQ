@@ -30,6 +30,7 @@ type ClaudeService struct {
 	files  *FileService
 	app    *application.App
 	notify *notifier
+	runlog *store.RunLog
 	mu     sync.Mutex
 	runs   map[string]*claudeRun
 }
@@ -38,6 +39,15 @@ type claudeRun struct {
 	id      string
 	client  *ssh.Client
 	session *ssh.Session
+	// done receives the outcome once, for callers that wait (server tasks).
+	done chan runOutcome
+}
+
+type runOutcome struct {
+	Text    string
+	CostUsd float64
+	OK      bool
+	Err     string
 }
 
 // ClaudeEvent is what the page receives, one per stream-json record that matters.
@@ -238,31 +248,49 @@ func agentCommand(agent, sessionID, mode string) []string {
 
 // Send starts one headless turn for the active project. Records stream back as claude:event.
 func (s *ClaudeService) Send(ctx context.Context, id, text string) (string, error) {
+	_, runID, err := s.sendProject(ctx, id, "", text, "chat")
+	return runID, err
+}
+
+// sendProject starts a turn in a given project (empty: the active one) and returns
+// the run so a caller can wait on it.
+func (s *ClaudeService) sendProject(ctx context.Context, id, projectID, text, source string) (*claudeRun, string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return "", fmt.Errorf("nothing to send")
+		return nil, "", fmt.Errorf("nothing to send")
 	}
 	p, err := s.profile(id)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 	pr := p.Active()
+	if projectID != "" {
+		found := false
+		for _, x := range p.Projects {
+			if x.ID == projectID {
+				pr, found = x, true
+			}
+		}
+		if !found {
+			return nil, "", fmt.Errorf("no project %q on %s", projectID, p.Name)
+		}
+	}
 	agent := agentOfProject(pr)
 	s.mu.Lock()
 	if _, busy := s.runs[id]; busy {
 		s.mu.Unlock()
-		return "", fmt.Errorf("%s is still working on the previous message", agentLabel(agent))
+		return nil, "", fmt.Errorf("%s is still working on the previous message", agentLabel(agent))
 	}
 	s.mu.Unlock()
 
 	client, err := sshx.Dial(ctx, sshx.Target{Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, Password: p.Password}, knownHostsPath())
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 	sess, err := client.NewSession()
 	if err != nil {
 		client.Close()
-		return "", err
+		return nil, "", err
 	}
 	args := agentCommand(agent, pr.Sessions[agent], modeOfProject(pr))
 	var b strings.Builder
@@ -282,27 +310,28 @@ func (s *ClaudeService) Send(ctx context.Context, id, text string) (string, erro
 	if err != nil {
 		sess.Close()
 		client.Close()
-		return "", err
+		return nil, "", err
 	}
 	stdout, err := sess.StdoutPipe()
 	if err != nil {
 		sess.Close()
 		client.Close()
-		return "", err
+		return nil, "", err
 	}
 	var stderr strings.Builder
 	sess.Stderr = &stderr
 	if err := sess.Start(cmd); err != nil {
 		sess.Close()
 		client.Close()
-		return "", err
+		return nil, "", err
 	}
 	runID := fmt.Sprintf("cc-%d", time.Now().UnixMilli())
+	run := &claudeRun{id: runID, client: client, session: sess, done: make(chan runOutcome, 1)}
 	s.mu.Lock()
 	if s.runs == nil {
 		s.runs = map[string]*claudeRun{}
 	}
-	s.runs[id] = &claudeRun{id: runID, client: client, session: sess}
+	s.runs[id] = run
 	s.mu.Unlock()
 
 	go func() {
@@ -312,8 +341,8 @@ func (s *ClaudeService) Send(ctx context.Context, id, text string) (string, erro
 		}
 		_ = stdin.Close()
 	}()
-	go s.pump(id, runID, p, pr, agent, stdout, sess, client, &stderr)
-	return runID, nil
+	go s.pump(id, run, p, pr, agent, source, stdout, sess, client, &stderr)
+	return run, runID, nil
 }
 
 func agentLabel(agent string) string {
@@ -328,7 +357,10 @@ func agentLabel(agent string) string {
 	return "Claude Code"
 }
 
-func (s *ClaudeService) pump(id, runID string, p store.ServerProfile, pr store.ServerProject, agent string, stdout io.Reader, sess *ssh.Session, client *ssh.Client, stderr *strings.Builder) {
+func (s *ClaudeService) pump(id string, run *claudeRun, p store.ServerProfile, pr store.ServerProject, agent, source string, stdout io.Reader, sess *ssh.Session, client *ssh.Client, stderr *strings.Builder) {
+	runID := run.id
+	started := time.Now()
+	outcome := runOutcome{}
 	defer func() {
 		s.mu.Lock()
 		if r, ok := s.runs[id]; ok && r.id == runID {
@@ -338,7 +370,10 @@ func (s *ClaudeService) pump(id, runID string, p store.ServerProfile, pr store.S
 		sess.Close()
 		client.Close()
 		s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "done"})
+		run.done <- outcome
 	}()
+	var costUsd float64
+	turns := 0
 	sessionID := ""
 	remember := func(sid string) {
 		if sid == "" || sessionID != "" {
@@ -398,6 +433,12 @@ func (s *ClaudeService) pump(id, runID string, p store.ServerProfile, pr store.S
 				gotResult = true
 				finalText.Reset()
 				finalText.WriteString(rec.Result)
+				var meta struct {
+					Cost  float64 `json:"total_cost_usd"`
+					Turns int     `json:"num_turns"`
+				}
+				_ = json.Unmarshal([]byte(line), &meta)
+				costUsd, turns = meta.Cost, meta.Turns
 				s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "result", SessionID: sessionID, Text: rec.Result, Result: json.RawMessage(line)})
 			}
 		}
@@ -480,7 +521,18 @@ func (s *ClaudeService) pump(id, runID string, p store.ServerProfile, pr store.S
 		}
 		s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "error", Text: msg})
 		log.Printf("agents: %s: %s", p.Name, msg)
+		outcome = runOutcome{OK: false, Err: msg, Text: finalText.String()}
+		if s.runlog != nil {
+			s.runlog.Append(store.ServerRun{ServerID: p.ID, ServerName: p.Name, ProjectID: pr.ID, Project: pr.Name, Agent: agent, AtMs: started.UnixMilli(), DurationMs: time.Since(started).Milliseconds(), OK: false, Summary: firstLine(msg), Source: source})
+		}
 		return
+	}
+	outcome = runOutcome{OK: true, Text: finalText.String(), CostUsd: costUsd}
+	if s.runlog != nil {
+		s.runlog.Append(store.ServerRun{ServerID: p.ID, ServerName: p.Name, ProjectID: pr.ID, Project: pr.Name, Agent: agent, AtMs: started.UnixMilli(), DurationMs: time.Since(started).Milliseconds(), CostUsd: costUsd, Turns: turns, OK: true, Summary: firstLine(finalText.String()), Source: source})
+	}
+	if source == "task" {
+		return // the bell rings when the task's result reaches the board
 	}
 	if s.notify != nil {
 		body := strings.TrimSpace(finalText.String())
@@ -718,4 +770,123 @@ func parseBlocks(raw json.RawMessage) []ClaudeBlock {
 		}
 	}
 	return out
+}
+
+// RunTask runs one turn in a project and waits for the outcome, queueing behind a
+// run already in flight on that server for up to ten minutes. Used for tasks agents
+// hand to servers through the plugin.
+func (s *ClaudeService) RunTask(ctx context.Context, id, projectID, text string) (runOutcome, error) {
+	deadline := time.Now().Add(10 * time.Minute)
+	for {
+		run, _, err := s.sendProject(ctx, id, projectID, text, "task")
+		if err == nil {
+			select {
+			case out := <-run.done:
+				return out, nil
+			case <-ctx.Done():
+				_ = s.Abort(id)
+				return runOutcome{}, ctx.Err()
+			}
+		}
+		if !strings.Contains(err.Error(), "still working") || time.Now().After(deadline) {
+			return runOutcome{}, err
+		}
+		select {
+		case <-time.After(3 * time.Second):
+		case <-ctx.Done():
+			return runOutcome{}, ctx.Err()
+		}
+	}
+}
+
+// RunsSince lists logged runs for the digest.
+func (s *ClaudeService) RunsSince(atMs int64) []store.ServerRun {
+	if s.runlog == nil {
+		return []store.ServerRun{}
+	}
+	return s.runlog.Since(atMs)
+}
+
+// SessionUsage sums Claude Code token usage for a server's projects from the
+// session files themselves, so terminal sessions count too. Read-only: nothing
+// is sent to any model.
+type SessionUsage struct {
+	ServerID     string `json:"serverId"`
+	Project      string `json:"project"`
+	Sessions     int    `json:"sessions"`
+	Messages     int    `json:"messages"`
+	InputTokens  int64  `json:"inputTokens"`
+	OutputTokens int64  `json:"outputTokens"`
+	CacheRead    int64  `json:"cacheRead"`
+}
+
+func (s *ClaudeService) UsageSince(ctx context.Context, id string, sinceMs int64) ([]SessionUsage, error) {
+	p, err := s.profile(id)
+	if err != nil {
+		return nil, err
+	}
+	c, err := s.files.conn(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	home, _ := c.sftp.Getwd()
+	out := []SessionUsage{}
+	since := time.UnixMilli(sinceMs)
+	for _, pr := range p.Projects {
+		dir := pr.Dir
+		if dir == "" {
+			dir = home
+		}
+		pdir := projectDir(home, dir)
+		infos, err := c.sftp.ReadDir(pdir)
+		if err != nil {
+			continue
+		}
+		u := SessionUsage{ServerID: id, Project: pr.Name}
+		for _, fi := range infos {
+			if fi.IsDir() || !strings.HasSuffix(fi.Name(), ".jsonl") || fi.ModTime().Before(since) {
+				continue
+			}
+			f, err := c.sftp.Open(path.Join(pdir, fi.Name()))
+			if err != nil {
+				continue
+			}
+			sc := bufio.NewScanner(f)
+			sc.Buffer(make([]byte, 1<<20), 64<<20)
+			counted := false
+			for sc.Scan() {
+				var rec struct {
+					Type      string `json:"type"`
+					Timestamp string `json:"timestamp"`
+					Message   struct {
+						Usage struct {
+							Input     int64 `json:"input_tokens"`
+							Output    int64 `json:"output_tokens"`
+							CacheRead int64 `json:"cache_read_input_tokens"`
+						} `json:"usage"`
+					} `json:"message"`
+				}
+				if json.Unmarshal(sc.Bytes(), &rec) != nil || rec.Type != "assistant" {
+					continue
+				}
+				t, err := time.Parse(time.RFC3339Nano, rec.Timestamp)
+				if err != nil || t.Before(since) {
+					continue
+				}
+				u.Messages++
+				u.InputTokens += rec.Message.Usage.Input
+				u.OutputTokens += rec.Message.Usage.Output
+				u.CacheRead += rec.Message.Usage.CacheRead
+				counted = true
+			}
+			f.Close()
+			if counted {
+				u.Sessions++
+			}
+		}
+		if u.Sessions > 0 {
+			out = append(out, u)
+		}
+	}
+	return out, nil
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
+import type { ServerProfile, ServerRun, SessionUsage } from '../types'
 import { useLiveRefresh } from '../state/useLiveRefresh'
 import { plugin } from '../state/plugin'
 import { ContentHead, Shell, type ShellProps } from './layout/Shell'
@@ -39,6 +40,9 @@ export function Digest({ shell, agents, connected, onOpenAgent }: Props): React.
   const [commands, setCommands] = useState<ExecRecord[]>([])
   const [cron, setCron] = useState<CronRun[]>([])
   const [usage, setUsage] = useState<Record<string, Usage>>({})
+  const [serverRuns, setServerRuns] = useState<ServerRun[]>([])
+  const [serverUsage, setServerUsage] = useState<SessionUsage[]>([])
+  const [serverNames, setServerNames] = useState<Record<string, string>>({})
   const [pluginPresent, setPluginPresent] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -50,6 +54,19 @@ export function Digest({ shell, agents, connected, onOpenAgent }: Props): React.
     const to = from + 86_400_000
     const inDay = (ms: number) => ms >= from && ms < to
     try {
+      // Servers: the local run log plus token counts read from Claude Code's own
+      // session files, so terminal sessions count. Nothing here calls a model.
+      void (async () => {
+        try {
+          const [srvs, rl] = await Promise.all([api.servers.list(), api.claude.runsSince(from)])
+          setServerNames(Object.fromEntries(srvs.map((x: ServerProfile) => [x.id, x.name])))
+          setServerRuns(rl.filter((r) => inDay(r.atMs)))
+          const us = await Promise.all(srvs.map((x: ServerProfile) => api.claude.usageSince(x.id, from).catch(() => [] as SessionUsage[])))
+          setServerUsage(us.flat())
+        } catch {
+          /* no servers */
+        }
+      })()
       const [status, inbox, log] = await Promise.all([api.plugin.status(), api.inbox.list(), api.execLog.list()])
       setPluginPresent(status.present)
       setNotices(inbox.filter((n) => inDay(n.atMs)))
@@ -141,6 +158,14 @@ export function Digest({ shell, agents, connected, onOpenAgent }: Props): React.
     if (cron.length) {
       lines.push('## Automations')
       for (const c of cron) lines.push(`- ${time(c.ts)} ${c.jobName ?? c.jobId}: ${c.completionStatus ?? c.status}${c.error ? ` — ${c.error}` : ''}`)
+      lines.push('')
+    }
+    if (serverRuns.length || serverUsage.length) {
+      lines.push('## Servers')
+      const cost = serverRuns.reduce((n, r) => n + (r.costUsd || 0), 0)
+      lines.push(`${serverRuns.length} runs from ClawHQ${cost > 0 ? `, $${cost.toFixed(2)}` : ''}`)
+      for (const r of serverRuns) lines.push(`- ${time(r.atMs)} ${r.ok ? '' : '❌ '}${r.serverName} / ${r.project} (${r.agent}${r.source === 'task' ? ', task from an agent' : ''}): ${r.summary || 'run'}${r.costUsd ? ` — $${r.costUsd.toFixed(2)}` : ''}`)
+      for (const u of serverUsage) lines.push(`- ${serverNames[u.serverId] ?? u.serverId} / ${u.project}: ${u.sessions} Claude Code sessions, ${u.messages} replies, ${tokens(u.inputTokens + u.outputTokens)} tokens (+${tokens(u.cacheRead)} cached)`)
     }
     return lines.join('\n')
   }
@@ -238,6 +263,45 @@ export function Digest({ shell, agents, connected, onOpenAgent }: Props): React.
                     {c.completionStatus ?? c.status}
                     {c.durationMs ? ` · ${(c.durationMs / 1000).toFixed(1)}s` : ''}
                     {c.error ? ` · ${c.error}` : ''}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </section>
+        )}
+        {(serverRuns.length > 0 || serverUsage.length > 0) && (
+          <section className="digest-agent">
+            <h2>
+              <span>🖥️</span> Servers{' '}
+              <span className="plugin-desc">
+                {serverRuns.length} runs from ClawHQ
+                {serverRuns.some((r) => r.costUsd) ? ` · $${serverRuns.reduce((n, r) => n + (r.costUsd || 0), 0).toFixed(2)}` : ''}
+              </span>
+            </h2>
+            {serverRuns.map((r, i) => (
+              <div key={`${r.atMs}-${i}`} className={`home-row is-${r.ok ? 'ok' : 'bad'}`}>
+                <span className="home-time">{time(r.atMs)}</span>
+                <span className="home-main">
+                  <span className="home-title">
+                    {r.serverName} / {r.project} <span className="plugin-desc">{r.agent}{r.source === 'task' ? ' · task from an agent' : ''}</span>
+                  </span>
+                  <span className="home-detail">
+                    {r.summary || 'run'}
+                    {r.durationMs ? ` · ${Math.round(r.durationMs / 1000)}s` : ''}
+                    {r.costUsd ? ` · $${r.costUsd.toFixed(2)}` : ''}
+                  </span>
+                </span>
+              </div>
+            ))}
+            {serverUsage.map((u) => (
+              <div key={`${u.serverId}-${u.project}`} className="home-row is-plain">
+                <span className="home-time">all day</span>
+                <span className="home-main">
+                  <span className="home-title">
+                    {serverNames[u.serverId] ?? u.serverId} / {u.project} <span className="plugin-desc">Claude Code sessions, terminal included</span>
+                  </span>
+                  <span className="home-detail">
+                    {u.sessions} sessions · {u.messages} replies · {tokens(u.inputTokens + u.outputTokens)} tokens, {tokens(u.cacheRead)} from cache
                   </span>
                 </span>
               </div>

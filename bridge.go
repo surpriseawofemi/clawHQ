@@ -61,6 +61,12 @@ type pluginBridge struct {
 	// latest is the newest ClawHub version seen; upgrading is the step in flight.
 	latest    string
 	upgrading string
+
+	// claude runs server tasks agents hand over through the plugin.
+	claude  *ClaudeService
+	taskMu  sync.Mutex
+	tasks   map[string]bool
+	regLoop bool
 }
 
 func newPluginBridge(conn *gateway.Conn, st *store.Store, inbox *store.Inbox, host *node.Host, notify *notifier) *pluginBridge {
@@ -175,6 +181,9 @@ func (b *pluginBridge) detect(st gateway.Status) {
 		log.Printf("plugin: inbox catch-up: %v", err)
 	}
 	go b.checkLatest()
+	go b.registerServers()
+	go b.catchUpServerTasks()
+	b.keepRegistering()
 	// A gateway with a tool profile must list the plugin's tools or agents never see them.
 	if err := b.patchToolAllow(ctx); err != nil {
 		log.Printf("plugin: tool allowlist: %v", err)
@@ -656,7 +665,166 @@ func (b *pluginBridge) onGatewayEvent(ev gateway.Event) {
 		if b.notify != nil {
 			go b.notify.show(n)
 		}
+	case "clawhq.server.task":
+		var t struct {
+			ID       string `json:"id"`
+			ServerID string `json:"serverId"`
+			ClawhqID string `json:"clawhqId"`
+		}
+		if json.Unmarshal(ev.Payload, &t) == nil && t.ID != "" {
+			go b.workServerTask(t.ID, t.ServerID)
+		}
 	case "clawhq.org.changed":
 		go b.pullOrg()
+	}
+}
+
+// ---- servers handed to agents ------------------------------------------------
+
+// registerServers tells the plugin which servers this ClawHQ can work on: names
+// and projects only, never credentials.
+func (b *pluginBridge) registerServers() {
+	cfg := b.store.Read()
+	type proj struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Agent string `json:"agent"`
+	}
+	type srv struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Projects []proj `json:"projects"`
+	}
+	list := []srv{}
+	for _, sv := range cfg.Servers {
+		e := srv{ID: sv.ID, Name: sv.Name, Projects: []proj{}}
+		for _, pr := range sv.Projects {
+			e.Projects = append(e.Projects, proj{ID: pr.ID, Name: pr.Name, Agent: pr.Agent})
+		}
+		list = append(list, e)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := b.request(ctx, "clawhq.servers.register", map[string]any{"clawhqId": b.store.EnsureInstanceID(), "servers": list}); err != nil {
+		log.Printf("plugin: servers not registered: %v", err)
+	}
+}
+
+// keepRegistering re-registers the server list every ten minutes while the plugin
+// is present, so added projects and renamed servers reach the agents.
+func (b *pluginBridge) keepRegistering() {
+	b.mu.Lock()
+	if b.regLoop {
+		b.mu.Unlock()
+		return
+	}
+	b.regLoop = true
+	b.mu.Unlock()
+	go func() {
+		for range time.Tick(10 * time.Minute) {
+			b.mu.Lock()
+			present := b.status.Present
+			b.mu.Unlock()
+			if present {
+				b.registerServers()
+			}
+		}
+	}()
+}
+
+func (b *pluginBridge) ownsServer(id string) bool {
+	for _, sv := range b.store.Read().Servers {
+		if sv.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// catchUpServerTasks runs tasks queued while this ClawHQ was away.
+func (b *pluginBridge) catchUpServerTasks() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	raw, err := b.request(ctx, "clawhq.server.tasks.list", map[string]any{"status": "queued", "limit": 50})
+	if err != nil {
+		return
+	}
+	var res struct {
+		Tasks []struct {
+			ID       string `json:"id"`
+			ServerID string `json:"serverId"`
+		} `json:"tasks"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return
+	}
+	for _, t := range res.Tasks {
+		go b.workServerTask(t.ID, t.ServerID)
+	}
+}
+
+// workServerTask claims a task for a server this ClawHQ owns, runs it, and posts
+// the result back; the plugin returns it to the agent that asked.
+func (b *pluginBridge) workServerTask(taskID, serverID string) {
+	if b.claude == nil || !b.ownsServer(serverID) {
+		return
+	}
+	b.taskMu.Lock()
+	if b.tasks == nil {
+		b.tasks = map[string]bool{}
+	}
+	if b.tasks[taskID] {
+		b.taskMu.Unlock()
+		return
+	}
+	b.tasks[taskID] = true
+	b.taskMu.Unlock()
+	defer func() {
+		b.taskMu.Lock()
+		delete(b.tasks, taskID)
+		b.taskMu.Unlock()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+	defer cancel()
+	raw, err := b.request(ctx, "clawhq.server.task.claim", map[string]any{"id": taskID, "clawhqId": b.store.EnsureInstanceID()})
+	if err != nil {
+		log.Printf("plugin: task %s not claimed: %v", taskID, err)
+		return
+	}
+	var claim struct {
+		OK   bool `json:"ok"`
+		Task struct {
+			ProjectID string `json:"projectId"`
+			Task      string `json:"task"`
+			From      string `json:"from"`
+		} `json:"task"`
+	}
+	if json.Unmarshal(raw, &claim) != nil || !claim.OK {
+		return
+	}
+	prompt := "Task handed over by the OpenClaw agent \"" + claim.Task.From + "\" through ClawHQ. Do it fully in this project, then reply with a short report of what changed and anything that still needs a decision.\n\n" + claim.Task.Task
+	out, err := b.claude.RunTask(ctx, serverID, claim.Task.ProjectID, prompt)
+	text, ok, cost := out.Text, out.OK, out.CostUsd
+	if err != nil {
+		text, ok = err.Error(), false
+	} else if !ok && out.Err != "" {
+		text = out.Err
+	}
+	rctx, rcancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer rcancel()
+	if _, err := b.request(rctx, "clawhq.server.task.result", map[string]any{"id": taskID, "ok": ok, "text": text, "costUsd": cost}); err != nil {
+		log.Printf("plugin: task %s result not posted: %v", taskID, err)
+	}
+	if b.notify != nil {
+		body := strings.TrimSpace(text)
+		if len(body) > 240 {
+			body = body[:240] + "…"
+		}
+		title := "Server task done"
+		if !ok {
+			title = "Server task failed"
+		}
+		b.notify.show(store.Notice{Title: title + " · for " + claim.Task.From, Body: body, AgentName: "Claude Code", AgentEmoji: "🧑‍💻", Origin: "server:" + serverID, AtMs: time.Now().UnixMilli()})
 	}
 }

@@ -22,8 +22,8 @@ export const plugin = {
   team: {
     list: (limit = 200): Promise<TeamPost[]> =>
       api.rpc.request<{ posts?: TeamPost[] }>('clawhq.team.list', { limit }).then((r) => r?.posts ?? []),
-    post: (text: string, mentions: string[]): Promise<TeamPost> =>
-      api.rpc.request<{ post: TeamPost }>('clawhq.team.post', { text, mentions }).then((r) => r.post),
+    post: (text: string, mentions: string[], from?: { from: string; fromKind: 'agent' | 'human'; hops?: number }): Promise<TeamPost> =>
+      api.rpc.request<{ post: TeamPost }>('clawhq.team.post', { text, mentions, ...(from ?? {}) }).then((r) => r.post),
     turn: (agentId: string, postId: string): Promise<void> =>
       api.rpc.request('clawhq.team.turn', { agentId, postId }).then(() => undefined)
   },
@@ -32,8 +32,8 @@ export const plugin = {
       api.rpc.request<{ issues?: Issue[] }>('clawhq.issues.list', status ? { status } : {}).then((r) => r?.issues ?? []),
     create: (input: { kind?: string; title: string; body?: string; assigneeAgentId?: string; urgency?: string; from?: string; fromKind?: 'human' | 'agent'; sessionKey?: string }): Promise<Issue> =>
       api.rpc.request<{ issue: Issue }>('clawhq.issues.create', input).then((r) => r.issue),
-    reply: (id: string, text: string): Promise<Issue> =>
-      api.rpc.request<{ issue: Issue }>('clawhq.issues.reply', { id, text }).then((r) => r.issue),
+    reply: (id: string, text: string, by?: { by: string; byKind: 'agent' | 'human' }): Promise<Issue> =>
+      api.rpc.request<{ issue: Issue }>('clawhq.issues.reply', { id, text, ...(by ?? {}) }).then((r) => r.issue),
     update: (id: string, patch: { status?: string; urgency?: string; assigneeAgentId?: string }): Promise<Issue> =>
       api.rpc.request<{ issue: Issue }>('clawhq.issues.update', { id, ...patch }).then((r) => r.issue),
     remove: (id: string): Promise<void> => api.rpc.request('clawhq.issues.delete', { id }).then(() => undefined)
