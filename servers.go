@@ -459,8 +459,8 @@ func (s *ServerService) OpenShellIn(ctx context.Context, id, dir string, cols, r
 			cd = "cd " + shq(dir) + " 2>/dev/null; "
 		}
 		// -A attaches when the session exists; the chained commands set mouse
-		// scrolling and a deep history on the server session itself.
-		command = "bash -lc " + shq(cd+"if command -v tmux >/dev/null 2>&1; then exec tmux -u new-session -A -s "+shq(name)+" \\; set -g mouse on \\; set -g history-limit 20000; else exec bash -l; fi")
+		// scrolling, a deep history, and hide tmux's status bar (ClawHQ has tabs).
+		command = "bash -lc " + shq(cd+"if command -v tmux >/dev/null 2>&1; then exec tmux -u new-session -A -s "+shq(name)+" \\; set -g mouse on \\; set -g history-limit 20000 \\; set -g status off; else exec bash -l; fi")
 	}
 	sh, err := sshx.StartShellCmd(client, cols, rows, command,
 		func(b64 string) {
