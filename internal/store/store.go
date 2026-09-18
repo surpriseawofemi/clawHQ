@@ -184,6 +184,8 @@ type ServerAction struct {
 	Command string `json:"command"`
 	// Confirm asks before running (for restarts and the like).
 	Confirm bool `json:"confirm"`
+	// ProjectID scopes the action to one project; empty means the whole server.
+	ProjectID string `json:"projectId,omitempty"`
 }
 
 func defaults() Config {

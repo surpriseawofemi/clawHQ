@@ -6,21 +6,21 @@ import { terminals, type Term } from '../state/terminals'
  * Terminal tabs for one server. Terminals are kept in the registry, so leaving
  * the page and coming back finds them where they were, still connected.
  */
-export function TerminalTabs({ serverId }: { serverId: string }): React.JSX.Element {
+export function TerminalTabs({ serverId, projectId = '', dir = '' }: { serverId: string; projectId?: string; dir?: string }): React.JSX.Element {
   const [, bump] = useState(0)
   const [active, setActive] = useState<string | null>(null)
   useEffect(() => terminals.subscribe(() => bump((n) => n + 1)), [])
 
-  const list = terminals.list(serverId)
+  const list = terminals.list(serverId, projectId)
   useEffect(() => {
     if (list.length === 0) {
-      const t = terminals.create(serverId)
+      const t = terminals.create(serverId, projectId, dir)
       setActive(t.id)
     } else if (!active || !list.some((t) => t.id === active)) {
       setActive(list[list.length - 1].id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverId, list.length])
+  }, [serverId, projectId, list.length])
 
   const current = list.find((t) => t.id === active) ?? null
 
@@ -34,7 +34,7 @@ export function TerminalTabs({ serverId }: { serverId: string }): React.JSX.Elem
             <button className="term-tab-close" title="Close this terminal" onClick={(e) => { e.stopPropagation(); terminals.close(t.id) }}>×</button>
           </div>
         ))}
-        <button className="term-tab-add" title="New terminal" onClick={() => setActive(terminals.create(serverId).id)}>＋</button>
+        <button className="term-tab-add" title="New terminal in this project" onClick={() => setActive(terminals.create(serverId, projectId, dir).id)}>＋</button>
       </div>
       {current && <TerminalPane key={current.id} t={current} />}
     </div>

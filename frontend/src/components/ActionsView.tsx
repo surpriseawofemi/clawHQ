@@ -33,7 +33,23 @@ const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g,
  * streamed into the page. Templates cover the usual pull, restart, tail-a-log.
  * Commands run through the login shell in the project folder.
  */
-export function ActionsView({ serverId, actions, onActions }: { serverId: string; actions: ServerAction[]; onActions: (a: ServerAction[]) => void }): React.JSX.Element {
+export function ActionsView({
+  serverId,
+  projectId = '',
+  projectName = '',
+  dir = '',
+  actions,
+  suggested = [],
+  onActions
+}: {
+  serverId: string
+  projectId?: string
+  projectName?: string
+  dir?: string
+  actions: ServerAction[]
+  suggested?: ServerAction[]
+  onActions: (a: ServerAction[]) => void
+}): React.JSX.Element {
   const [editing, setEditing] = useState<ServerAction | null>(null)
   const [adhoc, setAdhoc] = useState('')
   const [runs, setRuns] = useState<Run[]>([])
@@ -64,7 +80,7 @@ export function ActionsView({ serverId, actions, onActions }: { serverId: string
   const run = async (name: string, command: string): Promise<void> => {
     setError(null)
     try {
-      const runId = await api.servers.run(serverId, command)
+      const runId = await api.servers.runIn(serverId, command, dir)
       setRuns((prev) => [{ runId, name, command, out: '', code: null, startedAt: Date.now() }, ...prev].slice(0, 8))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -88,27 +104,53 @@ export function ActionsView({ serverId, actions, onActions }: { serverId: string
   }
 
   const current = runs[0] ?? null
+  const mine = actions.filter((a) => a.projectId === projectId && projectId)
+  const shared = actions.filter((a) => !a.projectId)
+  const card = (a: ServerAction): React.JSX.Element => (
+    <div key={a.id} className="act-card">
+      <button className="act-run" onClick={() => start(a)} title={a.command}>
+        <span className="act-name">{a.confirm ? '⚠️ ' : '▶ '}{a.name}</span>
+        <span className="act-cmd">{a.command}</span>
+      </button>
+      <span className="act-tools">
+        <button className="icon-btn" title="Edit" onClick={() => setEditing({ ...a })}>✎</button>
+        <button className="icon-btn" title="Remove" onClick={() => void api.servers.removeAction(serverId, a.id).then(onActions)}>🗑</button>
+      </span>
+    </div>
+  )
+  const notYetAdded = suggested.filter((sg) => !actions.some((a) => a.command === sg.command))
 
   return (
     <div className="acts">
-      <div className="acts-grid">
-        {actions.map((a) => (
-          <div key={a.id} className="act-card">
-            <button className="act-run" onClick={() => start(a)} title={a.command}>
-              <span className="act-name">{a.confirm ? '⚠️ ' : '▶ '}{a.name}</span>
-              <span className="act-cmd">{a.command}</span>
+      {projectId && (
+        <>
+          <div className="acts-label">{projectName || 'This project'}</div>
+          <div className="acts-grid">
+            {mine.map(card)}
+            <button className="act-card act-add" onClick={() => setEditing({ id: '', name: '', command: '', confirm: false, projectId })}>
+              ＋ Action for {projectName || 'this project'}
             </button>
-            <span className="act-tools">
-              <button className="icon-btn" title="Edit" onClick={() => setEditing({ ...a })}>✎</button>
-              <button className="icon-btn" title="Remove" onClick={() => void api.servers.removeAction(serverId, a.id).then(onActions)}>🗑</button>
-            </span>
           </div>
-        ))}
+          {notYetAdded.length > 0 && (
+            <div className="acts-templates">
+              <span className="plugin-desc">Found in the folder:</span>
+              {notYetAdded.map((sg) => (
+                <button key={sg.command} className="btn btn-sm" title={sg.command} onClick={() => void api.servers.saveAction(serverId, { ...sg, id: '', projectId }).then(onActions)}>
+                  ＋ {sg.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="acts-label">Whole server</div>
+        </>
+      )}
+      <div className="acts-grid">
+        {shared.map(card)}
         <button className="act-card act-add" onClick={() => setEditing({ id: '', name: '', command: '', confirm: false })}>
-          ＋ New action
+          ＋ Server-wide action
         </button>
       </div>
-      {actions.length === 0 && (
+      {shared.length === 0 && (
         <div className="acts-templates">
           <span className="plugin-desc">Start from a template:</span>
           {TEMPLATES.map((t) => (
@@ -135,9 +177,15 @@ export function ActionsView({ serverId, actions, onActions }: { serverId: string
               <input type="checkbox" checked={editing.confirm} onChange={(e) => setEditing({ ...editing, confirm: e.target.checked })} />
               <span>Ask before running</span>
             </label>
+            {projectId && (
+              <label className="check-row act-confirm">
+                <input type="checkbox" checked={editing.projectId === projectId} onChange={(e) => setEditing({ ...editing, projectId: e.target.checked ? projectId : '' })} />
+                <span>Only for {projectName || 'this project'}</span>
+              </label>
+            )}
           </div>
           <div className="field">
-            <span>Command (runs in the project folder through the login shell)</span>
+            <span>Command (runs in {dir || 'the home folder'} through the login shell)</span>
             <textarea rows={3} value={editing.command} onChange={(e) => setEditing({ ...editing, command: e.target.value })} placeholder="git pull --ff-only && pm2 restart app" spellCheck={false} />
           </div>
           <div className="btn-row">

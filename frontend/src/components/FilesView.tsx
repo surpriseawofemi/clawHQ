@@ -24,7 +24,10 @@ const iconOf = (e: FileEntry): string => {
  */
 type Ask = { kind: 'prompt' | 'confirm'; title: string; value: string; resolve: (v: string | null) => void }
 
-export function FilesView({ serverId, startDir }: { serverId: string; startDir?: string }): React.JSX.Element {
+/** Where each project was last browsing, so switching projects and back keeps your place. */
+const remembered = new Map<string, { dir: string; open?: string }>()
+
+export function FilesView({ serverId, startDir, memoryKey }: { serverId: string; startDir?: string; memoryKey?: string }): React.JSX.Element {
   // The webview has no native confirm/prompt, so dialogs are drawn in the page.
   const [ask, setAsk] = useState<Ask | null>(null)
   const prompt = (title: string, initial = ''): Promise<string | null> => new Promise((resolve) => setAsk({ kind: 'prompt', title, value: initial, resolve }))
@@ -62,9 +65,15 @@ export function FilesView({ serverId, startDir }: { serverId: string; startDir?:
     [serverId]
   )
   useEffect(() => {
-    void load(startDir ?? '')
+    const mem = memoryKey ? remembered.get(memoryKey) : undefined
+    void load(mem?.dir ?? startDir ?? '').then(() => {
+      if (mem?.open) void api.files.read(serverId, mem.open).then((f) => { setOpen(f); setDraft(f.text ?? '') }).catch(() => undefined)
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverId])
+  }, [serverId, memoryKey])
+  useEffect(() => {
+    if (memoryKey && dir) remembered.set(memoryKey, { dir, open: open?.path })
+  }, [memoryKey, dir, open?.path])
 
   useEffect(
     () =>

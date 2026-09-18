@@ -413,8 +413,17 @@ func (s *ServerService) SelectProject(id, projectID string) ([]ServerView, error
 	return s.List(), nil
 }
 
-// OpenShell starts an interactive login shell and streams it as ssh:out events.
+// OpenShell starts an interactive login shell in the active project and streams it as ssh:out events.
 func (s *ServerService) OpenShell(ctx context.Context, id string, cols, rows int) (string, error) {
+	p, err := s.profile(id)
+	if err != nil {
+		return "", err
+	}
+	return s.OpenShellIn(ctx, id, p.Active().Dir, cols, rows)
+}
+
+// OpenShellIn starts a login shell in a folder.
+func (s *ServerService) OpenShellIn(ctx context.Context, id, dir string, cols, rows int) (string, error) {
 	p, err := s.profile(id)
 	if err != nil {
 		return "", err
@@ -457,8 +466,8 @@ func (s *ServerService) OpenShell(ctx context.Context, id string, cols, rows int
 	s.shells[shellID] = &openShell{client: client, shell: sh}
 	s.mu.Unlock()
 	// Land in the project folder when one is set.
-	if p.Dir != "" {
-		_ = sh.Write(b64(fmt.Sprintf("cd %q && clear\n", p.Dir)))
+	if dir != "" {
+		_ = sh.Write(b64(fmt.Sprintf("cd %q && clear\n", dir)))
 	}
 	log.Printf("servers: shell %s opened on %s", shellID, p.Host)
 	return shellID, nil
@@ -575,9 +584,18 @@ func (s *ServerService) RemoveAction(serverID, actionID string) ([]store.ServerA
 	return kept, nil
 }
 
-// RunCommand runs one command on the server, streaming output as action:out and
-// finishing with action:exit. Saved actions and one-off commands both use it.
+// RunCommand runs one command on the server in the active project.
 func (s *ServerService) RunCommand(ctx context.Context, serverID, command string) (string, error) {
+	p, err := s.profile(serverID)
+	if err != nil {
+		return "", err
+	}
+	return s.RunCommandIn(ctx, serverID, command, p.Active().Dir)
+}
+
+// RunCommandIn runs one command in a folder, streaming output as action:out and
+// finishing with action:exit. Saved actions and one-off commands both use it.
+func (s *ServerService) RunCommandIn(ctx context.Context, serverID, command, dir string) (string, error) {
 	p, err := s.profile(serverID)
 	if err != nil {
 		return "", err
@@ -595,8 +613,8 @@ func (s *ServerService) RunCommand(ctx context.Context, serverID, command string
 	runID := fmt.Sprintf("run-%d-%d", time.Now().UnixMilli(), s.seq)
 	s.mu.Unlock()
 	full := command
-	if p.Dir != "" {
-		full = "cd " + shq(p.Dir) + " 2>/dev/null; " + command
+	if dir != "" {
+		full = "cd " + shq(dir) + " 2>/dev/null; " + command
 	}
 	cmd, err := sshx.StartCommand(client, full,
 		func(b64 string) {
@@ -639,4 +657,138 @@ func (s *ServerService) StopCommand(runID string) error {
 		c.cmd.Stop()
 	}
 	return nil
+}
+
+// ---- what is in a project folder -----------------------------------------------
+
+type ProjectInfo struct {
+	Dir       string               `json:"dir"`
+	Exists    bool                 `json:"exists"`
+	GitRemote string               `json:"gitRemote,omitempty"`
+	GitBranch string               `json:"gitBranch,omitempty"`
+	GitDirty  int                  `json:"gitDirty"`
+	Package   string               `json:"package,omitempty"` // package.json name
+	Scripts   []string             `json:"scripts"`           // package.json script names
+	GoModule  string               `json:"goModule,omitempty"`
+	Composer  string               `json:"composer,omitempty"`
+	Python    bool                 `json:"python"`
+	Docker    bool                 `json:"docker"`
+	Pm2       string               `json:"pm2,omitempty"`
+	HasClaude bool                 `json:"hasClaudeMd"`
+	HasEnv    bool                 `json:"hasEnv"`
+	Files     int                  `json:"files"`
+	Suggested []store.ServerAction `json:"suggested"`
+}
+
+const projectInfoScript = `
+D=%s
+[ -d "$D" ] || { echo "exists=0"; exit 0; }
+cd "$D" || exit 0
+echo "exists=1"
+echo "files=$(ls -1A 2>/dev/null | wc -l | tr -d ' ')"
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "git_remote=$(git remote get-url origin 2>/dev/null)"
+  echo "git_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  echo "git_dirty=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+fi
+if [ -f package.json ]; then
+  echo "package=$(node -e 'try{console.log(require("./package.json").name||"")}catch(e){}' 2>/dev/null)"
+  echo "scripts=$(node -e 'try{console.log(Object.keys(require("./package.json").scripts||{}).join(","))}catch(e){}' 2>/dev/null)"
+fi
+[ -f go.mod ] && echo "go_module=$(head -1 go.mod | sed 's/^module //')"
+[ -f composer.json ] && echo "composer=$(grep -o '"name": *"[^"]*"' composer.json | head -1 | cut -d'"' -f4)"
+{ [ -f requirements.txt ] || [ -f pyproject.toml ]; } && echo "python=1"
+{ [ -f Dockerfile ] || [ -f docker-compose.yml ] || [ -f compose.yaml ]; } && echo "docker=1"
+[ -f ecosystem.config.js ] && echo "pm2=$(grep -o "name: *['\"][^'\"]*['\"]" ecosystem.config.js | head -1 | sed "s/name: *//; s/['\"]//g")"
+[ -f CLAUDE.md ] && echo "claude_md=1"
+[ -f .env ] && echo "env=1"
+`
+
+// ProjectInfo reads a folder once and suggests actions for it.
+func (s *ServerService) ProjectInfo(ctx context.Context, id, dir string) (ProjectInfo, error) {
+	p, err := s.profile(id)
+	if err != nil {
+		return ProjectInfo{}, err
+	}
+	info := ProjectInfo{Dir: dir, Scripts: []string{}, Suggested: []store.ServerAction{}}
+	if strings.TrimSpace(dir) == "" {
+		return info, nil
+	}
+	client, err := sshx.Dial(ctx, target(p), knownHostsPath())
+	if err != nil {
+		return info, err
+	}
+	defer client.Close()
+	res, err := sshx.Run(ctx, client, fmt.Sprintf(projectInfoScript, shq(dir)), 30*time.Second)
+	if err != nil {
+		return info, err
+	}
+	kv := map[string]string{}
+	for _, line := range strings.Split(res.Stdout, "\n") {
+		if i := strings.IndexByte(line, '='); i > 0 {
+			kv[line[:i]] = strings.TrimSpace(line[i+1:])
+		}
+	}
+	info.Exists = kv["exists"] == "1"
+	fmt.Sscanf(kv["files"], "%d", &info.Files)
+	info.GitRemote, info.GitBranch = kv["git_remote"], kv["git_branch"]
+	fmt.Sscanf(kv["git_dirty"], "%d", &info.GitDirty)
+	info.Package = kv["package"]
+	if kv["scripts"] != "" {
+		info.Scripts = strings.Split(kv["scripts"], ",")
+	}
+	info.GoModule, info.Composer, info.Pm2 = kv["go_module"], kv["composer"], kv["pm2"]
+	info.Python, info.Docker = kv["python"] == "1", kv["docker"] == "1"
+	info.HasClaude, info.HasEnv = kv["claude_md"] == "1", kv["env"] == "1"
+
+	add := func(name, cmd string, confirm bool) {
+		info.Suggested = append(info.Suggested, store.ServerAction{Name: name, Command: cmd, Confirm: confirm})
+	}
+	if info.GitRemote != "" || info.GitBranch != "" {
+		add("Git status", "git status --short --branch", false)
+		add("Git pull", "git pull --ff-only", true)
+	}
+	has := func(name string) bool {
+		for _, x := range info.Scripts {
+			if x == name {
+				return true
+			}
+		}
+		return false
+	}
+	if info.Package != "" {
+		if has("test") {
+			add("npm test", "npm test", false)
+		}
+		if has("build") {
+			add("npm run build", "npm run build", false)
+		}
+		if has("lint") {
+			add("npm run lint", "npm run lint", false)
+		}
+		add("npm install", "npm install", true)
+	}
+	if info.GoModule != "" {
+		add("go build", "go build ./...", false)
+		add("go test", "go test ./...", false)
+		add("go vet", "go vet ./...", false)
+	}
+	if info.Composer != "" {
+		add("composer install", "composer install --no-interaction", true)
+	}
+	if info.Python {
+		add("pytest", "pytest -q", false)
+	}
+	if info.Docker {
+		add("docker compose ps", "docker compose ps", false)
+		add("docker compose up -d", "docker compose up -d", true)
+		add("docker compose logs", "docker compose logs --tail=100", false)
+	}
+	if info.Pm2 != "" {
+		add("pm2 restart "+info.Pm2, "pm2 restart "+shq(info.Pm2), true)
+		add("pm2 logs "+info.Pm2, "pm2 logs "+shq(info.Pm2)+" --lines 100 --nostream", false)
+	} else if info.Package != "" {
+		add("pm2 list", "pm2 list", false)
+	}
+	return info, nil
 }

@@ -38,6 +38,7 @@ import type {
   ServerProfile,
   ServerHealth,
   ServerAction,
+  ProjectInfo,
   DirListing,
   FileContent,
   Transfer,
@@ -195,6 +196,8 @@ export const api = {
     removeProject: (id: string, projectId: string): Promise<ServerProfile[]> => ServerService.RemoveProject(id, projectId) as Promise<ServerProfile[]>,
     selectProject: (id: string, projectId: string): Promise<ServerProfile[]> => ServerService.SelectProject(id, projectId) as Promise<ServerProfile[]>,
     openShell: (id: string, cols: number, rows: number): Promise<string> => ServerService.OpenShell(id, cols, rows),
+    openShellIn: (id: string, dir: string, cols: number, rows: number): Promise<string> => ServerService.OpenShellIn(id, dir, cols, rows),
+    projectInfo: (id: string, dir: string): Promise<ProjectInfo> => ServerService.ProjectInfo(id, dir) as Promise<ProjectInfo>,
     write: (shellId: string, b64: string): Promise<void> => ServerService.Write(shellId, b64),
     resize: (shellId: string, cols: number, rows: number): Promise<void> => ServerService.Resize(shellId, cols, rows),
     closeShell: (shellId: string): Promise<void> => ServerService.CloseShell(shellId),
@@ -202,6 +205,7 @@ export const api = {
     removeAction: (serverId: string, actionId: string): Promise<ServerAction[]> => ServerService.RemoveAction(serverId, actionId).then((r) => (r ?? []) as ServerAction[]),
     /** Runs one command; output arrives as action:out, the end as action:exit. */
     run: (serverId: string, command: string): Promise<string> => ServerService.RunCommand(serverId, command),
+    runIn: (serverId: string, command: string, dir: string): Promise<string> => ServerService.RunCommandIn(serverId, command, dir),
     stop: (runId: string): Promise<void> => ServerService.StopCommand(runId)
   },
   onActionOut: (cb: (e: { serverId: string; runId: string; data: string }) => void): (() => void) =>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
-import type { AgentStatus, ServerHealth, ServerProfile, ServerProject } from '../types'
+import type { AgentStatus, ProjectInfo, ServerHealth, ServerProfile, ServerProject } from '../types'
 import { TerminalTabs } from './TerminalView'
+import { terminals } from '../state/terminals'
 import { ActionsView } from './ActionsView'
 import { FilesView } from './FilesView'
 import { ClaudeChat } from './ClaudeChat'
@@ -37,6 +38,17 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [installLog, setInstallLog] = useState<string | null>(null)
   const [projForm, setProjForm] = useState<{ id: string; name: string; dir: string; agent: string } | null>(null)
+  // What the active project's folder holds, read once per project.
+  const [projInfo, setProjInfo] = useState<Record<string, ProjectInfo>>({})
+  const infoKey = (s: ServerProfile, p: ServerProject): string => `${s.id}:${p.id}:${p.dir}`
+  const loadInfo = async (s: ServerProfile, p: ServerProject): Promise<void> => {
+    try {
+      const info = await api.servers.projectInfo(s.id, p.dir)
+      setProjInfo((prev) => ({ ...prev, [infoKey(s, p)]: info }))
+    } catch {
+      /* unreachable; the health row says so */
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -73,6 +85,11 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
     if (selected && !health[selected.id] && busy === null) void check(selected.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id])
+  useEffect(() => {
+    const p = selected ? activeProject(selected) : undefined
+    if (selected && p && p.dir && !projInfo[infoKey(selected, p)]) void loadInfo(selected, p)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, selected?.activeProjectId])
 
   const save = async (): Promise<void> => {
     if (!editing) return
@@ -126,13 +143,18 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
     }
   }
 
+  const terminalsFor = (serverId: string, projectId: string): number => terminals.list(serverId, projectId).length
   const activeProject = (s: ServerProfile): ServerProject | undefined => (s.projects ?? []).find((p) => p.id === s.activeProjectId) ?? s.projects?.[0]
   const projectAction = async (fn: () => Promise<ServerProfile[]>): Promise<void> => {
     setBusy('project')
     setError(null)
     try {
-      setServers(await fn())
+      const list = await fn()
+      setServers(list)
       setProjForm(null)
+      const sv = list.find((x) => x.id === selectedId)
+      const ap = sv ? activeProject(sv) : undefined
+      if (sv && ap && ap.dir) void loadInfo(sv, ap)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -154,16 +176,40 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
           const hh = health[s.id]
           const dot = hh ? (hh.ok ? (hh.claude.installed && hh.claude.loggedIn ? 'is-online' : 'is-working') : 'is-bad') : s.lastOkAtMs ? 'is-idle' : 'is-idle'
           return (
-            <button key={s.id} className={`srv-row${selectedId === s.id && !editing ? ' is-selected' : ''}`} onClick={() => { setSelectedId(s.id); setEditing(null) }}>
-              <i className={`desk-dot ${dot}`} />
-              <span className="srv-row-meta">
-                <span className="srv-row-name">{s.name}</span>
-                <span className="srv-row-sub">
-                  {s.user}@{s.host}
-                  {s.port !== 22 ? `:${s.port}` : ''} · {hh ? (hh.ok ? (hh.claude.installed ? `Claude ${hh.claude.version || ''}` : 'no Claude Code') : 'unreachable') : `checked ${ago(s.lastOkAtMs)}`}
+            <div key={s.id} className="srv-block">
+              <button className={`srv-row${selectedId === s.id && !editing ? ' is-selected' : ''}`} onClick={() => { setSelectedId(s.id); setEditing(null) }}>
+                <i className={`desk-dot ${dot}`} />
+                <span className="srv-row-meta">
+                  <span className="srv-row-name">{s.name}</span>
+                  <span className="srv-row-sub">
+                    {s.user}@{s.host}
+                    {s.port !== 22 ? `:${s.port}` : ''} · {hh ? (hh.ok ? (hh.claude.installed ? `Claude ${hh.claude.version || ''}` : 'no Claude Code') : 'unreachable') : `checked ${ago(s.lastOkAtMs)}`}
+                  </span>
                 </span>
-              </span>
-            </button>
+              </button>
+              {selectedId === s.id && (
+                <div className="proj-list">
+                  {(s.projects ?? []).map((p) => (
+                    <div key={p.id} className={`proj-row${p.id === s.activeProjectId && !projForm ? ' is-active' : ''}`}>
+                      <button className="proj-main" onClick={() => { setEditing(null); setProjForm(null); void projectAction(() => api.servers.selectProject(s.id, p.id)) }} title={p.dir || 'home folder'}>
+                        <span className="proj-icon">📁</span>
+                        <span className="proj-meta">
+                          <span className="proj-name">{p.name}</span>
+                          <span className="proj-sub">{p.dir || '~'} · {p.agent ?? 'claude'}{terminalsFor(s.id, p.id) ? ` · ${terminalsFor(s.id, p.id)} term` : ''}</span>
+                        </span>
+                      </button>
+                      <span className="proj-tools">
+                        <button className="icon-btn" title="Edit project" onClick={() => setProjForm({ id: p.id, name: p.name, dir: p.dir, agent: p.agent ?? 'claude' })}>✎</button>
+                        {(s.projects?.length ?? 0) > 1 && (
+                          <button className="icon-btn" title="Remove from the list (files stay on the server)" onClick={() => void projectAction(() => api.servers.removeProject(s.id, p.id))}>🗑</button>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                  <button className="proj-add" onClick={() => { setEditing(null); setProjForm({ id: '', name: '', dir: '', agent: 'claude' }) }}>＋ Project</button>
+                </div>
+              )}
+            </div>
           )
         })}
       </div>
@@ -242,32 +288,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
         <>
           <ContentHead
             title={selected.name}
-            subtitle={
-              <span className="proj-bar">
-                <span>{selected.user}@{selected.host}{selected.port !== 22 ? `:${selected.port}` : ''}</span>
-                <span className="files-sep">·</span>
-                <select
-                  className="proj-select"
-                  value={selected.activeProjectId ?? ''}
-                  onChange={(e) => void projectAction(() => api.servers.selectProject(selected.id, e.target.value))}
-                  aria-label="Project"
-                  title="Project folder: chat, files, actions and new terminals use it"
-                >
-                  {(selected.projects ?? []).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}{p.dir ? ` — ${p.dir}` : ''}
-                    </option>
-                  ))}
-                </select>
-                <button className="icon-btn" title="Add a project folder" onClick={() => setProjForm({ id: '', name: '', dir: '', agent: 'claude' })}>＋</button>
-                {activeProject(selected) && (
-                  <button className="icon-btn" title="Edit this project" onClick={() => { const p = activeProject(selected) as ServerProject; setProjForm({ id: p.id, name: p.name, dir: p.dir, agent: p.agent ?? 'claude' }) }}>✎</button>
-                )}
-                {(selected.projects?.length ?? 0) > 1 && activeProject(selected) && (
-                  <button className="icon-btn" title="Remove this project from the list (files stay on the server)" onClick={() => void projectAction(() => api.servers.removeProject(selected.id, (activeProject(selected) as ServerProject).id))}>🗑</button>
-                )}
-              </span>
-            }
+            subtitle={`${selected.user}@${selected.host}${selected.port !== 22 ? `:${selected.port}` : ''}${activeProject(selected) ? ` · ${activeProject(selected)?.name}${activeProject(selected)?.dir ? ` (${activeProject(selected)?.dir})` : ''}` : ''}`}
             onRefresh={tab === 'health' ? () => void check(selected.id) : undefined}
             refreshing={busy === `health:${selected.id}`}
           >
@@ -342,17 +363,21 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
             <div className="content-body acts-body">
               <ActionsView
                 serverId={selected.id}
+                projectId={activeProject(selected)?.id ?? ''}
+                projectName={activeProject(selected)?.name ?? ''}
+                dir={activeProject(selected)?.dir ?? ''}
                 actions={selected.actions ?? []}
+                suggested={activeProject(selected) ? (projInfo[infoKey(selected, activeProject(selected) as ServerProject)]?.suggested ?? []) : []}
                 onActions={(a) => setServers((prev) => prev.map((s) => (s.id === selected.id ? { ...s, actions: a } : s)))}
               />
             </div>
           ) : tab === 'files' ? (
             <div className="content-body files-body">
-              <FilesView serverId={selected.id} startDir={selected.dir || undefined} />
+              <FilesView key={`${selected.id}:${selected.activeProjectId ?? ''}`} serverId={selected.id} startDir={activeProject(selected)?.dir || undefined} memoryKey={`${selected.id}:${selected.activeProjectId ?? ''}`} />
             </div>
           ) : tab === 'terminal' ? (
             <div className="content-body term-body">
-              <TerminalTabs serverId={selected.id} />
+              <TerminalTabs serverId={selected.id} projectId={activeProject(selected)?.id ?? ''} dir={activeProject(selected)?.dir ?? ''} />
               <p className="field-hint">
                 Login shells on the server; they stay open when you leave this page. Run <code>claude</code> here for the full Claude Code, or <code>claude</code> then <code>/login</code> once to sign in.
               </p>
@@ -383,6 +408,37 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                       </div>
                     ))}
                   </div>
+                  {activeProject(selected) && (() => {
+                    const p = activeProject(selected) as ServerProject
+                    const info = projInfo[infoKey(selected, p)]
+                    return (
+                      <>
+                        <h4 className="srv-h4">Project · {p.name}</h4>
+                        <div className="proj-card">
+                          {!p.dir && <span className="plugin-desc">No folder set; edit the project to point it at one.</span>}
+                          {p.dir && !info && <span className="plugin-desc">Reading {p.dir}…</span>}
+                          {info && !info.exists && <span className="error-text">{info.dir} does not exist on the server.</span>}
+                          {info && info.exists && (
+                            <>
+                              <span className="proj-fact mono">{info.dir}</span>
+                              {info.gitBranch && <span className="proj-fact">🌿 {info.gitBranch}{info.gitDirty ? ` · ${info.gitDirty} changed` : ' · clean'}</span>}
+                              {info.gitRemote && <span className="proj-fact mono" title={info.gitRemote}>{info.gitRemote.replace(/^.*[:/]([^/]+\/[^/]+?)(\.git)?$/, '$1')}</span>}
+                              {info.package && <span className="proj-fact">📦 {info.package}{info.scripts.length ? ` · ${info.scripts.length} scripts` : ''}</span>}
+                              {info.goModule && <span className="proj-fact">🐹 {info.goModule}</span>}
+                              {info.composer && <span className="proj-fact">🐘 {info.composer}</span>}
+                              {info.python && <span className="proj-fact">🐍 python</span>}
+                              {info.docker && <span className="proj-fact">🐳 docker</span>}
+                              {info.pm2 && <span className="proj-fact">⚙️ pm2: {info.pm2}</span>}
+                              {info.hasClaudeMd && <span className="proj-fact">📝 CLAUDE.md</span>}
+                              {info.hasEnv && <span className="proj-fact">🔑 .env</span>}
+                              <span className="proj-fact plugin-desc">{info.files} entries</span>
+                              <button className="icon-btn" title="Read the folder again" onClick={() => void loadInfo(selected, p)}>↻</button>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    )
+                  })()}
                   <h4 className="srv-h4">Coding agents</h4>
                   <div className="srv-checks">
                     {(h.agents ?? []).map((a) => (

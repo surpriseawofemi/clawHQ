@@ -416,7 +416,7 @@ export type AgentID = 'claude' | 'codex' | 'gemini' | 'grok'
 export type AgentStatus = { id: AgentID; label: string; installed: boolean; version: string; path: string; loggedIn: boolean; account?: string; install: string; loginHint: string }
 
 /** A saved command on a server, run from a button. */
-export type ServerAction = { id: string; name: string; command: string; confirm: boolean }
+export type ServerAction = { id: string; name: string; command: string; confirm: boolean; projectId?: string }
 
 export type ServerCheck = { id: string; label: string; ok: boolean; value: string; hint?: string }
 
@@ -464,3 +464,23 @@ export type ClaudeEvent = {
 export type ServerRun = { serverId: string; serverName: string; projectId: string; project: string; agent: string; atMs: number; durationMs: number; costUsd: number; turns: number; ok: boolean; summary: string; source: 'chat' | 'task' }
 /** Token usage summed from Claude Code's session files on a server (terminal sessions included). */
 export type SessionUsage = { serverId: string; project: string; sessions: number; messages: number; inputTokens: number; outputTokens: number; cacheRead: number }
+
+/** What a project folder contains, read once, with actions to suggest. */
+export type ProjectInfo = {
+  dir: string
+  exists: boolean
+  gitRemote?: string
+  gitBranch?: string
+  gitDirty: number
+  package?: string
+  scripts: string[]
+  goModule?: string
+  composer?: string
+  python: boolean
+  docker: boolean
+  pm2?: string
+  hasClaudeMd: boolean
+  hasEnv: boolean
+  files: number
+  suggested: ServerAction[]
+}

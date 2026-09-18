@@ -11,6 +11,8 @@ import { api } from '../api'
 export type Term = {
   id: string
   serverId: string
+  projectId: string
+  dir: string
   title: string
   term: Terminal
   fit: FitAddon
@@ -61,13 +63,13 @@ export const terminals = {
     subs.add(cb)
     return () => subs.delete(cb)
   },
-  list(serverId: string): Term[] {
-    return terms.filter((t) => t.serverId === serverId)
+  list(serverId: string, projectId?: string): Term[] {
+    return terms.filter((t) => t.serverId === serverId && (projectId === undefined || t.projectId === projectId))
   },
   get(id: string): Term | undefined {
     return terms.find((t) => t.id === id)
   },
-  create(serverId: string): Term {
+  create(serverId: string, projectId = '', dir = ''): Term {
     wire()
     seq++
     const term = new Terminal({
@@ -80,8 +82,8 @@ export const terminals = {
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
-    const n = terms.filter((t) => t.serverId === serverId).length + 1
-    const t: Term = { id: `term-${Date.now()}-${seq}`, serverId, title: `Terminal ${n}`, term, fit, shellId: null, status: 'connecting', attached: null }
+    const n = terms.filter((t) => t.serverId === serverId && t.projectId === projectId).length + 1
+    const t: Term = { id: `term-${Date.now()}-${seq}`, serverId, projectId, dir, title: `Terminal ${n}`, term, fit, shellId: null, status: 'connecting', attached: null }
     terms.push(t)
     term.onData((data) => {
       if (t.shellId && t.status === 'connected') void api.servers.write(t.shellId, enc(data)).catch(() => undefined)
@@ -100,7 +102,7 @@ export const terminals = {
     t.term.focus()
     if (!t.shellId && t.status === 'connecting') {
       api.servers
-        .openShell(t.serverId, t.term.cols, t.term.rows)
+        .openShellIn(t.serverId, t.dir, t.term.cols, t.term.rows)
         .then((sid) => {
           t.shellId = sid
           t.status = 'connected'

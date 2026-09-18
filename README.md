@@ -242,11 +242,16 @@ Code, and `/login` once to sign in.
 
 #### Projects
 
-A server can hold several project folders. The picker in the server header
-switches between them; chat, files, actions and new terminals follow the
-active one, and each project keeps its own agent, permission mode and
-sessions. Add, edit or remove projects from the header (removing only drops
-the entry; files stay on the server).
+A server can hold several project folders, listed under it in the sidebar.
+Click one to switch: chat, files, actions and terminals follow it, and each
+project keeps its own agent, permission mode, sessions, file-browser position,
+open file and terminals, so switching back finds things as you left them.
+Terminals open in their project's folder. The Health tab shows a project card
+read from the folder once (git branch and remote, package.json, go.mod,
+composer, python, docker, pm2, CLAUDE.md, .env) and the Actions tab offers
+actions found there (tests, builds, pulls, restarts) with one click. Actions
+are per project, shown first, or server-wide. Add, edit or remove projects in
+the sidebar; removing only drops the entry.
 
 #### Health monitor
 
