@@ -84,23 +84,14 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
   return (
     <div className="ap">
       {error && <p className="error-text">{error}</p>}
-      {!helper?.installed && (
-        <div className="ap-card">
-          <p className="field-hint">The ClawHQ helper is not on this server yet. It is one file uploaded over SFTP: hooks that capture every reply, and tools for logging and numbered issues.</p>
-          <button className="btn btn-primary" disabled={busy !== null} onClick={() => void act('install', () => api.helper.install(server.id).then(onHelper))}>
-            {busy === 'install' ? 'Installing…' : 'Install ClawHQ helper'}
-          </button>
-        </div>
-      )}
+      {!helper?.installed && <p className="field-hint">Install the ClawHQ helper on the Health tab first.</p>}
       {helper?.installed && !wiring?.wired && (
-        <div className="ap-card">
-          <p className="field-hint">
-            Wire <b>{project.name}</b>: writes the helper into the project's <code>.mcp.json</code> and hooks, adds a ClawHQ section to <code>CLAUDE.md</code>, and creates a mission file to edit below.
-          </p>
-          <button className="btn btn-primary" disabled={busy !== null} onClick={() => void act('wire', () => api.helper.wire(server.id, project.id).then(onHelper))}>
-            {busy === 'wire' ? 'Wiring…' : 'Wire this project'}
+        <p className="field-hint ap-wire">
+          <b>{project.name}</b> is not wired yet (hooks and tools in the project).{' '}
+          <button className="btn btn-sm btn-primary" disabled={busy !== null} onClick={() => void act('wire', () => api.helper.wire(server.id, project.id).then(onHelper))}>
+            {busy === 'wire' ? 'Wiring…' : 'Wire project'}
           </button>
-        </div>
+        </p>
       )}
 
       <div className="ap-grid">
@@ -120,7 +111,7 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
             <h3>Live session</h3>
             <span className="plugin-desc mono">tmux: {session}</span>
           </div>
-          <p className="field-hint">An interactive Claude Code in tmux on the server, so it keeps its memory and its own hourly schedule between your visits. Start it fresh, or resume the Claude session you have been talking to.</p>
+          <p className="field-hint">An interactive Claude Code in tmux on the server, started in <code>{dir || '~'}</code>, so it keeps its memory and its own hourly schedule between your visits. Start fresh, or resume the session you have been talking to: paste its id and ClawHQ runs <code>claude --resume &lt;id&gt;</code> there. Once the tmux session exists, the id is not needed again.</p>
           <div className="ap-row">
             <input value={resume} onChange={(e) => setResume(e.target.value)} placeholder="Claude session id to resume (optional)" spellCheck={false} />
           </div>

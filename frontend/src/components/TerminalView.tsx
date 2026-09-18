@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import '@xterm/xterm/css/xterm.css'
 import { terminals, type Term } from '../state/terminals'
+import { api } from '../api'
 
 /**
  * Terminal tabs for one server. Terminals are kept in the registry, so leaving
@@ -39,7 +40,10 @@ export function TerminalTabs({ serverId, projectId = '', dir = '', tmux = false 
         ))}
         <button className="term-tab-add" title="New terminal in this project" onClick={() => setActive(terminals.create(serverId, projectId, dir, tmux).id)}>＋</button>
         {current && (
-          <button className="term-tab-add term-paste" title="Paste the clipboard (right-click in the terminal does the same; selecting text copies)" onClick={() => void terminals.paste(current.id)}>Paste</button>
+          <>
+            <button className="term-tab-add term-paste" title="Copy the current selection (a drag inside tmux copies by itself; hold ⌥ while dragging to select in the page)" onClick={() => { const sel = current.term.getSelection(); if (sel) void api.clipboard.write(sel).catch(() => undefined) }}>Copy</button>
+            <button className="term-tab-add" title="Paste the clipboard (right-click in the terminal does the same)" onClick={() => void terminals.paste(current.id)}>Paste</button>
+          </>
         )}
       </div>
       {current && <TerminalPane key={current.id} t={current} />}

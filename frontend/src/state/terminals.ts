@@ -113,7 +113,23 @@ export const terminals = {
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
       theme: { background: '#0b0d13', foreground: '#e6e9f0', cursor: '#7c6cff' },
       scrollback: 8000,
-      allowProposedApi: true
+      allowProposedApi: true,
+      // tmux takes the mouse, so a plain drag is tmux's selection; holding ⌥ selects in the page.
+      macOptionClickForcesSelection: true
+    })
+    // tmux copies (mouse drag, copy-mode) arrive as OSC 52 when set-clipboard is on.
+    term.parser.registerOscHandler(52, (data) => {
+      const i = data.indexOf(';')
+      const b64 = i >= 0 ? data.slice(i + 1) : data
+      if (!b64 || b64 === '?') return true
+      try {
+        const bytes = dec(b64)
+        const text = new TextDecoder().decode(bytes)
+        if (text) void api.clipboard.write(text).catch(() => undefined)
+      } catch {
+        /* not base64 */
+      }
+      return true
     })
     const fit = new FitAddon()
     term.loadAddon(fit)

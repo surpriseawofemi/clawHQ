@@ -3705,3 +3705,5 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .ap-time { color: var(--text-faint); font-size: 11.5px; }
 .ap-text { min-width: 0; word-break: break-word; }
 .ap-reply { color: var(--text-dim); }
+
+.ap-wire { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
