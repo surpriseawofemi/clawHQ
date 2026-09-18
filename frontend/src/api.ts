@@ -201,6 +201,7 @@ export const api = {
     tmuxSessions: (id: string): Promise<string[]> => ServerService.TmuxSessions(id).then((r) => r ?? []),
     killTmux: (id: string, session: string): Promise<void> => ServerService.KillTmux(id, session),
     installTmux: (id: string): Promise<string> => ServerService.InstallTmux(id),
+    disconnect: (id: string): Promise<void> => ServerService.Disconnect(id),
     projectInfo: (id: string, dir: string): Promise<ProjectInfo> => ServerService.ProjectInfo(id, dir) as Promise<ProjectInfo>,
     write: (shellId: string, b64: string): Promise<void> => ServerService.Write(shellId, b64),
     resize: (shellId: string, cols: number, rows: number): Promise<void> => ServerService.Resize(shellId, cols, rows),

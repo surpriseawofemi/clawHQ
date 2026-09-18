@@ -114,6 +114,17 @@ func (s *FileService) conn(ctx context.Context, id string) (*sftpConn, error) {
 	return c, nil
 }
 
+// drop closes the pooled SFTP connection to one server.
+func (s *FileService) drop(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c, ok := s.pool[id]; ok {
+		c.sftp.Close()
+		c.client.Close()
+		delete(s.pool, id)
+	}
+}
+
 func (s *FileService) reap() {
 	for range time.Tick(time.Minute) {
 		s.mu.Lock()

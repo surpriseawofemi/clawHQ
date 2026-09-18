@@ -326,6 +326,28 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                 Terminal
               </button>
             </div>
+            {health[selected.id]?.ok ? (
+              <button
+                className="btn btn-sm btn-ghost"
+                title="Close every SSH connection to this server (terminals, files, chat). tmux sessions keep running."
+                disabled={busy !== null}
+                onClick={() => {
+                  setBusy('disconnect')
+                  terminals.detachAll(selected.id)
+                  void api.servers
+                    .disconnect(selected.id)
+                    .then(() => setHealth((prev) => ({ ...prev, [selected.id]: { ...(prev[selected.id] as ServerHealth), ok: false, error: 'Disconnected. Press Reconnect to check the server again.' } })))
+                    .catch((err) => setError(String(err)))
+                    .finally(() => { setBusy(null); setTab('health') })
+                }}
+              >
+                Disconnect
+              </button>
+            ) : (
+              <button className="btn btn-sm btn-primary" disabled={busy !== null} onClick={() => void check(selected.id)}>
+                {busy === `health:${selected.id}` ? 'Connecting…' : 'Reconnect'}
+              </button>
+            )}
             <button className="btn btn-sm btn-ghost" onClick={() => setEditing({ ...selected, password: '' })}>
               Edit
             </button>
@@ -406,7 +428,12 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
             <div className="content-body issue-detail">
               {error && <p className="error-text">{error}</p>}
               {!h && <p className="field-hint">Checking…</p>}
-              {h && !h.ok && (
+              {h && !h.ok && h.error?.startsWith('Disconnected') && (
+                <div className="srv-unreachable">
+                  <p className="field-hint">{h.error}</p>
+                </div>
+              )}
+              {h && !h.ok && !h.error?.startsWith('Disconnected') && (
                 <div className="srv-unreachable">
                   <p className="error-text">Could not check this server: {h.error}</p>
                   <p className="field-hint">Host, user, key or password wrong? Edit the server. Host key changed on purpose? Forget it and add it again.</p>

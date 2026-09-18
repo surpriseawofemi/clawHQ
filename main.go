@@ -199,6 +199,7 @@ func main() {
 	fileSvc := &FileService{store: cfgStore}
 	runLog, _ := store.NewRunLog()
 	claudeSvc := &ClaudeService{store: cfgStore, files: fileSvc, runlog: runLog}
+	serverSvc.files, serverSvc.claude = fileSvc, claudeSvc
 	app = application.New(application.Options{
 		Name:        "ClawHQ",
 		Description: "Desktop command center for your OpenClaw agent org",

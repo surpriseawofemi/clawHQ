@@ -211,6 +211,10 @@ export const terminals = {
     }
     notify()
   },
+  /** Drops every terminal of a server from the page; tmux sessions stay and come back on reconnect. */
+  detachAll(serverId: string): void {
+    for (const t of terms.filter((x) => x.serverId === serverId)) terminals.close(t.id, false)
+  },
   /** Pastes the Mac's clipboard into the terminal (right-click, or the paste button). */
   async paste(id: string): Promise<void> {
     const t = terms.find((x) => x.id === id)

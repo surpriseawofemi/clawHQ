@@ -29,13 +29,15 @@ type ServerService struct {
 }
 
 type openShell struct {
-	client *ssh.Client
-	shell  *sshx.Shell
+	serverID string
+	client   *ssh.Client
+	shell    *sshx.Shell
 }
 
 type openCommand struct {
-	client *ssh.Client
-	cmd    *sshx.Command
+	serverID string
+	client   *ssh.Client
+	cmd      *sshx.Command
 }
 
 // ServerView is a profile without its secret.
@@ -489,7 +491,7 @@ func (s *ServerService) OpenShellIn(ctx context.Context, id, dir string, cols, r
 	if s.shells == nil {
 		s.shells = map[string]*openShell{}
 	}
-	s.shells[shellID] = &openShell{client: client, shell: sh}
+	s.shells[shellID] = &openShell{serverID: id, client: client, shell: sh}
 	s.mu.Unlock()
 	// A plain shell lands in the project folder; tmux was started there already.
 	if dir != "" && command == "" {
@@ -731,10 +733,47 @@ func (s *ServerService) RunCommandIn(ctx context.Context, serverID, command, dir
 	if s.cmds == nil {
 		s.cmds = map[string]*openCommand{}
 	}
-	s.cmds[runID] = &openCommand{client: client, cmd: cmd}
+	s.cmds[runID] = &openCommand{serverID: serverID, client: client, cmd: cmd}
 	s.mu.Unlock()
 	log.Printf("servers: %s: running %q", p.Name, command)
 	return runID, nil
+}
+
+// Disconnect closes every SSH connection ClawHQ holds to a server: shells, running
+// commands and the SFTP link. tmux sessions on the server keep running.
+func (s *ServerService) Disconnect(id string) error {
+	s.mu.Lock()
+	var shells []*openShell
+	var cmds []*openCommand
+	for k, sh := range s.shells {
+		if sh.serverID == id {
+			shells = append(shells, sh)
+			delete(s.shells, k)
+		}
+	}
+	for k, c := range s.cmds {
+		if c.serverID == id {
+			cmds = append(cmds, c)
+			delete(s.cmds, k)
+		}
+	}
+	s.mu.Unlock()
+	for _, sh := range shells {
+		sh.shell.Close()
+		_ = sh.client.Close()
+	}
+	for _, c := range cmds {
+		c.cmd.Stop()
+		_ = c.client.Close()
+	}
+	if s.files != nil {
+		s.files.drop(id)
+	}
+	if s.claude != nil {
+		_ = s.claude.Abort(id)
+	}
+	log.Printf("servers: disconnected from %s", id)
+	return nil
 }
 
 func (s *ServerService) StopCommand(runID string) error {
