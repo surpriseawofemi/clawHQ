@@ -9,6 +9,14 @@ import { FilesView } from './FilesView'
 import { ClaudeChat } from './ClaudeChat'
 
 type Props = { shell: ShellProps }
+
+const pageMemory: { servers: ServerProfile[]; selectedId: string | null; tab: Tab; health: Record<string, ServerHealth>; projInfo: Record<string, ProjectInfo> } = {
+  servers: [],
+  selectedId: null,
+  tab: 'health',
+  health: {},
+  projInfo: {}
+}
 type Tab = 'health' | 'chat' | 'files' | 'actions' | 'terminal'
 
 const empty = (): ServerProfile => ({ id: '', name: '', host: '', port: 22, user: 'root', auth: 'agent', keyPath: '', password: '', dir: '', addedAtMs: 0, monitor: true, tmux: true })
@@ -29,17 +37,22 @@ const ago = (ms?: number): string => {
  * terminal on it.
  */
 export function ServersPage({ shell }: Props): React.JSX.Element {
-  const [servers, setServers] = useState<ServerProfile[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Leaving the page and coming back keeps everything: the server list, which one
+  // was open, its tab, health results and project cards live outside React.
+  const [servers, setServers] = useState<ServerProfile[]>(pageMemory.servers)
+  const [selectedId, setSelectedId] = useState<string | null>(pageMemory.selectedId)
   const [editing, setEditing] = useState<ServerProfile | null>(null)
-  const [tab, setTab] = useState<Tab>('health')
-  const [health, setHealth] = useState<Record<string, ServerHealth>>({})
+  const [tab, setTab] = useState<Tab>(pageMemory.tab)
+  const [health, setHealth] = useState<Record<string, ServerHealth>>(pageMemory.health)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [installLog, setInstallLog] = useState<string | null>(null)
   const [projForm, setProjForm] = useState<{ id: string; name: string; dir: string; agent: string } | null>(null)
   // What the active project's folder holds, read once per project.
-  const [projInfo, setProjInfo] = useState<Record<string, ProjectInfo>>({})
+  const [projInfo, setProjInfo] = useState<Record<string, ProjectInfo>>(pageMemory.projInfo)
+  useEffect(() => {
+    Object.assign(pageMemory, { servers, selectedId, tab, health, projInfo })
+  }, [servers, selectedId, tab, health, projInfo])
   const infoKey = (s: ServerProfile, p: ServerProject): string => `${s.id}:${p.id}:${p.dir}`
   const loadInfo = async (s: ServerProfile, p: ServerProject): Promise<void> => {
     try {

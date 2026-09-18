@@ -91,6 +91,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 61 | Terminals survive a ClawHQ restart: each tab is a tmux session on the server (`tmux -u new-session -A`, mouse on, 20k history), the tab list is saved per project and reattaches on reopen; × ends the session, ⇣ detaches and keeps it running; tmux detected on Health with an Install button; per-server switch, plain shells otherwise | v0.1.68 |
 | 62 | tmux status bar hidden in ClawHQ terminals | v0.1.69 |
 | 63 | "Continue without a gateway" on the gateway chooser opens ClawHQ on Servers; SSH features need no gateway | v0.1.70 |
+| 64 | Servers page keeps its state across page switches: selected server, tab, health results and project cards stay; health is not re-run on return | v0.1.71 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now
