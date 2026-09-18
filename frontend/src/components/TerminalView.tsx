@@ -38,6 +38,9 @@ export function TerminalTabs({ serverId, projectId = '', dir = '', tmux = false 
           </div>
         ))}
         <button className="term-tab-add" title="New terminal in this project" onClick={() => setActive(terminals.create(serverId, projectId, dir, tmux).id)}>＋</button>
+        {current && (
+          <button className="term-tab-add term-paste" title="Paste the clipboard (right-click in the terminal does the same; selecting text copies)" onClick={() => void terminals.paste(current.id)}>Paste</button>
+        )}
       </div>
       {current && <TerminalPane key={current.id} t={current} />}
     </div>

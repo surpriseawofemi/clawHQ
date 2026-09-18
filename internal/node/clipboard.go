@@ -119,3 +119,8 @@ func (h *Host) clipboardSet(raw json.RawMessage) (any, string) {
 	}
 	return map[string]any{"ok": true, "length": len(p.Text)}, ""
 }
+
+// ClipboardRead and ClipboardWrite expose the OS clipboard to the app itself (the
+// terminal's right-click paste), not to agents.
+func ClipboardRead() (string, error)   { return clipboardRead() }
+func ClipboardWrite(text string) error { return clipboardWrite(text) }

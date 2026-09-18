@@ -3674,3 +3674,5 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .srv-check-hint .btn-sm { padding: 1px 8px; font-size: 11px; margin-left: 4px; }
 
 .onboard-skip { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 14px; text-align: center; }
+
+.term-paste { margin-left: auto; }

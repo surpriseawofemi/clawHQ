@@ -220,6 +220,7 @@ func main() {
 			application.NewService(serverSvc),
 			application.NewService(fileSvc),
 			application.NewService(claudeSvc),
+			application.NewService(&ClipboardService{}),
 			application.NewService(&DiagService{}),
 		},
 		Assets: application.AssetOptions{

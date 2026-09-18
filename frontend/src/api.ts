@@ -2,6 +2,7 @@ import { Events } from '@wailsio/runtime'
 import {
   CacheService,
   ClaudeService,
+  ClipboardService,
   ConfigService,
   DaemonService,
   DiagService,
@@ -221,6 +222,10 @@ export const api = {
       const e = eventPayload<{ serverId: string; runId: string; code: number; error?: string }>(raw)
       if (e) cb(e)
     }),
+  clipboard: {
+    read: (): Promise<string> => ClipboardService.Read(),
+    write: (text: string): Promise<void> => ClipboardService.Write(text)
+  },
   claude: {
     state: (serverId: string): Promise<ClaudeState> => ClaudeService.State(serverId) as Promise<ClaudeState>,
     setMode: (serverId: string, mode: string): Promise<ClaudeState> => ClaudeService.SetMode(serverId, mode) as Promise<ClaudeState>,

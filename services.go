@@ -615,3 +615,10 @@ func (s *DiagService) Report(kind, message, stack string) {
 
 // Path tells the UI where the log lives, for the error screen.
 func (s *DiagService) Path() string { return frontendLogPath() }
+
+// ClipboardService — the Mac's clipboard for the page (terminal paste and copy).
+// The webview's own clipboard API is unreliable inside WKWebView.
+type ClipboardService struct{}
+
+func (s *ClipboardService) Read() (string, error)   { return node.ClipboardRead() }
+func (s *ClipboardService) Write(text string) error { return node.ClipboardWrite(text) }

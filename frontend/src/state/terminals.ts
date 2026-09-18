@@ -124,6 +124,12 @@ export const terminals = {
     term.onData((data) => {
       if (t.shellId && t.status === 'connected') void api.servers.write(t.shellId, enc(data)).catch(() => undefined)
     })
+    // Selecting text copies it; right-click pastes. The OS clipboard goes through
+    // Go because the webview's clipboard API is unreliable here.
+    term.onSelectionChange(() => {
+      const sel = term.getSelection()
+      if (sel) void api.clipboard.write(sel).catch(() => undefined)
+    })
     notify()
     return t
   },
@@ -131,8 +137,13 @@ export const terminals = {
   attach(id: string, el: HTMLElement): void {
     const t = terms.find((x) => x.id === id)
     if (!t) return
-    if (!t.term.element) t.term.open(el)
-    else el.appendChild(t.term.element)
+    if (!t.term.element) {
+      t.term.open(el)
+      t.term.element?.addEventListener('contextmenu', (e) => {
+        e.preventDefault()
+        void terminals.paste(t.id)
+      })
+    } else el.appendChild(t.term.element)
     t.attached = el
     t.fit.fit()
     t.term.focus()
@@ -195,6 +206,22 @@ export const terminals = {
       writeSaved(t.serverId, t.projectId, saved)
     }
     notify()
+  },
+  /** Pastes the Mac's clipboard into the terminal (right-click, or the paste button). */
+  async paste(id: string): Promise<void> {
+    const t = terms.find((x) => x.id === id)
+    if (!t || !t.shellId || t.status !== 'connected') return
+    let text = ''
+    try {
+      text = await api.clipboard.read()
+    } catch {
+      try {
+        text = await navigator.clipboard.readText()
+      } catch {
+        return
+      }
+    }
+    if (text) t.term.paste(text)
   },
   /** Reconnects an ended terminal in place. */
   reconnect(id: string): void {

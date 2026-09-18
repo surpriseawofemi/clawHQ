@@ -92,6 +92,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 62 | tmux status bar hidden in ClawHQ terminals | v0.1.69 |
 | 63 | "Continue without a gateway" on the gateway chooser opens ClawHQ on Servers; SSH features need no gateway | v0.1.70 |
 | 64 | Servers page keeps its state across page switches: selected server, tab, health results and project cards stay; health is not re-run on return | v0.1.71 |
+| 65 | Terminal clipboard: selecting text copies it, right-click (or the Paste button) pastes, through the Mac clipboard in Go | v0.1.72 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now
