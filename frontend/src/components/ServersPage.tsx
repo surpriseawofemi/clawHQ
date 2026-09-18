@@ -386,26 +386,23 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                   <h4 className="srv-h4">Coding agents</h4>
                   <div className="srv-checks">
                     {(h.agents ?? []).map((a) => (
-                      <div key={a.id} className={`srv-check${a.installed && a.loggedIn ? ' is-ok' : ' is-bad'}`}>
+                      <div key={a.id} className={`srv-check srv-agent${a.installed && a.loggedIn ? ' is-ok' : a.installed ? ' is-warn' : ''}`}>
                         <span className="srv-check-icon">{a.installed && a.loggedIn ? '✅' : a.installed ? '🟡' : '⬜'}</span>
                         <span className="srv-check-label">{a.label}</span>
-                        <span className="srv-check-value">
+                        <span className="srv-check-value" title={a.installed && !a.loggedIn ? `Open the terminal and ${a.loginHint}` : a.path || undefined}>
                           {a.installed ? `${a.version || 'installed'} · ${a.loggedIn ? (a.account ? `logged in as ${a.account}` : 'logged in') : 'not logged in'}` : 'not installed'}
                         </span>
-                        <span className="srv-check-hint srv-agent-actions">
+                        <span className="srv-agent-actions">
                           {!a.installed && (
-                            <button className="btn btn-sm btn-primary" onClick={() => void install(selected.id, a.id)} disabled={busy !== null}>
-                              {busy === `install:${selected.id}:${a.id}` ? 'Installing…' : `Install ${a.label}`}
+                            <button className="btn btn-sm" onClick={() => void install(selected.id, a.id)} disabled={busy !== null}>
+                              {busy === `install:${selected.id}:${a.id}` ? 'Installing…' : 'Install'}
                             </button>
                           )}
                           {a.installed && !a.loggedIn && (
-                            <span>
-                              Not logged in: open the terminal and {a.loginHint}.{' '}
-                              <button className="btn btn-sm" onClick={() => setTab('terminal')}>Terminal</button>
-                            </span>
+                            <button className="btn btn-sm" onClick={() => setTab('terminal')} title={`Open the terminal and ${a.loginHint}`}>Log in</button>
                           )}
                           {a.installed && a.loggedIn && (activeProject(selected)?.agent ?? 'claude') === a.id && (
-                            <button className="btn btn-sm" onClick={() => setTab('chat')}>Open chat</button>
+                            <button className="btn btn-sm" onClick={() => setTab('chat')}>Chat</button>
                           )}
                         </span>
                       </div>

@@ -3647,4 +3647,8 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .proj-select { font-size: 12px; padding: 3px 24px 3px 8px; max-width: 420px; }
 .proj-form { display: flex; flex-direction: column; gap: 10px; margin: 12px 22px 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raised); }
 .srv-h4 { margin: 8px 0 0; font-size: 12px; letter-spacing: .3px; text-transform: uppercase; color: var(--text-faint); }
-.srv-agent-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.srv-check.srv-agent { grid-template-columns: 22px 130px 1fr auto; align-items: center; }
+.srv-check.srv-agent.is-warn { border-color: color-mix(in srgb, #e8a13a 45%, var(--border)); }
+.srv-check.srv-agent:not(.is-ok):not(.is-warn) { border-color: var(--border); }
+.srv-agent-actions { display: flex; align-items: center; gap: 6px; }
+.srv-agent-actions .btn-sm { padding: 2px 9px; font-size: 11.5px; }
