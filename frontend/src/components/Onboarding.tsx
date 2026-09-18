@@ -4,6 +4,8 @@ import { Logo } from './Logo'
 import type { ConnectionStatus, GatewayProfile } from '../types'
 
 type Props = {
+  /** Lets the person into ClawHQ with no gateway: Servers work over SSH alone. */
+  onSkip?: () => void
   status: ConnectionStatus
   onConnected: () => void
 }
@@ -25,7 +27,7 @@ const lastUsed = (ms?: number): string => {
  * any, it is the first-run pairing form. Pairing is device-based, so each gateway is
  * paired once with its shared token or a setup code and reconnects by itself after.
  */
-export function Onboarding({ status, onConnected }: Props): React.JSX.Element {
+export function Onboarding({ status, onConnected, onSkip }: Props): React.JSX.Element {
   const [gateways, setGateways] = useState<GatewayProfile[] | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [cliReady, setCliReady] = useState<boolean | null>(null)
@@ -131,6 +133,14 @@ export function Onboarding({ status, onConnected }: Props): React.JSX.Element {
             })}
           </div>
 
+          {onSkip && (
+            <div className="onboard-skip">
+              <button className="btn" onClick={onSkip}>
+                Continue without a gateway
+              </button>
+              <span className="field-hint">Servers, files and terminals work over SSH on their own. Agents, Team Chat and Issues need the gateway.</span>
+            </div>
+          )}
           {status.phase === 'error' && status.error && !error && (
             <p className="onboard-hint">{status.error}</p>
           )}

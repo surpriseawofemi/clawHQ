@@ -28,6 +28,7 @@ import type { NodeNotification } from './types'
 function App(): React.JSX.Element {
   const fleet = useFleet()
   const [page, setPage] = useState<Page>('menu')
+  const [offline, setOffline] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('gateways')
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -110,10 +111,19 @@ function App(): React.JSX.Element {
     sendQueuedNow
   } = fleet
 
-  // Nothing works before a connection lands, so onboarding owns the whole window
-  // until it does — including while a device is waiting to be approved.
-  if (status.phase === 'pending' || (!status.paired && status.phase !== 'connected')) {
-    return <Onboarding status={status} onConnected={refreshFleet} />
+  // Onboarding owns the window until a connection lands, unless the person chose
+  // to go on without one: Servers work over SSH with no gateway at all.
+  if (!offline && (status.phase === 'pending' || (!status.paired && status.phase !== 'connected'))) {
+    return (
+      <Onboarding
+        status={status}
+        onConnected={refreshFleet}
+        onSkip={() => {
+          setOffline(true)
+          setPage('servers')
+        }}
+      />
+    )
   }
 
   const agentForSettings = agents.find((a) => a.id === agentSettingsId) ?? null

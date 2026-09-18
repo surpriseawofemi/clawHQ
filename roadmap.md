@@ -90,6 +90,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 60 | Projects as workspaces: projects listed under their server in the sidebar (click to switch, edit, remove, add), each keeping its own file browser position, open file and terminals; terminals belong to a project and open in its folder; a project card on Health reads the folder once (git branch and remote, package.json, go.mod, composer, python, docker, pm2, CLAUDE.md, .env) and suggests actions from it; actions can be per project (shown first) or server-wide | v0.1.67 |
 | 61 | Terminals survive a ClawHQ restart: each tab is a tmux session on the server (`tmux -u new-session -A`, mouse on, 20k history), the tab list is saved per project and reattaches on reopen; × ends the session, ⇣ detaches and keeps it running; tmux detected on Health with an Install button; per-server switch, plain shells otherwise | v0.1.68 |
 | 62 | tmux status bar hidden in ClawHQ terminals | v0.1.69 |
+| 63 | "Continue without a gateway" on the gateway chooser opens ClawHQ on Servers; SSH features need no gateway | v0.1.70 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now
