@@ -148,6 +148,9 @@ type ServerProfile struct {
 	ActiveProjectID string          `json:"activeProjectId,omitempty"`
 	// MonitorOff stops the periodic health check and its warnings.
 	MonitorOff bool `json:"monitorOff,omitempty"`
+	// TmuxOff makes terminals plain shells instead of tmux sessions that survive
+	// a ClawHQ restart.
+	TmuxOff bool `json:"tmuxOff,omitempty"`
 }
 
 // ServerProject is one folder on a server the coding agents work in.
@@ -603,6 +606,19 @@ func (s *Store) EnsureInstanceID() string {
 	cfg.InstanceID = fmt.Sprintf("%s-%d", strings.ToLower(strings.SplitN(host, ".", 2)[0]), time.Now().UnixMilli()%1000000)
 	_, _ = s.writeLocked(cfg)
 	return cfg.InstanceID
+}
+
+// SetServerTmux turns tmux-backed terminals on or off.
+func (s *Store) SetServerTmux(serverID string, on bool) (Config, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	for i := range cfg.Servers {
+		if cfg.Servers[i].ID == serverID {
+			cfg.Servers[i].TmuxOff = !on
+		}
+	}
+	return s.writeLocked(cfg)
 }
 
 // SetServerMonitor turns the periodic health check on or off.

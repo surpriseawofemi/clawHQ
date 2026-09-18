@@ -11,7 +11,7 @@ import { ClaudeChat } from './ClaudeChat'
 type Props = { shell: ShellProps }
 type Tab = 'health' | 'chat' | 'files' | 'actions' | 'terminal'
 
-const empty = (): ServerProfile => ({ id: '', name: '', host: '', port: 22, user: 'root', auth: 'agent', keyPath: '', password: '', dir: '', addedAtMs: 0, monitor: true })
+const empty = (): ServerProfile => ({ id: '', name: '', host: '', port: 22, user: 'root', auth: 'agent', keyPath: '', password: '', dir: '', addedAtMs: 0, monitor: true, tmux: true })
 
 const ago = (ms?: number): string => {
   if (!ms) return 'never'
@@ -266,6 +266,10 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               <input type="checkbox" checked={editing.monitor !== false} onChange={(e) => setEditing({ ...editing, monitor: e.target.checked })} />
               <span>Watch health every 10 minutes and warn in the bell (not answering, disk over 90%, high load)</span>
             </label>
+            <label className="check-row">
+              <input type="checkbox" checked={editing.tmux !== false} onChange={(e) => setEditing({ ...editing, tmux: e.target.checked })} />
+              <span>Run terminals in tmux so they survive closing ClawHQ (needs tmux on the server)</span>
+            </label>
             <div className="field">
               <span>{editing.id ? 'Active project folder' : 'Project folder (optional)'}</span>
               <input value={editing.dir ?? ''} onChange={(e) => setEditing({ ...editing, dir: e.target.value })} placeholder="/var/www/emailmanager" spellCheck={false} />
@@ -377,9 +381,12 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
             </div>
           ) : tab === 'terminal' ? (
             <div className="content-body term-body">
-              <TerminalTabs serverId={selected.id} projectId={activeProject(selected)?.id ?? ''} dir={activeProject(selected)?.dir ?? ''} />
+              <TerminalTabs serverId={selected.id} projectId={activeProject(selected)?.id ?? ''} dir={activeProject(selected)?.dir ?? ''} tmux={selected.tmux !== false && (h?.tmux?.installed ?? false)} />
               <p className="field-hint">
-                Login shells on the server; they stay open when you leave this page. Run <code>claude</code> here for the full Claude Code, or <code>claude</code> then <code>/login</code> once to sign in.
+                {selected.tmux !== false && h?.tmux?.installed
+                  ? 'Each tab is a tmux session on the server: it survives closing ClawHQ and comes back here. × ends it, ⇣ detaches and keeps it running.'
+                  : 'Login shells on the server; they stay open while ClawHQ runs. Install tmux on Health to keep them across restarts.'}{' '}
+                Run <code>claude</code> here for the full Claude Code.
               </p>
             </div>
           ) : (
@@ -404,7 +411,16 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                         <span className="srv-check-icon">{c.ok ? '✅' : '❌'}</span>
                         <span className="srv-check-label">{c.label}</span>
                         <span className="srv-check-value">{c.value}</span>
-                        {!c.ok && c.hint && <span className="srv-check-hint">{c.hint}</span>}
+                        {!c.ok && c.hint && (
+                          <span className="srv-check-hint">
+                            {c.hint}{' '}
+                            {c.id === 'tmux' && (
+                              <button className="btn btn-sm" disabled={busy !== null} onClick={() => { setBusy('tmux'); setInstallLog('Installing tmux…'); void api.servers.installTmux(selected.id).then((out) => setInstallLog(out)).catch((err) => setInstallLog(String(err))).finally(() => { setBusy(null); void check(selected.id) }) }}>
+                                {busy === 'tmux' ? 'Installing…' : 'Install tmux'}
+                              </button>
+                            )}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>

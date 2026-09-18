@@ -3670,3 +3670,5 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .proj-card { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raised); font-size: 12.5px; }
 .proj-fact { white-space: nowrap; }
 .acts-label { font-size: 11px; letter-spacing: .3px; text-transform: uppercase; color: var(--text-faint); }
+
+.srv-check-hint .btn-sm { padding: 1px 8px; font-size: 11px; margin-left: 4px; }

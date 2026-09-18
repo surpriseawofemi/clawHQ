@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -54,6 +55,7 @@ type ServerView struct {
 	Projects        []store.ServerProject `json:"projects"`
 	ActiveProjectID string                `json:"activeProjectId"`
 	Monitor         bool                  `json:"monitor"`
+	Tmux            bool                  `json:"tmux"`
 }
 
 // ServerInput is what the page sends to save a server.
@@ -68,6 +70,7 @@ type ServerInput struct {
 	Password string `json:"password"`
 	Dir      string `json:"dir"`
 	Monitor  *bool  `json:"monitor"`
+	Tmux     *bool  `json:"tmux"`
 }
 
 type ServerCheck struct {
@@ -105,6 +108,7 @@ type AgentStatus struct {
 }
 
 type ServerHealth struct {
+	Tmux        ServerTool    `json:"tmux"`
 	Agents      []AgentStatus `json:"agents"`
 	Cores       int           `json:"cores"`
 	OK          bool          `json:"ok"`
@@ -141,7 +145,7 @@ func viewOf(p store.ServerProfile) ServerView {
 	if projects == nil {
 		projects = []store.ServerProject{}
 	}
-	return ServerView{ID: p.ID, Name: p.Name, Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, HasPassword: p.Password != "", Dir: p.Active().Dir, AddedAtMs: p.AddedAtMs, LastOkAtMs: p.LastOkAtMs, Actions: actions, Projects: projects, ActiveProjectID: p.ActiveProjectID, Monitor: !p.MonitorOff}
+	return ServerView{ID: p.ID, Name: p.Name, Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, HasPassword: p.Password != "", Dir: p.Active().Dir, AddedAtMs: p.AddedAtMs, LastOkAtMs: p.LastOkAtMs, Actions: actions, Projects: projects, ActiveProjectID: p.ActiveProjectID, Monitor: !p.MonitorOff, Tmux: !p.TmuxOff}
 }
 
 func (s *ServerService) List() []ServerView {
@@ -189,6 +193,12 @@ func (s *ServerService) Save(in ServerInput) ([]ServerView, error) {
 	if in.Monitor != nil {
 		p.MonitorOff = !*in.Monitor
 	}
+	if cur, err := s.profile(in.ID); err == nil {
+		p.TmuxOff = cur.TmuxOff
+	}
+	if in.Tmux != nil {
+		p.TmuxOff = !*in.Tmux
+	}
 	if _, err := s.store.UpsertServer(p); err != nil {
 		return nil, err
 	}
@@ -227,6 +237,7 @@ echo "load=$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2
 echo "disk=$(df -h / 2>/dev/null | awk 'NR==2{print $4" free of "$2" ("$5" used)"}')"
 echo "memory=$(free -h 2>/dev/null | awk '/^Mem/{print $7" available of "$2}')"
 echo "cores=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null)"
+echo "tmux=$(command -v tmux >/dev/null 2>&1 && tmux -V 2>/dev/null | sed 's/^tmux //')"
 echo "node=$(command -v node >/dev/null 2>&1 && node -v 2>/dev/null)"
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 CX="$(command -v codex 2>/dev/null)"; echo "codex_path=$CX"; [ -n "$CX" ] && echo "codex_version=$("$CX" --version 2>/dev/null | head -1)"
@@ -288,6 +299,7 @@ func (s *ServerService) Health(ctx context.Context, id string) ServerHealth {
 	h.Git = ServerTool{Installed: kv["git"] != "", Version: kv["git"]}
 	h.Claude = ClaudeStatus{Installed: kv["claude_path"] != "", Version: kv["claude_version"], Path: kv["claude_path"], LoggedIn: kv["claude_creds"] == "1" || kv["claude_apikey"] == "1", Account: kv["claude_account"]}
 	fmt.Sscanf(kv["cores"], "%d", &h.Cores)
+	h.Tmux = ServerTool{Installed: kv["tmux"] != "", Version: kv["tmux"]}
 	h.Agents = []AgentStatus{
 		{ID: "claude", Label: "Claude Code", Installed: h.Claude.Installed, Version: h.Claude.Version, Path: h.Claude.Path, LoggedIn: h.Claude.LoggedIn, Account: h.Claude.Account, Install: "curl -fsSL https://claude.ai/install.sh | bash", LoginHint: "run: claude, then /login"},
 		{ID: "codex", Label: "Codex", Installed: kv["codex_path"] != "", Version: kv["codex_version"], Path: kv["codex_path"], LoggedIn: kv["codex_login"] == "1", Install: "npm install -g @openai/codex", LoginHint: "run: codex login"},
@@ -305,6 +317,7 @@ func (s *ServerService) Health(ctx context.Context, id string) ServerHealth {
 	}
 	h.Checks = append(h.Checks, ServerCheck{ID: "git", Label: "Git", OK: h.Git.Installed, Value: orDash(h.Git.Version), Hint: "Claude Code works better in a git checkout."})
 	h.Checks = append(h.Checks, ServerCheck{ID: "node", Label: "Node.js", OK: h.Node.Installed, Value: orDash(h.Node.Version), Hint: "Not required by the native Claude Code installer, but many projects need it."})
+	h.Checks = append(h.Checks, ServerCheck{ID: "tmux", Label: "tmux", OK: h.Tmux.Installed, Value: orDash(h.Tmux.Version), Hint: "Keeps terminals alive across ClawHQ restarts. Install it from here."})
 	s.store.MarkServerOK(id)
 	return h
 }
@@ -419,11 +432,13 @@ func (s *ServerService) OpenShell(ctx context.Context, id string, cols, rows int
 	if err != nil {
 		return "", err
 	}
-	return s.OpenShellIn(ctx, id, p.Active().Dir, cols, rows)
+	return s.OpenShellIn(ctx, id, p.Active().Dir, cols, rows, "")
 }
 
-// OpenShellIn starts a login shell in a folder.
-func (s *ServerService) OpenShellIn(ctx context.Context, id, dir string, cols, rows int) (string, error) {
+// OpenShellIn starts a login shell in a folder. With a session name and tmux on
+// the server, the shell lives in a tmux session that survives ClawHQ closing:
+// reopening with the same name attaches to it.
+func (s *ServerService) OpenShellIn(ctx context.Context, id, dir string, cols, rows int, session string) (string, error) {
 	p, err := s.profile(id)
 	if err != nil {
 		return "", err
@@ -436,7 +451,18 @@ func (s *ServerService) OpenShellIn(ctx context.Context, id, dir string, cols, r
 	s.seq++
 	shellID := fmt.Sprintf("sh-%d-%d", time.Now().UnixMilli(), s.seq)
 	s.mu.Unlock()
-	sh, err := sshx.StartShell(client, cols, rows,
+	command := ""
+	if session != "" && !p.TmuxOff {
+		name := tmuxNameRe.ReplaceAllString(session, "-")
+		cd := ""
+		if dir != "" {
+			cd = "cd " + shq(dir) + " 2>/dev/null; "
+		}
+		// -A attaches when the session exists; the chained commands set mouse
+		// scrolling and a deep history on the server session itself.
+		command = "bash -lc " + shq(cd+"if command -v tmux >/dev/null 2>&1; then exec tmux -u new-session -A -s "+shq(name)+" \\; set -g mouse on \\; set -g history-limit 20000; else exec bash -l; fi")
+	}
+	sh, err := sshx.StartShellCmd(client, cols, rows, command,
 		func(b64 string) {
 			if s.app != nil {
 				s.app.Event.Emit("ssh:out", map[string]any{"id": shellID, "data": b64})
@@ -465,12 +491,74 @@ func (s *ServerService) OpenShellIn(ctx context.Context, id, dir string, cols, r
 	}
 	s.shells[shellID] = &openShell{client: client, shell: sh}
 	s.mu.Unlock()
-	// Land in the project folder when one is set.
-	if dir != "" {
+	// A plain shell lands in the project folder; tmux was started there already.
+	if dir != "" && command == "" {
 		_ = sh.Write(b64(fmt.Sprintf("cd %q && clear\n", dir)))
 	}
 	log.Printf("servers: shell %s opened on %s", shellID, p.Host)
 	return shellID, nil
+}
+
+var tmuxNameRe = regexp.MustCompile(`[^A-Za-z0-9_-]`)
+
+// TmuxSessions lists tmux sessions on the server (name, windows, attached).
+func (s *ServerService) TmuxSessions(ctx context.Context, id string) ([]string, error) {
+	p, err := s.profile(id)
+	if err != nil {
+		return nil, err
+	}
+	client, err := sshx.Dial(ctx, target(p), knownHostsPath())
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	res, err := sshx.Run(ctx, client, "tmux ls -F '#{session_name}' 2>/dev/null", 15*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, l := range strings.Split(strings.TrimSpace(res.Stdout), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, l)
+		}
+	}
+	return out, nil
+}
+
+// KillTmux ends a tmux session on the server (closing a tab for good).
+func (s *ServerService) KillTmux(ctx context.Context, id, session string) error {
+	p, err := s.profile(id)
+	if err != nil {
+		return err
+	}
+	client, err := sshx.Dial(ctx, target(p), knownHostsPath())
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	name := tmuxNameRe.ReplaceAllString(session, "-")
+	_, err = sshx.Run(ctx, client, "tmux kill-session -t "+shq(name)+" 2>/dev/null; true", 15*time.Second)
+	return err
+}
+
+// InstallTmux installs tmux with the server's package manager.
+func (s *ServerService) InstallTmux(ctx context.Context, id string) (string, error) {
+	p, err := s.profile(id)
+	if err != nil {
+		return "", err
+	}
+	client, err := sshx.Dial(ctx, target(p), knownHostsPath())
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+	cmd := `if command -v apt-get >/dev/null 2>&1; then sudo apt-get install -y tmux 2>&1; elif command -v dnf >/dev/null 2>&1; then sudo dnf install -y tmux 2>&1; elif command -v yum >/dev/null 2>&1; then sudo yum install -y tmux 2>&1; elif command -v brew >/dev/null 2>&1; then brew install tmux 2>&1; else echo "no known package manager"; exit 1; fi; tmux -V`
+	res, err := sshx.Run(ctx, client, cmd, 5*time.Minute)
+	out := strings.TrimSpace(res.Stdout + "\n" + res.Stderr)
+	if len(out) > 4000 {
+		out = "…" + out[len(out)-4000:]
+	}
+	return out, err
 }
 
 func b64(s string) string {

@@ -317,7 +317,12 @@ streams into the page with the exit status, Stop interrupts, and the last
 eight runs stay selectable.
 
 Terminals are kept in a registry outside the page tree, so several can be open
-per server and they survive switching pages; an ended one offers Reconnect.
+per project and they survive switching pages; an ended one offers Reconnect.
+With tmux on the server (Health shows it, with an Install button) each tab is a
+tmux session there, so quitting ClawHQ does not end it: the tab list is saved
+per project and reattaches when you come back, scrollback and running
+programs included. × on a tab ends its session, ⇣ detaches and leaves it
+running. The per-server switch "Run terminals in tmux" turns this off.
 
 #### Files tab
 

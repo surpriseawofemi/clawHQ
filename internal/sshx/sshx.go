@@ -237,6 +237,12 @@ type Shell struct {
 // StartShell opens a login shell on a PTY; every chunk of output goes to onData
 // (base64 so binary-safe across JSON) and onExit fires once when it ends.
 func StartShell(c *ssh.Client, cols, rows int, onData func(string), onExit func(error)) (*Shell, error) {
+	return StartShellCmd(c, cols, rows, "", onData, onExit)
+}
+
+// StartShellCmd is StartShell running a command on the PTY instead of the login
+// shell (empty command: the login shell). Used to land in tmux.
+func StartShellCmd(c *ssh.Client, cols, rows int, command string, onData func(string), onExit func(error)) (*Shell, error) {
 	sess, err := c.NewSession()
 	if err != nil {
 		return nil, err
@@ -263,7 +269,12 @@ func StartShell(c *ssh.Client, cols, rows int, onData func(string), onExit func(
 		return nil, err
 	}
 	sess.Stderr = sess.Stdout
-	if err := sess.Shell(); err != nil {
+	if command == "" {
+		err = sess.Shell()
+	} else {
+		err = sess.Start(command)
+	}
+	if err != nil {
 		_ = sess.Close()
 		return nil, err
 	}

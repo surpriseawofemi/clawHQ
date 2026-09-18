@@ -13,6 +13,8 @@ export type Term = {
   serverId: string
   projectId: string
   dir: string
+  /** tmux session name on the server; empty for a plain shell. */
+  session: string
   title: string
   term: Terminal
   fit: FitAddon
@@ -26,6 +28,27 @@ const terms: Term[] = []
 const subs = new Set<() => void>()
 let seq = 0
 let wired = false
+
+/** Saved tabs per server+project, so they come back after a restart. */
+type SavedTab = { title: string; session: string; dir: string }
+const savedKey = (serverId: string, projectId: string): string => `clawhq.terms.${serverId}.${projectId || 'home'}`
+const readSaved = (serverId: string, projectId: string): SavedTab[] => {
+  try {
+    const raw = localStorage.getItem(savedKey(serverId, projectId))
+    return raw ? (JSON.parse(raw) as SavedTab[]) : []
+  } catch {
+    return []
+  }
+}
+const writeSaved = (serverId: string, projectId: string, tabs: SavedTab[]): void => {
+  try {
+    if (tabs.length === 0) localStorage.removeItem(savedKey(serverId, projectId))
+    else localStorage.setItem(savedKey(serverId, projectId), JSON.stringify(tabs))
+  } catch {
+    /* per-machine convenience */
+  }
+}
+const slug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
 
 const notify = (): void => subs.forEach((cb) => cb())
 
@@ -69,7 +92,18 @@ export const terminals = {
   get(id: string): Term | undefined {
     return terms.find((t) => t.id === id)
   },
-  create(serverId: string, projectId = '', dir = ''): Term {
+  /**
+   * Brings back the tabs saved for a project (their tmux sessions reattach),
+   * or opens one fresh terminal when nothing was saved.
+   */
+  restore(serverId: string, projectId: string, dir: string, tmux: boolean): Term[] {
+    const existing = terms.filter((t) => t.serverId === serverId && t.projectId === projectId)
+    if (existing.length > 0) return existing
+    const saved = readSaved(serverId, projectId)
+    if (saved.length === 0) return [terminals.create(serverId, projectId, dir, tmux)]
+    return saved.map((sv) => terminals.create(serverId, projectId, sv.dir || dir, tmux, sv.session, sv.title))
+  },
+  create(serverId: string, projectId = '', dir = '', tmux = false, session?: string, title?: string): Term {
     wire()
     seq++
     const term = new Terminal({
@@ -83,8 +117,10 @@ export const terminals = {
     const fit = new FitAddon()
     term.loadAddon(fit)
     const n = terms.filter((t) => t.serverId === serverId && t.projectId === projectId).length + 1
-    const t: Term = { id: `term-${Date.now()}-${seq}`, serverId, projectId, dir, title: `Terminal ${n}`, term, fit, shellId: null, status: 'connecting', attached: null }
+    const name = session ?? (tmux ? `clawhq-${slug(projectId || 'home')}-${Date.now().toString(36).slice(-5)}` : '')
+    const t: Term = { id: `term-${Date.now()}-${seq}`, serverId, projectId, dir, session: name, title: title ?? `Terminal ${n}`, term, fit, shellId: null, status: 'connecting', attached: null }
     terms.push(t)
+    terminals.save(serverId, projectId)
     term.onData((data) => {
       if (t.shellId && t.status === 'connected') void api.servers.write(t.shellId, enc(data)).catch(() => undefined)
     })
@@ -102,7 +138,7 @@ export const terminals = {
     t.term.focus()
     if (!t.shellId && t.status === 'connecting') {
       api.servers
-        .openShellIn(t.serverId, t.dir, t.term.cols, t.term.rows)
+        .openShellIn(t.serverId, t.dir, t.term.cols, t.term.rows, t.session)
         .then((sid) => {
           t.shellId = sid
           t.status = 'connected'
@@ -133,16 +169,31 @@ export const terminals = {
     const t = terms.find((x) => x.id === id)
     if (t) {
       t.title = title
+      terminals.save(t.serverId, t.projectId)
       notify()
     }
   },
-  close(id: string): void {
+  /** Writes the project's tab list (titles and tmux session names) to localStorage. */
+  save(serverId: string, projectId: string): void {
+    const tabs = terms.filter((t) => t.serverId === serverId && t.projectId === projectId).map((t) => ({ title: t.title, session: t.session, dir: t.dir }))
+    writeSaved(serverId, projectId, tabs)
+  },
+  /** Closes a tab. With kill, its tmux session ends too; otherwise it keeps running and comes back next time. */
+  close(id: string, kill = true): void {
     const i = terms.findIndex((x) => x.id === id)
     if (i < 0) return
     const t = terms[i]
     if (t.shellId) void api.servers.closeShell(t.shellId).catch(() => undefined)
+    if (kill && t.session) void api.servers.killTmux(t.serverId, t.session).catch(() => undefined)
     t.term.dispose()
     terms.splice(i, 1)
+    if (kill) terminals.save(t.serverId, t.projectId)
+    else {
+      // Detached: keep it in the saved list so it is reattached on the next visit.
+      const saved = readSaved(t.serverId, t.projectId)
+      if (!saved.some((sv) => sv.session === t.session)) saved.push({ title: t.title, session: t.session, dir: t.dir })
+      writeSaved(t.serverId, t.projectId, saved)
+    }
     notify()
   },
   /** Reconnects an ended terminal in place. */
