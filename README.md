@@ -292,6 +292,29 @@ experimental until verified on a real server.
   three tool descriptions add roughly a hundred tokens to each OpenClaw agent
   turn; a task costs the server agent's own tokens only when one is handed over.
 
+#### ClawHQ helper and Autopilot
+
+Install the helper from Health: one Node file uploaded over SFTP to
+`~/.clawhq/helper.js`, no registry involved; its version is ClawHQ's. Wiring a
+project writes the helper into the project's `.mcp.json` (MCP tools), adds
+Stop and SessionEnd hooks to `.claude/settings.json`, appends a ClawHQ section
+to `CLAUDE.md`, and creates `.clawhq/MISSION.md` from a template. From then on
+every reply the session gives, with its usage, billing mode and files edited,
+lands in `~/.clawhq/outbox.jsonl`, and the session has five tools: log a short
+line, open a numbered issue (with a details file it writes for itself), update
+one, list or read issues, read the mission.
+
+The Autopilot tab holds the mission (edit and save), the live session (an
+interactive Claude Code in tmux, started fresh or resuming a Claude session id;
+Start mission sends the mission with the instruction to schedule itself hourly;
+Pause and Resume send the matching instruction; Open in terminal attaches a
+tab), the numbered issues with Discuss and Fix, and the log. Chat's Live
+session mode types into that tmux session and shows replies from the hook, so
+"#12" reaches the session that knows #12. Server issues show under Issues, the
+log lines in the Digest, and the bell rings for issues that need you and for
+warnings. Subscription or API billing is detected from the server's
+credentials.
+
 #### Chat tab
 
 The Chat tab talks to Claude Code on the server without a terminal. Each

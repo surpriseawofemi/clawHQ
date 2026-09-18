@@ -9,6 +9,7 @@ import {
   ExecLogService,
   FileService,
   GatewayService,
+  HelperService,
   InboxService,
   LoginService,
   MediaService,
@@ -48,7 +49,10 @@ import type {
   ClaudeSession,
   ClaudeState,
   ServerRun,
-  SessionUsage
+  SessionUsage,
+  HelperStatus,
+  OutboxEvent,
+  ServerIssue
 } from './types'
 
 /**
@@ -221,6 +225,24 @@ export const api = {
   onActionExit: (cb: (e: { serverId: string; runId: string; code: number; error?: string }) => void): (() => void) =>
     Events.On('action:exit', (raw: any) => {
       const e = eventPayload<{ serverId: string; runId: string; code: number; error?: string }>(raw)
+      if (e) cb(e)
+    }),
+  helper: {
+    status: (id: string): Promise<HelperStatus> => HelperService.Status(id) as Promise<HelperStatus>,
+    install: (id: string): Promise<HelperStatus> => HelperService.Install(id) as Promise<HelperStatus>,
+    wire: (id: string, projectId: string): Promise<HelperStatus> => HelperService.Wire(id, projectId) as Promise<HelperStatus>,
+    unwire: (id: string, projectId: string): Promise<HelperStatus> => HelperService.Unwire(id, projectId) as Promise<HelperStatus>,
+    outbox: (id: string, sinceTs: number, limit = 300): Promise<OutboxEvent[]> => HelperService.Outbox(id, sinceTs, limit).then((r) => (r ?? []) as OutboxEvent[]),
+    issues: (id: string, projectId: string): Promise<ServerIssue[]> => HelperService.Issues(id, projectId).then((r) => (r ?? []) as ServerIssue[]),
+    issueDetails: (id: string, projectId: string, n: number): Promise<string> => HelperService.IssueDetails(id, projectId, n),
+    mission: (id: string, projectId: string): Promise<string> => HelperService.Mission(id, projectId),
+    setMission: (id: string, projectId: string, text: string): Promise<void> => HelperService.SetMission(id, projectId, text),
+    sendToSession: (id: string, session: string, text: string): Promise<void> => HelperService.SendToSession(id, session, text),
+    startSession: (id: string, projectId: string, resume: string): Promise<string> => HelperService.StartSession(id, projectId, resume)
+  },
+  onHelperEvent: (cb: (e: { serverId: string; event: OutboxEvent }) => void): (() => void) =>
+    Events.On('helper:event', (raw: any) => {
+      const e = eventPayload<{ serverId: string; event: OutboxEvent }>(raw)
       if (e) cb(e)
     }),
   clipboard: {

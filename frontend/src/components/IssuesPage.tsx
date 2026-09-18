@@ -5,7 +5,8 @@ import { renderMarkdown } from '../markdown'
 import { plugin } from '../state/plugin'
 import { bossSessionKey } from '../state/useFleet'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
-import type { Agent, Issue, IssueStatus, IssueUrgency, ServerProfile } from '../types'
+import type { Agent, Issue, IssueStatus, IssueUrgency, ServerIssue, ServerProfile } from '../types'
+import { serverNav } from '../state/serverNav'
 import { agentEmoji, agentLabel } from '../types'
 
 type Props = {
@@ -13,6 +14,7 @@ type Props = {
   agents: Agent[]
   connected: boolean
   onOpenAgent: (agentId: string, sessionKey?: string) => void
+  onOpenServers?: () => void
 }
 
 const STATUS_ICON: Record<IssueStatus, string> = { open: '🔴', 'in-progress': '🟡', resolved: '✅' }
@@ -34,7 +36,7 @@ const when = (ms: number): string => {
  * answer goes into the plugin and into the agent's Super Boss Chat as a turn, so
  * the agent acts on it and closes the item with a note.
  */
-export function IssuesPage({ shell, agents, connected, onOpenAgent }: Props): React.JSX.Element {
+export function IssuesPage({ shell, agents, connected, onOpenAgent, onOpenServers }: Props): React.JSX.Element {
   const [issues, setIssues] = useState<Issue[]>([])
   const [pluginPresent, setPluginPresent] = useState<boolean | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -68,8 +70,29 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent }: Props): Re
   // comes back as a reply on the issue.
   const [servers, setServers] = useState<ServerProfile[]>([])
   const [serverRuns, setServerRuns] = useState<Record<string, { issueId: string; serverName: string }>>({})
+  // Numbered issues the coding agents on servers opened for you (via the helper).
+  const [serverIssues, setServerIssues] = useState<{ server: ServerProfile; projectId: string; projectName: string; issues: ServerIssue[] }[]>([])
   useEffect(() => {
-    api.servers.list().then(setServers).catch(() => undefined)
+    let alive = true
+    const loadServers = async (): Promise<void> => {
+      try {
+        const list = await api.servers.list()
+        if (!alive) return
+        setServers(list)
+        const groups = await Promise.all(
+          list.flatMap((sv) => (sv.projects ?? []).map(async (p) => ({ server: sv, projectId: p.id, projectName: p.name, issues: await api.helper.issues(sv.id, p.id).catch(() => [] as ServerIssue[]) })))
+        )
+        if (alive) setServerIssues(groups.filter((g) => g.issues.some((i) => i.status === 'open')))
+      } catch {
+        /* no servers */
+      }
+    }
+    void loadServers()
+    const t = setInterval(() => void loadServers(), 60_000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
   }, [])
   useEffect(
     () =>
@@ -230,7 +253,30 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent }: Props): Re
             <span>Show resolved</span>
           </label>
         </div>
-        {ordered.length === 0 && <p className="field-hint">{pluginPresent === false ? 'Needs the ClawHQ gateway plugin.' : 'No issues.'}</p>}
+        {serverIssues.map((g) => (
+          <div key={`${g.server.id}:${g.projectId}`} className="issue-server-group">
+            <div className="team-side-label">🖥 {g.server.name} / {g.projectName}</div>
+            {g.issues.filter((i) => i.status === 'open').slice(0, 30).map((i) => (
+              <button
+                key={i.n}
+                className={`issue-row${i.needsBoss ? ' is-open' : ''}`}
+                title="Open in the server's Autopilot tab"
+                onClick={() => {
+                  serverNav.set({ serverId: g.server.id, projectId: g.projectId, tab: 'autopilot' })
+                  onOpenServers?.()
+                }}
+              >
+                <span className="issue-status">{i.needsBoss ? '🔴' : '🟡'}</span>
+                <span className="issue-row-meta">
+                  <span className="issue-row-title">#{i.n} {i.title}</span>
+                  <span className="issue-row-sub">{i.needsBoss ? 'needs you' : 'note'}{i.urgency !== 'normal' ? <span className={`urgency is-${i.urgency}`}> · {i.urgency}</span> : null}</span>
+                </span>
+                <span className="issue-row-time">{when(i.updatedAt)}</span>
+              </button>
+            ))}
+          </div>
+        ))}
+        {ordered.length === 0 && serverIssues.length === 0 && <p className="field-hint">{pluginPresent === false ? 'Needs the ClawHQ gateway plugin.' : 'No issues.'}</p>}
         {ordered.map((i) => {
           const a = counterpart(i)
           return (

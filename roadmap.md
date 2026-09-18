@@ -94,6 +94,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 64 | Servers page keeps its state across page switches: selected server, tab, health results and project cards stay; health is not re-run on return | v0.1.71 |
 | 65 | Terminal clipboard: selecting text copies it, right-click (or the Paste button) pastes, through the Mac clipboard in Go | v0.1.72 |
 | 66 | Server Disconnect (closes terminals, files, chat and command links; tmux sessions keep running) and Reconnect in the server header | v0.1.74 |
+| 67 | ClawHQ helper on servers and Autopilot: a dependency-free helper.js uploaded over SFTP gives Claude Code hooks (every reply, its usage, files edited and billing mode land in `~/.clawhq/outbox.jsonl`) and MCP tools (`clawhq_log`, `clawhq_issue` with numbers and a details file per issue, `clawhq_issue_update`, `clawhq_issues`, `clawhq_mission`); Wire project writes `.mcp.json`, hooks in `.claude/settings.json`, a CLAUDE.md section and `.clawhq/MISSION.md`; Autopilot tab (mission editor, live tmux session with start/resume/pause/resume/terminal, numbered issues with Discuss/Fix, log); Chat gets a Live session mode; Issues lists server issues; Digest shows the log; a watcher rings the bell for issues that need you and warnings | v0.1.76 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now

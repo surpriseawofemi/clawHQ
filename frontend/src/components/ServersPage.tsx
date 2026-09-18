@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
-import type { AgentStatus, ProjectInfo, ServerHealth, ServerProfile, ServerProject } from '../types'
+import type { AgentStatus, HelperStatus, ProjectInfo, ServerHealth, ServerProfile, ServerProject } from '../types'
+import { AutopilotView } from './AutopilotView'
+import { serverNav, liveSessionName } from '../state/serverNav'
 import { TerminalTabs } from './TerminalView'
 import { terminals } from '../state/terminals'
 import { ActionsView } from './ActionsView'
@@ -10,14 +12,22 @@ import { ClaudeChat } from './ClaudeChat'
 
 type Props = { shell: ShellProps }
 
-const pageMemory: { servers: ServerProfile[]; selectedId: string | null; tab: Tab; health: Record<string, ServerHealth>; projInfo: Record<string, ProjectInfo> } = {
+const pageMemory: { servers: ServerProfile[]; selectedId: string | null; tab: Tab; health: Record<string, ServerHealth>; projInfo: Record<string, ProjectInfo>; helper: Record<string, HelperStatus> } = {
   servers: [],
   selectedId: null,
   tab: 'health',
   health: {},
-  projInfo: {}
+  projInfo: {},
+  helper: {}
 }
-type Tab = 'health' | 'chat' | 'files' | 'actions' | 'terminal'
+/** Text the chat tab should start with (from Discuss / Fix on an issue). */
+let chatPrefill = ''
+export const takeChatPrefill = (): string => {
+  const v = chatPrefill
+  chatPrefill = ''
+  return v
+}
+type Tab = 'health' | 'chat' | 'files' | 'actions' | 'terminal' | 'autopilot'
 
 const empty = (): ServerProfile => ({ id: '', name: '', host: '', port: 22, user: 'root', auth: 'agent', keyPath: '', password: '', dir: '', addedAtMs: 0, monitor: true, tmux: true })
 
@@ -47,12 +57,32 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [installLog, setInstallLog] = useState<string | null>(null)
+  const [helper, setHelper] = useState<Record<string, HelperStatus>>(pageMemory.helper)
+  const loadHelper = async (id: string): Promise<void> => {
+    try {
+      const st = await api.helper.status(id)
+      setHelper((prev) => ({ ...prev, [id]: st }))
+    } catch {
+      /* unreachable */
+    }
+  }
   const [projForm, setProjForm] = useState<{ id: string; name: string; dir: string; agent: string } | null>(null)
   // What the active project's folder holds, read once per project.
   const [projInfo, setProjInfo] = useState<Record<string, ProjectInfo>>(pageMemory.projInfo)
   useEffect(() => {
-    Object.assign(pageMemory, { servers, selectedId, tab, health, projInfo })
-  }, [servers, selectedId, tab, health, projInfo])
+    Object.assign(pageMemory, { servers, selectedId, tab, health, projInfo, helper })
+  }, [servers, selectedId, tab, health, projInfo, helper])
+  // A request from another page (Issues, the bell): open this server here.
+  useEffect(() => {
+    const nav = serverNav.take()
+    if (!nav) return
+    setSelectedId(nav.serverId)
+    setEditing(null)
+    if (nav.prefill) chatPrefill = nav.prefill
+    if (nav.projectId) void projectAction(() => api.servers.selectProject(nav.serverId, nav.projectId as string))
+    if (nav.tab) setTab(nav.tab)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const infoKey = (s: ServerProfile, p: ServerProject): string => `${s.id}:${p.id}:${p.dir}`
   const loadInfo = async (s: ServerProfile, p: ServerProject): Promise<void> => {
     try {
@@ -87,6 +117,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
       const res = await api.servers.health(id)
       setHealth((prev) => ({ ...prev, [id]: res }))
       void load()
+      if (res.ok) void loadHelper(id)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -316,6 +347,9 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               <button className={tab === 'chat' ? 'is-active' : ''} onClick={() => setTab('chat')}>
                 Chat
               </button>
+              <button className={tab === 'autopilot' ? 'is-active' : ''} onClick={() => setTab('autopilot')} title="Mission, live session, issues and log for this project">
+                Autopilot{(helper[selected.id]?.projects.find((p) => p.projectId === selected.activeProjectId)?.openIssues ?? 0) > 0 ? ` · ${helper[selected.id]?.projects.find((p) => p.projectId === selected.activeProjectId)?.openIssues}` : ''}
+              </button>
               <button className={tab === 'files' ? 'is-active' : ''} onClick={() => setTab('files')}>
                 Files
               </button>
@@ -388,14 +422,35 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               </div>
             </form>
           )}
-          {tab === 'chat' ? (
+          {tab === 'autopilot' && activeProject(selected) ? (
+            <div className="content-body">
+              <AutopilotView
+                server={selected}
+                project={activeProject(selected) as ServerProject}
+                helper={helper[selected.id] ?? null}
+                onHelper={(st) => setHelper((prev) => ({ ...prev, [selected.id]: st }))}
+                onDiscuss={(text) => {
+                  chatPrefill = text
+                  setTab('chat')
+                }}
+              />
+            </div>
+          ) : tab === 'chat' ? (
             <div className="content-body cc-body">
               {(() => {
                 const agentId = activeProject(selected)?.agent ?? 'claude'
                 const st = h?.agents?.find((a) => a.id === agentId)
                 if (h && h.ok && st && !st.installed) return <p className="field-hint">{st.label} is not installed on this server yet. Install it from the Health tab.</p>
                 if (h && h.ok && st && !st.loggedIn) return <p className="field-hint">{st.label} is not logged in on this server. Open the terminal and {st.loginHint}.</p>
-                return <ClaudeChat key={`${selected.id}:${selected.activeProjectId ?? ''}`} serverId={selected.id} serverName={selected.name} />
+                const ap = activeProject(selected)
+                return (
+                  <ClaudeChat
+                    key={`${selected.id}:${selected.activeProjectId ?? ''}`}
+                    serverId={selected.id}
+                    serverName={selected.name}
+                    live={ap ? { projectId: ap.id, projectName: ap.name, dir: ap.dir, session: liveSessionName(ap.name), helperWired: helper[selected.id]?.projects.find((p) => p.projectId === ap.id)?.hooks ?? false } : undefined}
+                  />
+                )
               })()}
             </div>
           ) : tab === 'actions' ? (
@@ -495,6 +550,50 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                       </>
                     )
                   })()}
+                  <h4 className="srv-h4">ClawHQ helper</h4>
+                  <div className="srv-checks">
+                    {(() => {
+                      const hs = helper[selected.id]
+                      const w = hs?.projects.find((x) => x.projectId === selected.activeProjectId)
+                      return (
+                        <>
+                          <div className={`srv-check srv-agent${hs?.installed ? (hs.current ? ' is-ok' : ' is-warn') : ''}`}>
+                            <span className="srv-check-icon">{hs?.installed ? (hs.current ? '✅' : '🟡') : '⬜'}</span>
+                            <span className="srv-check-label">Helper</span>
+                            <span className="srv-check-value">{hs ? (hs.installed ? `${hs.version}${hs.current ? '' : ' · ClawHQ has a newer one'}` : 'not installed') : 'checking…'}</span>
+                            <span className="srv-agent-actions">
+                              {hs && (!hs.installed || !hs.current) && (
+                                <button className="btn btn-sm" disabled={busy !== null} onClick={() => { setBusy('helper'); void api.helper.install(selected.id).then((st) => setHelper((prev) => ({ ...prev, [selected.id]: st }))).catch((err) => setError(String(err))).finally(() => setBusy(null)) }}>
+                                  {busy === 'helper' ? 'Installing…' : hs.installed ? 'Update' : 'Install'}
+                                </button>
+                              )}
+                            </span>
+                          </div>
+                          {hs?.installed && activeProject(selected) && (
+                            <div className={`srv-check srv-agent${w?.wired ? ' is-ok' : ''}`}>
+                              <span className="srv-check-icon">{w?.wired ? '✅' : '⬜'}</span>
+                              <span className="srv-check-label">{activeProject(selected)?.name}</span>
+                              <span className="srv-check-value">{w?.wired ? `wired · ${w.openIssues} open issue${w.openIssues === 1 ? '' : 's'}` : 'not wired: no hooks or tools in this project yet'}</span>
+                              <span className="srv-agent-actions">
+                                {!w?.wired ? (
+                                  <button className="btn btn-sm" disabled={busy !== null} onClick={() => { setBusy('wire'); void api.helper.wire(selected.id, (activeProject(selected) as ServerProject).id).then((st) => setHelper((prev) => ({ ...prev, [selected.id]: st }))).catch((err) => setError(String(err))).finally(() => setBusy(null)) }}>
+                                    {busy === 'wire' ? 'Wiring…' : 'Wire project'}
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button className="btn btn-sm" onClick={() => setTab('autopilot')}>Autopilot</button>
+                                    <button className="btn btn-sm btn-ghost" disabled={busy !== null} title="Remove the hooks and tools from this project" onClick={() => { setBusy('unwire'); void api.helper.unwire(selected.id, (activeProject(selected) as ServerProject).id).then((st) => setHelper((prev) => ({ ...prev, [selected.id]: st }))).catch((err) => setError(String(err))).finally(() => setBusy(null)) }}>
+                                      Unwire
+                                    </button>
+                                  </>
+                                )}
+                              </span>
+                            </div>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </div>
                   <h4 className="srv-h4">Coding agents</h4>
                   <div className="srv-checks">
                     {(h.agents ?? []).map((a) => (

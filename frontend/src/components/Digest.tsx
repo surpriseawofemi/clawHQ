@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
-import type { ServerProfile, ServerRun, SessionUsage } from '../types'
+import type { OutboxEvent, ServerProfile, ServerRun, SessionUsage } from '../types'
 import { useLiveRefresh } from '../state/useLiveRefresh'
 import { plugin } from '../state/plugin'
 import { ContentHead, Shell, type ShellProps } from './layout/Shell'
@@ -43,6 +43,7 @@ export function Digest({ shell, agents, connected, onOpenAgent }: Props): React.
   const [serverRuns, setServerRuns] = useState<ServerRun[]>([])
   const [serverUsage, setServerUsage] = useState<SessionUsage[]>([])
   const [serverNames, setServerNames] = useState<Record<string, string>>({})
+  const [serverLog, setServerLog] = useState<{ serverId: string; ev: OutboxEvent }[]>([])
   const [pluginPresent, setPluginPresent] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -63,6 +64,8 @@ export function Digest({ shell, agents, connected, onOpenAgent }: Props): React.
           setServerRuns(rl.filter((r) => inDay(r.atMs)))
           const us = await Promise.all(srvs.map((x: ServerProfile) => api.claude.usageSince(x.id, from).catch(() => [] as SessionUsage[])))
           setServerUsage(us.flat())
+          const logs = await Promise.all(srvs.map((x: ServerProfile) => api.helper.outbox(x.id, from - 1, 500).then((ev) => ev.filter((e) => inDay(e.ts) && (e.type === 'log' || e.type === 'issue' || e.type === 'issue-update')).map((e) => ({ serverId: x.id, ev: e }))).catch(() => [])))
+          setServerLog(logs.flat().sort((a, b) => a.ev.ts - b.ev.ts))
         } catch {
           /* no servers */
         }
@@ -166,6 +169,7 @@ export function Digest({ shell, agents, connected, onOpenAgent }: Props): React.
       lines.push(`${serverRuns.length} runs from ClawHQ${cost > 0 ? `, $${cost.toFixed(2)}` : ''}`)
       for (const r of serverRuns) lines.push(`- ${time(r.atMs)} ${r.ok ? '' : '❌ '}${r.serverName} / ${r.project} (${r.agent}${r.source === 'task' ? ', task from an agent' : ''}): ${r.summary || 'run'}${r.costUsd ? ` — $${r.costUsd.toFixed(2)}` : ''}`)
       for (const u of serverUsage) lines.push(`- ${serverNames[u.serverId] ?? u.serverId} / ${u.project}: ${u.sessions} Claude Code sessions, ${u.messages} replies, ${tokens(u.inputTokens + u.outputTokens)} tokens (+${tokens(u.cacheRead)} cached)`)
+      for (const { serverId, ev } of serverLog) lines.push(`- ${time(ev.ts)} ${serverNames[serverId] ?? serverId}: ${ev.type === 'log' ? ev.text : ev.type === 'issue' ? `opened #${ev.n} ${ev.title}${ev.needsBoss ? ' (needs you)' : ''}` : `#${ev.n} ${ev.status}${ev.note ? `: ${ev.note}` : ''}`}`)
     }
     return lines.join('\n')
   }
@@ -269,7 +273,7 @@ export function Digest({ shell, agents, connected, onOpenAgent }: Props): React.
             ))}
           </section>
         )}
-        {(serverRuns.length > 0 || serverUsage.length > 0) && (
+        {(serverRuns.length > 0 || serverUsage.length > 0 || serverLog.length > 0) && (
           <section className="digest-agent">
             <h2>
               <span>🖥️</span> Servers{' '}
@@ -289,6 +293,21 @@ export function Digest({ shell, agents, connected, onOpenAgent }: Props): React.
                     {r.summary || 'run'}
                     {r.durationMs ? ` · ${Math.round(r.durationMs / 1000)}s` : ''}
                     {r.costUsd ? ` · $${r.costUsd.toFixed(2)}` : ''}
+                  </span>
+                </span>
+              </div>
+            ))}
+            {serverLog.map(({ serverId, ev }, i) => (
+              <div key={`${ev.ts}-${i}`} className={`home-row is-${ev.type === 'issue' && ev.needsBoss ? 'bad' : ev.kind === 'warn' ? 'bad' : ev.kind === 'change' ? 'ok' : 'plain'}`}>
+                <span className="home-time">{time(ev.ts)}</span>
+                <span className="home-main">
+                  <span className="home-title">
+                    {serverNames[serverId] ?? serverId} <span className="plugin-desc">{ev.project.split('/').pop()}</span>
+                  </span>
+                  <span className="home-detail">
+                    {ev.type === 'log' && ev.text}
+                    {ev.type === 'issue' && `opened #${ev.n}: ${ev.title}${ev.needsBoss ? ' · needs you' : ''}`}
+                    {ev.type === 'issue-update' && `#${ev.n} ${ev.status}${ev.note ? `: ${ev.note}` : ''}`}
                   </span>
                 </span>
               </div>

@@ -475,3 +475,5 @@ func (s *FileService) Download(ctx context.Context, id, p string) (string, error
 	s.progress(Transfer{ServerID: id, Name: name, Done: total, Total: total, Finished: true})
 	return local, nil
 }
+
+func fsMode(m uint32) os.FileMode { return os.FileMode(m) }

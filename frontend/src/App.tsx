@@ -203,6 +203,7 @@ function App(): React.JSX.Element {
           shell={shellProps}
           agents={agents}
           connected={connected}
+          onOpenServers={() => setPage('servers')}
           onOpenAgent={(agentId, key) => {
             setSelectedAgentId(agentId)
             selectSession(key ?? null)

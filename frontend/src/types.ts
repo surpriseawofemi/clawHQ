@@ -487,3 +487,28 @@ export type ProjectInfo = {
   files: number
   suggested: ServerAction[]
 }
+
+/** The ClawHQ helper on a server and how each project is wired to it. */
+export type ProjectWiring = { projectId: string; dir: string; mcp: boolean; hooks: boolean; claudeMd: boolean; mission: boolean; wired: boolean; openIssues: number }
+export type HelperStatus = { installed: boolean; version: string; current: boolean; projects: ProjectWiring[] }
+/** One line of the helper's outbox: a reply the session gave, a log line, an issue. */
+export type OutboxEvent = {
+  ts: number
+  type: 'reply' | 'session-end' | 'log' | 'issue' | 'issue-update'
+  event?: string
+  project: string
+  sessionId?: string
+  text?: string
+  kind?: string
+  model?: string
+  usage?: { input: number; output: number; cacheRead: number } | null
+  files?: string[]
+  billing?: string
+  n?: number
+  title?: string
+  needsBoss?: boolean
+  urgency?: string
+  status?: string
+  note?: string
+}
+export type ServerIssue = { n: number; title: string; status: 'open' | 'done' | 'dismissed'; needsBoss: boolean; urgency: string; createdAt: number; updatedAt: number; notes: { ts: number; text: string }[] }
