@@ -159,10 +159,21 @@ export const terminals = {
     if (!t.menuWired) {
       t.menuWired = true
       const node = t.term.element as HTMLElement | undefined
+      // The right button is ours: paste. Stop it before xterm forwards it to tmux,
+      // whose default right-click binding opens a split/kill popup menu.
+      const swallow = (e: MouseEvent): void => {
+        if (e.button === 2) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+        }
+      }
+      node?.addEventListener('mousedown', swallow, true)
+      node?.addEventListener('mouseup', swallow, true)
       node?.addEventListener('contextmenu', (e) => {
         e.preventDefault()
+        e.stopImmediatePropagation()
         void terminals.paste(t.id)
-      })
+      }, true)
     }
     t.attached = el
     t.fit.fit()
