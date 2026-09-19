@@ -7,18 +7,27 @@ import { api } from '../api'
  * Terminal tabs for one server. Terminals are kept in the registry, so leaving
  * the page and coming back finds them where they were, still connected.
  */
+/** Which tab was active per project, so leaving and coming back lands on the same one. */
+const activeMemory = new Map<string, string>()
+
 export function TerminalTabs({ serverId, projectId = '', dir = '', tmux = false }: { serverId: string; projectId?: string; dir?: string; tmux?: boolean }): React.JSX.Element {
   const [, bump] = useState(0)
-  const [active, setActive] = useState<string | null>(null)
+  const memKey = `${serverId}:${projectId}`
+  const [active, setActiveState] = useState<string | null>(activeMemory.get(memKey) ?? null)
+  const setActive = (id: string | null): void => {
+    setActiveState(id)
+    if (id) activeMemory.set(memKey, id)
+  }
   useEffect(() => terminals.subscribe(() => bump((n) => n + 1)), [])
 
   const list = terminals.list(serverId, projectId)
   useEffect(() => {
+    const remembered = activeMemory.get(memKey)
     if (list.length === 0) {
       const restored = terminals.restore(serverId, projectId, dir, tmux)
-      setActive(restored[restored.length - 1]?.id ?? null)
+      setActive(restored.find((t) => t.id === remembered)?.id ?? restored[restored.length - 1]?.id ?? null)
     } else if (!active || !list.some((t) => t.id === active)) {
-      setActive(list[list.length - 1].id)
+      setActive(list.find((t) => t.id === remembered)?.id ?? list[list.length - 1].id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId, projectId, list.length])
