@@ -620,7 +620,7 @@ func (s *HelperService) StartSession(ctx context.Context, id, projectID, resume 
 	if dir != "" {
 		cd = "-c " + shq(dir) + " "
 	}
-	cmd := "tmux has-session -t " + shq(name) + " 2>/dev/null || tmux new-session -d -s " + shq(name) + " " + cd + shq("bash -lc "+shq(inner)) + " \\; set -g mouse on \\; set -g history-limit 20000 \\; set -g status off \\; set -s set-clipboard on \\\\; unbind -n MouseDown3Pane \\\\; unbind -n M-MouseDown3Pane \\\\; unbind -n MouseDown3Status \\\\; unbind -n MouseDown3StatusLeft \\\\; unbind -n MouseDown3StatusRight"
+	cmd := "tmux has-session -t " + shq(name) + " 2>/dev/null || tmux new-session -d -s " + shq(name) + " " + cd + shq("bash -lc "+shq(inner)) + " \\; set -g mouse on \\; set -g history-limit 20000 \\; set -g status off \\; set -s set-clipboard on \\; unbind -n MouseDown3Pane \\; unbind -n M-MouseDown3Pane \\; unbind -n MouseDown3Status \\; unbind -n MouseDown3StatusLeft \\; unbind -n MouseDown3StatusRight"
 	res, err := sshx.Run(ctx, client, cmd, 20*time.Second)
 	if err != nil {
 		return "", err

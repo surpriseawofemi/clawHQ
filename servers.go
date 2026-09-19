@@ -464,7 +464,7 @@ func (s *ServerService) OpenShellIn(ctx context.Context, id, dir string, cols, r
 		}
 		// -A attaches when the session exists; the chained commands set mouse
 		// scrolling, a deep history, and hide tmux's status bar (ClawHQ has tabs).
-		command = "bash -lc " + shq(cd+"if command -v tmux >/dev/null 2>&1; then exec tmux -u new-session -A -s "+shq(name)+" \\; set -g mouse on \\; set -g history-limit 20000 \\; set -g status off \\; set -s set-clipboard on \\\\; unbind -n MouseDown3Pane \\\\; unbind -n M-MouseDown3Pane \\\\; unbind -n MouseDown3Status \\\\; unbind -n MouseDown3StatusLeft \\\\; unbind -n MouseDown3StatusRight; else exec bash -l; fi")
+		command = "bash -lc " + shq(cd+"if command -v tmux >/dev/null 2>&1; then exec tmux -u new-session -A -s "+shq(name)+" \\; set -g mouse on \\; set -g history-limit 20000 \\; set -g status off \\; set -s set-clipboard on \\; unbind -n MouseDown3Pane \\; unbind -n M-MouseDown3Pane \\; unbind -n MouseDown3Status \\; unbind -n MouseDown3StatusLeft \\; unbind -n MouseDown3StatusRight; else exec bash -l; fi")
 	}
 	sh, err := sshx.StartShellCmd(client, cols, rows, command,
 		func(b64 string) {
