@@ -5,6 +5,7 @@ import { terminals } from '../state/terminals'
 import { liveSessionName } from '../state/serverNav'
 import { getPrefs, setPref } from '../prefs'
 import { Toggle } from './Toggle'
+import { RefreshIcon } from './icons'
 import type { HelperStatus, OutboxEvent, ServerIssue, ServerProfile, ServerProject } from '../types'
 
 const when = (ms: number): string => {
@@ -116,57 +117,14 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
         </p>
       )}
 
-      <div className="ap-grid">
-        <section className="ap-card ap-mission">
-          <div className="ap-head">
-            <h3>Mission</h3>
-            <span className="plugin-desc">.clawhq/MISSION.md · the session reads it with clawhq_mission</span>
-            <button className="btn btn-sm btn-primary" disabled={busy !== null || missionDraft === mission} onClick={() => void act('mission', () => api.helper.setMission(server.id, project.id, missionDraft))}>
-              {busy === 'mission' ? 'Saving…' : 'Save'}
-            </button>
-          </div>
-          <textarea className="ap-textarea" value={missionDraft} onChange={(e) => setMissionDraft(e.target.value)} spellCheck={false} placeholder={wiring?.wired ? 'Empty mission.' : 'Wire the project to get a mission template.'} />
-        </section>
-
-        <section className="ap-card ap-session">
-          <div className="ap-head">
-            <h3>Live session</h3>
-            <span className="plugin-desc mono">tmux: {session}</span>
-          </div>
-          <p className="field-hint">An interactive Claude Code in tmux on the server, started in <code>{dir || '~'}</code>, so it keeps its memory and its own hourly schedule between your visits. Start fresh, or resume the session you have been talking to: paste its id and ClawHQ runs <code>claude --resume &lt;id&gt;</code> there. Once the tmux session exists, the id is not needed again.</p>
-          <div className="ap-row">
-            <input value={resume} onChange={(e) => setResume(e.target.value)} placeholder="Claude session id to resume (optional)" spellCheck={false} />
-          </div>
-          <div className="btn-row">
-            <button className="btn btn-primary" disabled={busy !== null || !mission.trim()} title="Starts the session if needed and sends the mission with the instruction to schedule itself hourly" onClick={() => void act('start', () => send(START_INSTRUCTION(mission)))}>
-              {busy === 'start' ? 'Sending…' : 'Start mission'}
-            </button>
-            <button className="btn" disabled={busy !== null} onClick={() => void act('pause', () => send(PAUSE_INSTRUCTION))}>Pause</button>
-            <button className="btn" disabled={busy !== null} onClick={() => void act('resume', () => send(RESUME_INSTRUCTION))}>Resume</button>
-            <button
-              className="btn"
-              disabled={busy !== null}
-              title="Attach a terminal tab to the live session"
-              onClick={() => void act('term', () => api.helper.startSession(server.id, project.id, resume).then((name) => { terminals.create(server.id, project.id, dir, true, name, 'Live session') }))}
-            >
-              Open in terminal
-            </button>
-          </div>
-          {lastReply && (
-            <p className="field-hint">
-              Last reply {when(lastReply.ts)}{lastReply.model ? ` · ${lastReply.model}` : ''}
-              {lastReply.usage ? ` · ${tokens(lastReply.usage.input + lastReply.usage.output)} tokens` : ''}
-              {billing === 'subscription' ? ' · subscription' : billing === 'api' ? ' · API billing' : ''}
-            </p>
-          )}
-        </section>
-      </div>
-
       <section className="ap-card">
         <div className="ap-head">
           <h3>Issues for you</h3>
           <span className="plugin-desc">{open.length} open · numbered by the session</span>
           <span className="row-tools">
+            <button className="icon-btn" title="Refresh issues and log" disabled={busy === 'refresh'} onClick={() => { setBusy('refresh'); void load().finally(() => setBusy(null)) }}>
+              <RefreshIcon />
+            </button>
             <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort issues" className="issue-sort">
               <option value="needs">Needs you first</option>
               <option value="urgency">Urgency</option>
@@ -227,6 +185,52 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
           ))}
         </div>
       </section>
+      <div className="ap-grid">
+        <section className="ap-card ap-mission">
+          <div className="ap-head">
+            <h3>Mission</h3>
+            <span className="plugin-desc">.clawhq/MISSION.md · the session reads it with clawhq_mission</span>
+            <button className="btn btn-sm btn-primary" disabled={busy !== null || missionDraft === mission} onClick={() => void act('mission', () => api.helper.setMission(server.id, project.id, missionDraft))}>
+              {busy === 'mission' ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          <textarea className="ap-textarea" value={missionDraft} onChange={(e) => setMissionDraft(e.target.value)} spellCheck={false} placeholder={wiring?.wired ? 'Empty mission.' : 'Wire the project to get a mission template.'} />
+        </section>
+
+        <section className="ap-card ap-session">
+          <div className="ap-head">
+            <h3>Live session</h3>
+            <span className="plugin-desc mono">tmux: {session}</span>
+          </div>
+          <p className="field-hint">An interactive Claude Code in tmux on the server, started in <code>{dir || '~'}</code>, so it keeps its memory and its own hourly schedule between your visits. Start fresh, or resume the session you have been talking to: paste its id and ClawHQ runs <code>claude --resume &lt;id&gt;</code> there. Once the tmux session exists, the id is not needed again.</p>
+          <div className="ap-row">
+            <input value={resume} onChange={(e) => setResume(e.target.value)} placeholder="Claude session id to resume (optional)" spellCheck={false} />
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" disabled={busy !== null || !mission.trim()} title="Starts the session if needed and sends the mission with the instruction to schedule itself hourly" onClick={() => void act('start', () => send(START_INSTRUCTION(mission)))}>
+              {busy === 'start' ? 'Sending…' : 'Start mission'}
+            </button>
+            <button className="btn" disabled={busy !== null} onClick={() => void act('pause', () => send(PAUSE_INSTRUCTION))}>Pause</button>
+            <button className="btn" disabled={busy !== null} onClick={() => void act('resume', () => send(RESUME_INSTRUCTION))}>Resume</button>
+            <button
+              className="btn"
+              disabled={busy !== null}
+              title="Attach a terminal tab to the live session"
+              onClick={() => void act('term', () => api.helper.startSession(server.id, project.id, resume).then((name) => { terminals.create(server.id, project.id, dir, true, name, 'Live session') }))}
+            >
+              Open in terminal
+            </button>
+          </div>
+          {lastReply && (
+            <p className="field-hint">
+              Last reply {when(lastReply.ts)}{lastReply.model ? ` · ${lastReply.model}` : ''}
+              {lastReply.usage ? ` · ${tokens(lastReply.usage.input + lastReply.usage.output)} tokens` : ''}
+              {billing === 'subscription' ? ' · subscription' : billing === 'api' ? ' · API billing' : ''}
+            </p>
+          )}
+        </section>
+      </div>
+
     </div>
   )
 }

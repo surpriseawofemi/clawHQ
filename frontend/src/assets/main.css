@@ -3689,6 +3689,7 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .ap-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ap-head h3, .ap-head h4 { margin: 0; font-size: 14px; }
 .ap-head .btn { margin-left: auto; }
+.ap-head .row-tools .btn, .ap-head .row-tools .icon-btn { margin-left: 0; }
 .ap-textarea { min-height: 260px; resize: vertical; font-family: ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.5; padding: 10px 12px; background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 8px; outline: none; }
 .ap-textarea:focus { border-color: var(--accent); }
 .ap-row input { width: 100%; padding: 7px 10px; background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; }
