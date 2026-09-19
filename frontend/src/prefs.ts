@@ -16,9 +16,15 @@ export type Prefs = {
   sidebarSort: 'recent' | 'name' | 'department'
   /** Chat sidebar: group agents under their departments. */
   sidebarGroup: boolean
+  /** Issues page: order and whether resolved ones show. */
+  issuesSort: 'needs' | 'urgency' | 'newest' | 'oldest'
+  issuesShowResolved: boolean
+  /** Autopilot issues: order and whether done ones show. */
+  apSort: 'needs' | 'newest' | 'oldest' | 'urgency' | 'number'
+  apShowDone: boolean
 }
 
-const DEFAULTS: Prefs = { showToolCalls: false, hideActivityNoise: true, sidebarSort: 'recent', sidebarGroup: true }
+const DEFAULTS: Prefs = { showToolCalls: false, hideActivityNoise: true, sidebarSort: 'recent', sidebarGroup: true, issuesSort: 'needs', issuesShowResolved: false, apSort: 'needs', apShowDone: false }
 
 export function getPrefs(): Prefs {
   try {

@@ -3,6 +3,8 @@ import { api } from '../api'
 import { renderMarkdown } from '../markdown'
 import { terminals } from '../state/terminals'
 import { liveSessionName } from '../state/serverNav'
+import { getPrefs, setPref } from '../prefs'
+import { Toggle } from './Toggle'
 import type { HelperStatus, OutboxEvent, ServerIssue, ServerProfile, ServerProject } from '../types'
 
 const when = (ms: number): string => {
@@ -35,8 +37,10 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
   const [resume, setResume] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [showDone, setShowDone] = useState(mem?.showDone ?? false)
-  const [sort, setSort] = useState<'needs' | 'newest' | 'oldest' | 'urgency' | 'number'>('needs')
+  const [showDone, setShowDoneState] = useState(getPrefs().apShowDone)
+  const [sort, setSortState] = useState(getPrefs().apSort)
+  const setShowDone = (v: boolean): void => { setShowDoneState(v); setPref('apShowDone', v) }
+  const setSort = (v: typeof sort): void => { setSortState(v); setPref('apSort', v) }
   useEffect(() => {
     apMemory.set(memKey, { mission, events, issues, details, showDone })
   }, [memKey, mission, events, issues, details, showDone])
@@ -162,17 +166,16 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
         <div className="ap-head">
           <h3>Issues for you</h3>
           <span className="plugin-desc">{open.length} open · numbered by the session</span>
-          <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort issues">
-            <option value="needs">Needs you first</option>
-            <option value="urgency">Urgency</option>
-            <option value="newest">Newest</option>
-            <option value="oldest">Oldest</option>
-            <option value="number">Number</option>
-          </select>
-          <label className="check-row issue-show-resolved">
-            <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} />
-            <span>Show done</span>
-          </label>
+          <span className="row-tools">
+            <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort issues" className="issue-sort">
+              <option value="needs">Needs you first</option>
+              <option value="urgency">Urgency</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+              <option value="number">Number</option>
+            </select>
+            <Toggle on={showDone} onChange={setShowDone} label="Show done" />
+          </span>
         </div>
         {shown.length === 0 && <p className="field-hint">Nothing waiting.</p>}
         <div className="ap-issues">

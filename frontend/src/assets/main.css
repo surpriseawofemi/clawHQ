@@ -3714,3 +3714,12 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 
 .icon-btn svg { display: block; }
 .issue-sort { font-size: 11.5px; padding: 3px 22px 3px 8px; background-size: 8px 5px; background-position: right 7px center; }
+
+/* Toggle switch */
+.toggle { display: inline-flex; align-items: center; gap: 8px; border: none; background: none; padding: 2px 0; cursor: pointer; color: var(--text-dim); font-size: 12px; }
+.toggle.is-on { color: var(--text); }
+.toggle-pill { position: relative; width: 30px; height: 17px; border-radius: 9px; background: var(--border); transition: background 120ms ease; }
+.toggle.is-on .toggle-pill { background: var(--accent); }
+.toggle-knob { position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: left 120ms ease; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.toggle.is-on .toggle-knob { left: 15px; }
+.row-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; }

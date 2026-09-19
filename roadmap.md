@@ -98,6 +98,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 68 | Terminal copy under tmux: tmux selections reach the Mac clipboard through OSC 52 (`set -s set-clipboard on` + an xterm OSC 52 handler), ⌥-drag selects in the page, a Copy button; Autopilot loses its duplicate Install card | v0.1.77 |
 | 69 | Server actions are icon buttons on the sidebar row (disconnect/reconnect, edit, forget); Issues, Autopilot, Files, Chat and Actions keep their state across visits and refresh without blanking; Files path bar is the editable path plus ↑ and ~, no duplicate crumbs | v0.1.78 |
 | 70 | Sorting on Issues and Autopilot issues (needs you, urgency, newest, oldest, number); server tabs ordered Terminal · Autopilot · Chat · Files · Actions · Health with no count on Autopilot; small line icons replace the emoji trash/edit/power/refresh glyphs everywhere; the health re-check button lives inside the Health tab | v0.1.79 |
+| 71 | Issue sort order and the show-resolved / show-done switches are remembered per machine, drawn as toggles, and sit at the right of their row | v0.1.80 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now

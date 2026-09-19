@@ -7,6 +7,8 @@ import { bossSessionKey } from '../state/useFleet'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
 import type { Agent, Issue, IssueStatus, IssueUrgency, ServerIssue, ServerProfile } from '../types'
 import { serverNav } from '../state/serverNav'
+import { getPrefs, setPref } from '../prefs'
+import { Toggle } from './Toggle'
 import { agentEmoji, agentLabel } from '../types'
 
 type Props = {
@@ -43,8 +45,10 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent, onOpenServer
   const [issues, setIssues] = useState<Issue[]>(issuesMemory.issues)
   const [pluginPresent, setPluginPresent] = useState<boolean | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(issuesMemory.selectedId)
-  const [showResolved, setShowResolved] = useState(issuesMemory.showResolved)
-  const [sort, setSort] = useState<'needs' | 'urgency' | 'newest' | 'oldest'>('needs')
+  const [showResolved, setShowResolvedState] = useState(getPrefs().issuesShowResolved)
+  const [sort, setSortState] = useState(getPrefs().issuesSort)
+  const setShowResolved = (v: boolean): void => { setShowResolvedState(v); setPref('issuesShowResolved', v) }
+  const setSort = (v: typeof sort): void => { setSortState(v); setPref('issuesSort', v) }
   const [answer, setAnswer] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -260,16 +264,15 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent, onOpenServer
           <button className="btn btn-sm btn-primary" onClick={() => setComposing(true)} disabled={!connected || pluginPresent === false}>
             + Task for an agent
           </button>
-          <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort issues" className="issue-sort">
-            <option value="needs">Needs you first</option>
-            <option value="urgency">Urgency</option>
-            <option value="newest">Newest</option>
-            <option value="oldest">Oldest</option>
-          </select>
-          <label className="check-row issue-show-resolved">
-            <input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} />
-            <span>Show resolved</span>
-          </label>
+          <span className="row-tools">
+            <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort issues" className="issue-sort">
+              <option value="needs">Needs you first</option>
+              <option value="urgency">Urgency</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+            </select>
+            <Toggle on={showResolved} onChange={setShowResolved} label="Resolved" />
+          </span>
         </div>
         {serverIssues.map((g) => (
           <div key={`${g.server.id}:${g.projectId}`} className="issue-server-group">
