@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { TrashIcon } from './icons'
 import { api } from '../api'
 import type { ConnectionStatus, GatewayProfile } from '../types'
 
@@ -143,9 +144,7 @@ export function ConnectionPanel({ status, onConnected }: Props): React.JSX.Eleme
                   className="icon-btn"
                   title="Remove gateway"
                   onClick={() => run(`rm-${g.id}`, async () => void (await api.connection.removeGateway(g.id)))}
-                >
-                  🗑
-                </button>
+                ><TrashIcon /></button>
               </div>
             )
           })}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { TrashIcon } from './icons'
 import { api } from '../api'
 import { useLiveRefresh } from '../state/useLiveRefresh'
 import { plugin, taskPrompt } from '../state/plugin'
@@ -198,9 +199,7 @@ export function TasksBoard({ shell, agents, connected, onOpenAgent }: Props): Re
                           Reopen
                         </button>
                       )}
-                      <button className="btn btn-sm btn-ghost" disabled={busy !== null} onClick={() => void act(`del-${t.id}`, () => plugin.tasks.remove(t.id))} title="Delete">
-                        🗑
-                      </button>
+                      <button className="btn btn-sm btn-ghost" disabled={busy !== null} onClick={() => void act(`del-${t.id}`, () => plugin.tasks.remove(t.id))} title="Delete"><TrashIcon /></button>
                     </div>
                   </article>
                 )

@@ -36,6 +36,7 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showDone, setShowDone] = useState(mem?.showDone ?? false)
+  const [sort, setSort] = useState<'needs' | 'newest' | 'oldest' | 'urgency' | 'number'>('needs')
   useEffect(() => {
     apMemory.set(memKey, { mission, events, issues, details, showDone })
   }, [memKey, mission, events, issues, details, showDone])
@@ -83,7 +84,17 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
   const send = (text: string): Promise<void> => api.helper.startSession(server.id, project.id, resume).then((name) => api.helper.sendToSession(server.id, name, text))
 
   const open = issues.filter((i) => i.status === 'open')
-  const shown = showDone ? issues : open
+  const rank: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 }
+  const shown = [...(showDone ? issues : open)].sort((a, b) => {
+    if (sort === 'newest') return b.createdAt - a.createdAt
+    if (sort === 'oldest') return a.createdAt - b.createdAt
+    if (sort === 'number') return a.n - b.n
+    if (sort === 'urgency') return (rank[a.urgency] ?? 2) - (rank[b.urgency] ?? 2) || b.updatedAt - a.updatedAt
+    // needs you first, then urgency, then newest
+    if ((a.status === 'open') !== (b.status === 'open')) return a.status === 'open' ? -1 : 1
+    if (a.needsBoss !== b.needsBoss) return a.needsBoss ? -1 : 1
+    return (rank[a.urgency] ?? 2) - (rank[b.urgency] ?? 2) || b.updatedAt - a.updatedAt
+  })
   const recent = useMemo(() => [...events].reverse().slice(0, 120), [events])
   const lastReply = [...events].reverse().find((e) => e.type === 'reply')
   const billing = lastReply?.billing
@@ -151,6 +162,13 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
         <div className="ap-head">
           <h3>Issues for you</h3>
           <span className="plugin-desc">{open.length} open · numbered by the session</span>
+          <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort issues">
+            <option value="needs">Needs you first</option>
+            <option value="urgency">Urgency</option>
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="number">Number</option>
+          </select>
           <label className="check-row issue-show-resolved">
             <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} />
             <span>Show done</span>

@@ -44,6 +44,7 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent, onOpenServer
   const [pluginPresent, setPluginPresent] = useState<boolean | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(issuesMemory.selectedId)
   const [showResolved, setShowResolved] = useState(issuesMemory.showResolved)
+  const [sort, setSort] = useState<'needs' | 'urgency' | 'newest' | 'oldest'>('needs')
   const [answer, setAnswer] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -148,8 +149,13 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent, onOpenServer
     () =>
       [...issues]
         .filter((i) => showResolved || i.status !== 'resolved')
-        .sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency] || b.updatedAtMs - a.updatedAtMs),
-    [issues, showResolved]
+        .sort((a, b) => {
+          if (sort === 'newest') return b.createdAtMs - a.createdAtMs
+          if (sort === 'oldest') return a.createdAtMs - b.createdAtMs
+          if (sort === 'urgency') return URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency] || b.updatedAtMs - a.updatedAtMs
+          return STATUS_RANK[a.status] - STATUS_RANK[b.status] || URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency] || b.updatedAtMs - a.updatedAtMs
+        }),
+    [issues, showResolved, sort]
   )
   const selected = issues.find((i) => i.id === selectedId) ?? null
   useEffect(() => {
@@ -254,6 +260,12 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent, onOpenServer
           <button className="btn btn-sm btn-primary" onClick={() => setComposing(true)} disabled={!connected || pluginPresent === false}>
             + Task for an agent
           </button>
+          <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort issues" className="issue-sort">
+            <option value="needs">Needs you first</option>
+            <option value="urgency">Urgency</option>
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+          </select>
           <label className="check-row issue-show-resolved">
             <input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} />
             <span>Show resolved</span>

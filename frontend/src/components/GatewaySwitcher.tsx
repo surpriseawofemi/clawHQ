@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { EditIcon } from './icons'
 import { api } from '../api'
 import type { ClawHQConfig, ConnectionStatus, GatewayProfile } from '../types'
 
@@ -121,9 +122,7 @@ export function GatewaySwitcher({ status, onClose, onConnected, onConfigChanged,
                             setEditing(g.id)
                             setDraft(g.name)
                           }}
-                        >
-                          ✎
-                        </button>
+                        ><EditIcon /></button>
                       </span>
                     )}
                     <span className="gw-url mono">

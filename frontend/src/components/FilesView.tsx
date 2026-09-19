@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { TrashIcon, EditIcon, DownloadIcon, RefreshIcon } from './icons'
 import { api } from '../api'
 import { renderMarkdown } from '../markdown'
 import type { DirListing, FileContent, FileEntry, Transfer } from '../types'
@@ -166,7 +167,7 @@ export function FilesView({ serverId, startDir, memoryKey }: { serverId: string;
           <input value={pathInput} onChange={(e) => setPathInput(e.target.value)} placeholder="/path/to/folder" spellCheck={false} />
         </form>
         <input className="files-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter" />
-        <button className="btn btn-sm" onClick={() => void load(dir)} disabled={busy === 'list'}>↻</button>
+        <button className="btn btn-sm" onClick={() => void load(dir)} disabled={busy === 'list'}><RefreshIcon /></button>
         <button className="btn btn-sm btn-primary" onClick={() => void act('upload', () => api.files.upload(serverId, dir))} disabled={busy !== null} title="Choose files on this Mac and upload them here">
           ⬆ Upload
         </button>
@@ -226,9 +227,7 @@ export function FilesView({ serverId, startDir, memoryKey }: { serverId: string;
               </button>
               <span className="files-actions">
                 {!e.isDir && (
-                  <button className="icon-btn" title="Download" onClick={() => void act('download', () => api.files.download(serverId, e.path))}>
-                    ⬇
-                  </button>
+                  <button className="icon-btn" title="Download" onClick={() => void act('download', () => api.files.download(serverId, e.path))}><DownloadIcon /></button>
                 )}
                 <button
                   className="icon-btn"
@@ -238,9 +237,7 @@ export function FilesView({ serverId, startDir, memoryKey }: { serverId: string;
                       if (name && name !== e.name) void act('rename', () => api.files.rename(serverId, e.path, `${dir}/${name}`))
                     })
                   }}
-                >
-                  ✎
-                </button>
+                ><EditIcon /></button>
                 <button
                   className="icon-btn"
                   title="Delete"
@@ -249,9 +246,7 @@ export function FilesView({ serverId, startDir, memoryKey }: { serverId: string;
                       if (ok) void act('delete', () => api.files.remove(serverId, e.path))
                     })
                   }}
-                >
-                  🗑
-                </button>
+                ><TrashIcon /></button>
               </span>
             </div>
           ))}

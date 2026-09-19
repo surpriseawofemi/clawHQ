@@ -3711,3 +3711,6 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .ap-reply { color: var(--text-dim); }
 
 .ap-wire { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.icon-btn svg { display: block; }
+.issue-sort { font-size: 11.5px; padding: 3px 22px 3px 8px; background-size: 8px 5px; background-position: right 7px center; }

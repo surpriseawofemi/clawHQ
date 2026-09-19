@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { TrashIcon, EditIcon } from './icons'
 import { api } from '../api'
 import type { ServerAction } from '../types'
 
@@ -118,8 +119,8 @@ export function ActionsView({
         <span className="act-cmd">{a.command}</span>
       </button>
       <span className="act-tools">
-        <button className="icon-btn" title="Edit" onClick={() => setEditing({ ...a })}>✎</button>
-        <button className="icon-btn" title="Remove" onClick={() => void api.servers.removeAction(serverId, a.id).then(onActions)}>🗑</button>
+        <button className="icon-btn" title="Edit" onClick={() => setEditing({ ...a })}><EditIcon /></button>
+        <button className="icon-btn" title="Remove" onClick={() => void api.servers.removeAction(serverId, a.id).then(onActions)}><TrashIcon /></button>
       </span>
     </div>
   )

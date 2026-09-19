@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { TrashIcon } from './icons'
 import { api } from '../api'
 import type { Agent, AgentsList, ExecMode, NodeStatus } from '../types'
 import { agentLabel } from '../types'
@@ -149,9 +150,7 @@ export function NodePanel(): React.JSX.Element {
           {folders.map((f) => (
             <div key={f} className="dept-edit-row">
               <input className="mono" value={f} readOnly />
-              <button className="icon-btn" title="Stop sharing" onClick={() => removeFolder(f)}>
-                🗑
-              </button>
+              <button className="icon-btn" title="Stop sharing" onClick={() => removeFolder(f)}><TrashIcon /></button>
             </div>
           ))}
           {folders.length === 0 && <p className="field-hint">Nothing shared yet.</p>}
@@ -206,9 +205,7 @@ export function NodePanel(): React.JSX.Element {
               {allow.map((entry) => (
                 <div key={entry} className="dept-edit-row">
                   <input className="mono" value={entry} readOnly />
-                  <button className="icon-btn" title="Remove" onClick={() => removeAllow(entry)}>
-                    🗑
-                  </button>
+                  <button className="icon-btn" title="Remove" onClick={() => removeAllow(entry)}><TrashIcon /></button>
                 </div>
               ))}
             </div>

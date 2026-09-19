@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { TrashIcon, EditIcon, PowerIcon, RefreshIcon } from './icons'
 import { api } from '../api'
 import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
 import type { AgentStatus, HelperStatus, ProjectInfo, ServerHealth, ServerProfile, ServerProject } from '../types'
@@ -247,16 +248,12 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                           .catch((err) => setError(String(err)))
                           .finally(() => setBusy(null))
                       }}
-                    >
-                      ⏻
-                    </button>
+                    ><PowerIcon /></button>
                   ) : (
-                    <button className="icon-btn" title="Reconnect" disabled={busy !== null} onClick={() => void check(s.id)}>
-                      ⟳
-                    </button>
+                    <button className="icon-btn" title="Reconnect" disabled={busy !== null} onClick={() => void check(s.id)}><RefreshIcon /></button>
                   )}
-                  <button className="icon-btn" title="Edit server" onClick={() => { setSelectedId(s.id); setEditing({ ...s, password: '' }) }}>✎</button>
-                  <button className="icon-btn" title="Forget this server" disabled={busy !== null} onClick={() => void remove(s)}>🗑</button>
+                  <button className="icon-btn" title="Edit server" onClick={() => { setSelectedId(s.id); setEditing({ ...s, password: '' }) }}><EditIcon /></button>
+                  <button className="icon-btn" title="Forget this server" disabled={busy !== null} onClick={() => void remove(s)}><TrashIcon /></button>
                 </span>
               </div>
               {selectedId === s.id && (
@@ -271,9 +268,9 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                         </span>
                       </button>
                       <span className="proj-tools">
-                        <button className="icon-btn" title="Edit project" onClick={() => setProjForm({ id: p.id, name: p.name, dir: p.dir, agent: p.agent ?? 'claude' })}>✎</button>
+                        <button className="icon-btn" title="Edit project" onClick={() => setProjForm({ id: p.id, name: p.name, dir: p.dir, agent: p.agent ?? 'claude' })}><EditIcon /></button>
                         {(s.projects?.length ?? 0) > 1 && (
-                          <button className="icon-btn" title="Remove from the list (files stay on the server)" onClick={() => void projectAction(() => api.servers.removeProject(s.id, p.id))}>🗑</button>
+                          <button className="icon-btn" title="Remove from the list (files stay on the server)" onClick={() => void projectAction(() => api.servers.removeProject(s.id, p.id))}><TrashIcon /></button>
                         )}
                       </span>
                     </div>
@@ -365,18 +362,16 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
           <ContentHead
             title={selected.name}
             subtitle={`${selected.user}@${selected.host}${selected.port !== 22 ? `:${selected.port}` : ''}${activeProject(selected) ? ` · ${activeProject(selected)?.name}${activeProject(selected)?.dir ? ` (${activeProject(selected)?.dir})` : ''}` : ''}`}
-            onRefresh={tab === 'health' ? () => void check(selected.id) : undefined}
-            refreshing={busy === `health:${selected.id}`}
           >
             <div className="seg">
-              <button className={tab === 'health' ? 'is-active' : ''} onClick={() => setTab('health')}>
-                Health
+              <button className={tab === 'terminal' ? 'is-active' : ''} onClick={() => setTab('terminal')}>
+                Terminal
+              </button>
+              <button className={tab === 'autopilot' ? 'is-active' : ''} onClick={() => setTab('autopilot')} title="Mission, live session, issues and log for this project">
+                Autopilot
               </button>
               <button className={tab === 'chat' ? 'is-active' : ''} onClick={() => setTab('chat')}>
                 Chat
-              </button>
-              <button className={tab === 'autopilot' ? 'is-active' : ''} onClick={() => setTab('autopilot')} title="Mission, live session, issues and log for this project">
-                Autopilot{(helper[selected.id]?.projects.find((p) => p.projectId === selected.activeProjectId)?.openIssues ?? 0) > 0 ? ` · ${helper[selected.id]?.projects.find((p) => p.projectId === selected.activeProjectId)?.openIssues}` : ''}
               </button>
               <button className={tab === 'files' ? 'is-active' : ''} onClick={() => setTab('files')}>
                 Files
@@ -384,8 +379,8 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               <button className={tab === 'actions' ? 'is-active' : ''} onClick={() => setTab('actions')}>
                 Actions
               </button>
-              <button className={tab === 'terminal' ? 'is-active' : ''} onClick={() => setTab('terminal')}>
-                Terminal
+              <button className={tab === 'health' ? 'is-active' : ''} onClick={() => setTab('health')}>
+                Health
               </button>
             </div>
           </ContentHead>
@@ -500,6 +495,10 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                   <div className="srv-facts">
                     <span>⏱ {h.uptime || '—'}</span>
                     <span>📈 load {h.load || '—'}</span>
+                    <span className="plugin-desc">checked {ago(h.checkedAtMs)}</span>
+                    <button className="btn btn-sm" disabled={busy !== null} onClick={() => void check(selected.id)} title="Run the checks again">
+                      {busy === `health:${selected.id}` ? 'Checking…' : 'Re-check'}
+                    </button>
                   </div>
                   <div className="srv-checks">
                     {h.checks.map((c) => (
@@ -544,7 +543,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                               {info.hasClaudeMd && <span className="proj-fact">📝 CLAUDE.md</span>}
                               {info.hasEnv && <span className="proj-fact">🔑 .env</span>}
                               <span className="proj-fact plugin-desc">{info.files} entries</span>
-                              <button className="icon-btn" title="Read the folder again" onClick={() => void loadInfo(selected, p)}>↻</button>
+                              <button className="icon-btn" title="Read the folder again" onClick={() => void loadInfo(selected, p)}><RefreshIcon /></button>
                             </>
                           )}
                         </div>
@@ -626,7 +625,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                     </button>
                   </div>
                   {installLog && <pre className="md-source join-cmd srv-log">{installLog}</pre>}
-                  <p className="field-hint">Checked {ago(h.checkedAtMs)}. Coming next: a chat with Claude Code on this server, and other coding agents.</p>
+
                 </>
               )}
             </div>
