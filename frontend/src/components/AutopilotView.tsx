@@ -22,16 +22,23 @@ const RESUME_INSTRUCTION = 'From the boss via ClawHQ: resume the hourly schedule
  * that carries it out (in tmux, so it survives ClawHQ closing), the hourly log
  * the helper collects, and the numbered issues waiting for the boss.
  */
+const apMemory = new Map<string, { mission: string; events: OutboxEvent[]; issues: ServerIssue[]; details: { n: number; md: string } | null; showDone: boolean }>()
+
 export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: { server: ServerProfile; project: ServerProject; helper: HelperStatus | null; onHelper: (h: HelperStatus) => void; onDiscuss: (text: string) => void }): React.JSX.Element {
-  const [mission, setMission] = useState('')
-  const [missionDraft, setMissionDraft] = useState('')
-  const [events, setEvents] = useState<OutboxEvent[]>([])
-  const [issues, setIssues] = useState<ServerIssue[]>([])
-  const [details, setDetails] = useState<{ n: number; md: string } | null>(null)
+  const memKey = `${server.id}:${project.id}`
+  const mem = apMemory.get(memKey)
+  const [mission, setMission] = useState(mem?.mission ?? '')
+  const [missionDraft, setMissionDraft] = useState(mem?.mission ?? '')
+  const [events, setEvents] = useState<OutboxEvent[]>(mem?.events ?? [])
+  const [issues, setIssues] = useState<ServerIssue[]>(mem?.issues ?? [])
+  const [details, setDetails] = useState<{ n: number; md: string } | null>(mem?.details ?? null)
   const [resume, setResume] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [showDone, setShowDone] = useState(false)
+  const [showDone, setShowDone] = useState(mem?.showDone ?? false)
+  useEffect(() => {
+    apMemory.set(memKey, { mission, events, issues, details, showDone })
+  }, [memKey, mission, events, issues, details, showDone])
   const wiring = helper?.projects.find((p) => p.projectId === project.id)
   const session = liveSessionName(project.name)
   const dir = project.dir

@@ -221,16 +221,44 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
           const dot = hh ? (hh.ok ? (hh.claude.installed && hh.claude.loggedIn ? 'is-online' : 'is-working') : 'is-bad') : s.lastOkAtMs ? 'is-idle' : 'is-idle'
           return (
             <div key={s.id} className="srv-block">
-              <button className={`srv-row${selectedId === s.id && !editing ? ' is-selected' : ''}`} onClick={() => { setSelectedId(s.id); setEditing(null) }}>
-                <i className={`desk-dot ${dot}`} />
-                <span className="srv-row-meta">
-                  <span className="srv-row-name">{s.name}</span>
-                  <span className="srv-row-sub">
-                    {s.user}@{s.host}
-                    {s.port !== 22 ? `:${s.port}` : ''} · {hh ? (hh.ok ? (hh.claude.installed ? `Claude ${hh.claude.version || ''}` : 'no Claude Code') : 'unreachable') : `checked ${ago(s.lastOkAtMs)}`}
+              <div className={`srv-row${selectedId === s.id && !editing ? ' is-selected' : ''}`}>
+                <button className="srv-main" onClick={() => { setSelectedId(s.id); setEditing(null) }}>
+                  <i className={`desk-dot ${dot}`} />
+                  <span className="srv-row-meta">
+                    <span className="srv-row-name">{s.name}</span>
+                    <span className="srv-row-sub">
+                      {s.user}@{s.host}
+                      {s.port !== 22 ? `:${s.port}` : ''} · {hh ? (hh.ok ? (hh.claude.installed ? `Claude ${hh.claude.version || ''}` : 'no Claude Code') : hh.error?.startsWith('Disconnected') ? 'disconnected' : 'unreachable') : `checked ${ago(s.lastOkAtMs)}`}
+                    </span>
                   </span>
+                </button>
+                <span className="srv-tools">
+                  {hh?.ok ? (
+                    <button
+                      className="icon-btn"
+                      title="Disconnect: close every SSH link to this server (tmux sessions keep running)"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        setBusy('disconnect')
+                        terminals.detachAll(s.id)
+                        void api.servers
+                          .disconnect(s.id)
+                          .then(() => setHealth((prev) => ({ ...prev, [s.id]: { ...(prev[s.id] as ServerHealth), ok: false, error: 'Disconnected. Press Reconnect to check the server again.' } })))
+                          .catch((err) => setError(String(err)))
+                          .finally(() => setBusy(null))
+                      }}
+                    >
+                      ⏻
+                    </button>
+                  ) : (
+                    <button className="icon-btn" title="Reconnect" disabled={busy !== null} onClick={() => void check(s.id)}>
+                      ⟳
+                    </button>
+                  )}
+                  <button className="icon-btn" title="Edit server" onClick={() => { setSelectedId(s.id); setEditing({ ...s, password: '' }) }}>✎</button>
+                  <button className="icon-btn" title="Forget this server" disabled={busy !== null} onClick={() => void remove(s)}>🗑</button>
                 </span>
-              </button>
+              </div>
               {selectedId === s.id && (
                 <div className="proj-list">
                   {(s.projects ?? []).map((p) => (
@@ -360,34 +388,6 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                 Terminal
               </button>
             </div>
-            {health[selected.id]?.ok ? (
-              <button
-                className="btn btn-sm btn-ghost"
-                title="Close every SSH connection to this server (terminals, files, chat). tmux sessions keep running."
-                disabled={busy !== null}
-                onClick={() => {
-                  setBusy('disconnect')
-                  terminals.detachAll(selected.id)
-                  void api.servers
-                    .disconnect(selected.id)
-                    .then(() => setHealth((prev) => ({ ...prev, [selected.id]: { ...(prev[selected.id] as ServerHealth), ok: false, error: 'Disconnected. Press Reconnect to check the server again.' } })))
-                    .catch((err) => setError(String(err)))
-                    .finally(() => { setBusy(null); setTab('health') })
-                }}
-              >
-                Disconnect
-              </button>
-            ) : (
-              <button className="btn btn-sm btn-primary" disabled={busy !== null} onClick={() => void check(selected.id)}>
-                {busy === `health:${selected.id}` ? 'Connecting…' : 'Reconnect'}
-              </button>
-            )}
-            <button className="btn btn-sm btn-ghost" onClick={() => setEditing({ ...selected, password: '' })}>
-              Edit
-            </button>
-            <button className="btn btn-sm btn-ghost" onClick={() => void remove(selected)} disabled={busy !== null}>
-              Forget
-            </button>
           </ContentHead>
           {projForm && (
             <form
@@ -486,6 +486,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               {h && !h.ok && h.error?.startsWith('Disconnected') && (
                 <div className="srv-unreachable">
                   <p className="field-hint">{h.error}</p>
+                  <button className="btn btn-sm btn-primary" disabled={busy !== null} onClick={() => void check(selected.id)}>{busy === `health:${selected.id}` ? 'Connecting…' : 'Reconnect'}</button>
                 </div>
               )}
               {h && !h.ok && !h.error?.startsWith('Disconnected') && (

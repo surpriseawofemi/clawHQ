@@ -36,11 +36,14 @@ const when = (ms: number): string => {
  * answer goes into the plugin and into the agent's Super Boss Chat as a turn, so
  * the agent acts on it and closes the item with a note.
  */
+/** What the page showed last time, so coming back is instant and nothing blinks. */
+const issuesMemory: { issues: Issue[]; selectedId: string | null; showResolved: boolean; serverIssues: { server: ServerProfile; projectId: string; projectName: string; issues: ServerIssue[] }[] } = { issues: [], selectedId: null, showResolved: false, serverIssues: [] }
+
 export function IssuesPage({ shell, agents, connected, onOpenAgent, onOpenServers }: Props): React.JSX.Element {
-  const [issues, setIssues] = useState<Issue[]>([])
+  const [issues, setIssues] = useState<Issue[]>(issuesMemory.issues)
   const [pluginPresent, setPluginPresent] = useState<boolean | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [showResolved, setShowResolved] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(issuesMemory.selectedId)
+  const [showResolved, setShowResolved] = useState(issuesMemory.showResolved)
   const [answer, setAnswer] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -50,7 +53,7 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent, onOpenServer
     try {
       const status = await api.plugin.status()
       setPluginPresent(status.present)
-      setIssues(connected && status.present ? await plugin.issues.list() : [])
+      if (connected && status.present) setIssues(await plugin.issues.list())
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -71,7 +74,10 @@ export function IssuesPage({ shell, agents, connected, onOpenAgent, onOpenServer
   const [servers, setServers] = useState<ServerProfile[]>([])
   const [serverRuns, setServerRuns] = useState<Record<string, { issueId: string; serverName: string }>>({})
   // Numbered issues the coding agents on servers opened for you (via the helper).
-  const [serverIssues, setServerIssues] = useState<{ server: ServerProfile; projectId: string; projectName: string; issues: ServerIssue[] }[]>([])
+  const [serverIssues, setServerIssues] = useState<{ server: ServerProfile; projectId: string; projectName: string; issues: ServerIssue[] }[]>(issuesMemory.serverIssues)
+  useEffect(() => {
+    Object.assign(issuesMemory, { issues, selectedId, showResolved, serverIssues })
+  }, [issues, selectedId, showResolved, serverIssues])
   useEffect(() => {
     let alive = true
     const loadServers = async (): Promise<void> => {

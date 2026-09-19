@@ -53,6 +53,7 @@ function ToolRow({ b }: { b: ClaudeBlock }): React.JSX.Element {
  * what Claude Code has for the project folder.
  */
 type Live = { projectId: string; projectName: string; dir: string; session: string; helperWired: boolean }
+const chatMemory = new Map<string, ClaudeMsg[]>()
 
 export function ClaudeChat({ serverId, serverName, live }: { serverId: string; serverName: string; live?: Live }): React.JSX.Element {
   // Live mode: type into the interactive Claude Code running in tmux on the server;
@@ -74,7 +75,11 @@ export function ClaudeChat({ serverId, serverName, live }: { serverId: string; s
     }
   }
   const [state, setState] = useState<ClaudeState | null>(null)
-  const [msgs, setMsgs] = useState<ClaudeMsg[]>([])
+  const chatKey = `${serverId}:${live?.projectId ?? ''}`
+  const [msgs, setMsgs] = useState<ClaudeMsg[]>(chatMemory.get(chatKey) ?? [])
+  useEffect(() => {
+    chatMemory.set(chatKey, msgs)
+  }, [chatKey, msgs])
   const [sessions, setSessions] = useState<ClaudeSession[]>([])
   const [showSessions, setShowSessions] = useState(false)
   const [draft, setDraft] = useState(() => takeChatPrefill())

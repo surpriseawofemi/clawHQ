@@ -33,6 +33,8 @@ const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g,
  * streamed into the page. Templates cover the usual pull, restart, tail-a-log.
  * Commands run through the login shell in the project folder.
  */
+const runsMemory = new Map<string, Run[]>()
+
 export function ActionsView({
   serverId,
   projectId = '',
@@ -52,7 +54,10 @@ export function ActionsView({
 }): React.JSX.Element {
   const [editing, setEditing] = useState<ServerAction | null>(null)
   const [adhoc, setAdhoc] = useState('')
-  const [runs, setRuns] = useState<Run[]>([])
+  const [runs, setRuns] = useState<Run[]>(runsMemory.get(serverId) ?? [])
+  useEffect(() => {
+    runsMemory.set(serverId, runs)
+  }, [serverId, runs])
   const [confirmFor, setConfirmFor] = useState<ServerAction | null>(null)
   const [error, setError] = useState<string | null>(null)
   const outRef = useRef<HTMLPreElement>(null)

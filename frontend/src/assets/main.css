@@ -3503,7 +3503,11 @@ input[type='radio']:disabled {
 
 /* Servers */
 .srv-side { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 12px; }
-.srv-row { display: flex; align-items: center; gap: 10px; padding: 8px; border: none; background: none; border-radius: var(--radius); cursor: pointer; text-align: left; color: var(--text); width: 100%; }
+.srv-row { display: flex; align-items: center; gap: 4px; border-radius: var(--radius); width: 100%; }
+.srv-main { flex: 1; display: flex; align-items: center; gap: 10px; padding: 8px; border: none; background: none; cursor: pointer; text-align: left; color: var(--text); min-width: 0; border-radius: var(--radius); }
+.srv-tools { display: none; gap: 1px; padding-right: 6px; }
+.srv-row:hover .srv-tools, .srv-row.is-selected .srv-tools { display: flex; }
+.srv-tools .icon-btn { font-size: 12px; padding: 2px 4px; }
 .srv-row:hover { background: var(--bg-raised); }
 .srv-row.is-selected { background: var(--bg-raised); box-shadow: inset 0 0 0 1px var(--border); }
 .srv-row .desk-dot { flex: none; position: static; }

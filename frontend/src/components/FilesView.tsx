@@ -25,7 +25,7 @@ const iconOf = (e: FileEntry): string => {
 type Ask = { kind: 'prompt' | 'confirm'; title: string; value: string; resolve: (v: string | null) => void }
 
 /** Where each project was last browsing, so switching projects and back keeps your place. */
-const remembered = new Map<string, { dir: string; open?: string }>()
+const remembered = new Map<string, { dir: string; open?: string; listing?: DirListing; file?: FileContent }>()
 
 export function FilesView({ serverId, startDir, memoryKey }: { serverId: string; startDir?: string; memoryKey?: string }): React.JSX.Element {
   // The webview has no native confirm/prompt, so dialogs are drawn in the page.
@@ -36,10 +36,10 @@ export function FilesView({ serverId, startDir, memoryKey }: { serverId: string;
     ask?.resolve(v)
     setAsk(null)
   }
-  const [listing, setListing] = useState<DirListing | null>(null)
+  const [listing, setListing] = useState<DirListing | null>(() => (memoryKey ? remembered.get(memoryKey)?.listing ?? null : null))
   const [dir, setDir] = useState(startDir ?? '')
-  const [open, setOpen] = useState<FileContent | null>(null)
-  const [draft, setDraft] = useState('')
+  const [open, setOpen] = useState<FileContent | null>(() => (memoryKey ? remembered.get(memoryKey)?.file ?? null : null))
+  const [draft, setDraft] = useState(() => (memoryKey ? remembered.get(memoryKey)?.file?.text ?? '' : ''))
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [transfers, setTransfers] = useState<Record<string, Transfer>>({})
@@ -66,14 +66,14 @@ export function FilesView({ serverId, startDir, memoryKey }: { serverId: string;
   )
   useEffect(() => {
     const mem = memoryKey ? remembered.get(memoryKey) : undefined
-    void load(mem?.dir ?? startDir ?? '').then(() => {
-      if (mem?.open) void api.files.read(serverId, mem.open).then((f) => { setOpen(f); setDraft(f.text ?? '') }).catch(() => undefined)
-    })
+    // A remembered listing shows at once; the folder is re-read behind it.
+    void load(mem?.dir ?? startDir ?? '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId, memoryKey])
   useEffect(() => {
-    if (memoryKey && dir) remembered.set(memoryKey, { dir, open: open?.path })
-  }, [memoryKey, dir, open?.path])
+    if (memoryKey && dir) remembered.set(memoryKey, { dir, open: open?.path, listing: listing ?? undefined, file: open && !dirty ? open : undefined })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memoryKey, dir, open, listing])
 
   useEffect(
     () =>
@@ -139,18 +139,6 @@ export function FilesView({ serverId, startDir, memoryKey }: { serverId: string;
     }
   }
 
-  const crumbs = useMemo(() => {
-    if (!listing) return []
-    const parts = listing.path.split('/').filter(Boolean)
-    const out: { label: string; path: string }[] = [{ label: '/', path: '/' }]
-    let acc = ''
-    for (const p of parts) {
-      acc += `/${p}`
-      out.push({ label: p, path: acc })
-    }
-    return out
-  }, [listing])
-
   const entries = useMemo(() => {
     const list = listing?.entries ?? []
     const q = filter.trim().toLowerCase()
@@ -162,17 +150,12 @@ export function FilesView({ serverId, startDir, memoryKey }: { serverId: string;
   return (
     <div className="files">
       <div className="files-bar">
-        <nav className="files-crumbs" aria-label="Path">
-          {crumbs.map((c, i) => (
-            <span key={c.path}>
-              {i > 0 && <span className="files-sep">/</span>}
-              <button className="files-crumb" onClick={() => void load(c.path)}>{c.label}</button>
-            </span>
-          ))}
-          {listing && listing.home && listing.path !== listing.home && (
-            <button className="btn btn-sm btn-ghost" onClick={() => void load(listing.home)} title="Home folder">~</button>
-          )}
-        </nav>
+        {listing && listing.path !== '/' && (
+          <button className="btn btn-sm" onClick={() => void load(listing.parent)} title="Up one folder">↑</button>
+        )}
+        {listing && listing.home && listing.path !== listing.home && (
+          <button className="btn btn-sm" onClick={() => void load(listing.home)} title="Home folder">~</button>
+        )}
         <form
           className="files-goto"
           onSubmit={(e) => {
