@@ -3724,3 +3724,10 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .toggle-knob { position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: left 120ms ease; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
 .toggle.is-on .toggle-knob { left: 15px; }
 .row-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; }
+
+/* Server tabs: the work area gets the space, not the margins. */
+.content-body.term-body, .content-body.cc-body, .content-body.files-body, .content-body.acts-body, .content-body.ap-body { padding: 8px 12px 10px; }
+.term-body .field-hint { margin: 0; }
+.term-tabs-wrap { gap: 4px; }
+.ap-card { padding: 10px 12px; }
+.ap { gap: 8px; }

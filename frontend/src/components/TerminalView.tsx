@@ -39,7 +39,7 @@ export function TerminalTabs({ serverId, projectId = '', dir = '', tmux = false 
       <div className="term-tabs">
         {list.map((t) => (
           <div key={t.id} className={`term-tab${t.id === active ? ' is-active' : ''}`} onClick={() => setActive(t.id)}>
-            <i className={`desk-dot ${t.status === 'connected' ? 'is-online' : t.status === 'connecting' ? 'is-working' : 'is-idle'}`} />
+            <i className={`desk-dot ${t.status === 'connected' ? 'is-online' : t.status === 'connecting' || t.status === 'reconnecting' ? 'is-working' : 'is-idle'}`} title={t.status} />
             <span className="term-tab-title" title={t.session ? `tmux session ${t.session}: survives closing ClawHQ` : 'plain shell'}>{t.session ? '⟳ ' : ''}{t.title}</span>
             {t.session && (
               <button className="term-tab-close" title="Detach: keep it running on the server; it comes back next time" onClick={(e) => { e.stopPropagation(); terminals.close(t.id, false) }}>⇣</button>
@@ -85,6 +85,12 @@ function TerminalPane({ t }: { t: Term }): React.JSX.Element {
         <div className="term-error term-ended">
           <span>Session ended.</span>
           <button className="btn btn-sm" onClick={() => terminals.reconnect(t.id)}>Reconnect</button>
+        </div>
+      )}
+      {t.status === 'reconnecting' && (
+        <div className="term-error term-ended">
+          <span>Link dropped; reconnecting to the tmux session…</span>
+          <button className="btn btn-sm" onClick={() => terminals.reconnect(t.id)}>Now</button>
         </div>
       )}
       <div className="term-host" ref={host} />

@@ -19,10 +19,12 @@ export type Term = {
   term: Terminal
   fit: FitAddon
   shellId: string | null
-  status: 'connecting' | 'connected' | 'ended' | 'error'
+  status: 'connecting' | 'connected' | 'ended' | 'error' | 'reconnecting'
   error?: string
   attached: HTMLElement | null
   menuWired?: boolean
+  retries?: number
+  retryTimer?: number
 }
 
 const terms: Term[] = []
@@ -76,6 +78,22 @@ function wire(): void {
   api.onShellExit((e) => {
     const t = terms.find((x) => x.shellId === e.id)
     if (!t) return
+    t.shellId = null
+    // A tmux tab whose link dropped (an error, not a clean exit) is reattached by
+    // itself: the session is still on the server. A clean exit means the user
+    // left the shell, so the tab just ends.
+    if (t.session && e.error) {
+      t.status = 'reconnecting'
+      t.retries = (t.retries ?? 0) + 1
+      const delay = Math.min(30_000, 2000 * 2 ** Math.min(t.retries - 1, 4))
+      t.term.write(`\r\n\x1b[90m[link dropped: ${e.error}; reconnecting in ${Math.round(delay / 1000)}s]\x1b[0m\r\n`)
+      t.retryTimer = window.setTimeout(() => {
+        t.retryTimer = undefined
+        if (t.status === 'reconnecting') terminals.reattach(t.id)
+      }, delay)
+      notify()
+      return
+    }
     t.status = 'ended'
     t.term.write(`\r\n\x1b[90m[session ended${e.error ? `: ${e.error}` : ''}]\x1b[0m\r\n`)
     notify()
@@ -178,21 +196,46 @@ export const terminals = {
     t.attached = el
     t.fit.fit()
     t.term.focus()
-    if (!t.shellId && t.status === 'connecting') {
-      api.servers
-        .openShellIn(t.serverId, t.dir, t.term.cols, t.term.rows, t.session)
-        .then((sid) => {
-          t.shellId = sid
-          t.status = 'connected'
-          notify()
-        })
-        .catch((err) => {
+    if (!t.shellId && (t.status === 'connecting' || t.status === 'reconnecting')) terminals.open(t)
+  },
+  /** Opens the shell for a terminal; retries by itself on a dropped tmux link. */
+  open(t: Term): void {
+    api.servers
+      .openShellIn(t.serverId, t.dir, t.term.cols, t.term.rows, t.session)
+      .then((sid) => {
+        t.shellId = sid
+        t.status = 'connected'
+        t.retries = 0
+        t.error = undefined
+        notify()
+        if (t.attached) terminals.resize(t.id)
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (t.session && (t.retries ?? 0) < 8) {
+          t.status = 'reconnecting'
+          t.retries = (t.retries ?? 0) + 1
+          const delay = Math.min(30_000, 2000 * 2 ** Math.min(t.retries - 1, 4))
+          t.term.write(`\r\n\x1b[90m[${msg}; retrying in ${Math.round(delay / 1000)}s]\x1b[0m\r\n`)
+          t.retryTimer = window.setTimeout(() => {
+            t.retryTimer = undefined
+            if (t.status === 'reconnecting') terminals.open(t)
+          }, delay)
+        } else {
           t.status = 'error'
-          t.error = err instanceof Error ? err.message : String(err)
-          t.term.write(`\r\n\x1b[31m${t.error}\x1b[0m\r\n`)
-          notify()
-        })
-    }
+          t.error = msg
+          t.term.write(`\r\n\x1b[31m${msg}\x1b[0m\r\n`)
+        }
+        notify()
+      })
+  },
+  /** Reattaches a tmux tab now (after a dropped link). */
+  reattach(id: string): void {
+    const t = terms.find((x) => x.id === id)
+    if (!t || t.shellId) return
+    t.status = 'reconnecting'
+    notify()
+    terminals.open(t)
   },
   detach(id: string): void {
     const t = terms.find((x) => x.id === id)
@@ -225,6 +268,7 @@ export const terminals = {
     const i = terms.findIndex((x) => x.id === id)
     if (i < 0) return
     const t = terms[i]
+    if (t.retryTimer) window.clearTimeout(t.retryTimer)
     if (t.shellId) void api.servers.closeShell(t.shellId).catch(() => undefined)
     if (kill && t.session) void api.servers.killTmux(t.serverId, t.session).catch(() => undefined)
     t.term.dispose()
@@ -261,11 +305,13 @@ export const terminals = {
   /** Reconnects an ended terminal in place. */
   reconnect(id: string): void {
     const t = terms.find((x) => x.id === id)
-    if (!t || !t.attached) return
+    if (!t) return
+    if (t.retryTimer) window.clearTimeout(t.retryTimer)
     t.shellId = null
+    t.retries = 0
     t.status = 'connecting'
-    t.term.clear()
+    if (!t.session) t.term.clear()
     notify()
-    terminals.attach(id, t.attached)
+    terminals.open(t)
   }
 }

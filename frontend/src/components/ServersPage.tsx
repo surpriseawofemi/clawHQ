@@ -425,7 +425,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
             </form>
           )}
           {tab === 'autopilot' && activeProject(selected) ? (
-            <div className="content-body">
+            <div className="content-body ap-body">
               <AutopilotView
                 server={selected}
                 project={activeProject(selected) as ServerProject}
