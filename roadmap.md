@@ -102,6 +102,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 72 | Right-click in a terminal no longer opens tmux's split/kill popup: the page swallows the right button before xterm forwards it, and tmux's MouseDown3 bindings are unbound on attach | v0.1.81 |
 | 73 | The Terminal tab remembers which terminal was active per project instead of jumping to the last one | v0.1.83 |
 | 74 | Autopilot: issues first, then the log, then mission and live session; a refresh button on the issues row | v0.1.84 |
+| 75 | Autopilot data syncs in the background for every wired project: every 10 s while its tab shows, every 30 s otherwise; live helper events push in at once | v0.1.85 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now

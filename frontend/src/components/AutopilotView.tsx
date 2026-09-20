@@ -3,6 +3,7 @@ import { api } from '../api'
 import { renderMarkdown } from '../markdown'
 import { terminals } from '../state/terminals'
 import { liveSessionName } from '../state/serverNav'
+import { autopilot } from '../state/autopilot'
 import { getPrefs, setPref } from '../prefs'
 import { Toggle } from './Toggle'
 import { RefreshIcon } from './icons'
@@ -30,10 +31,11 @@ const apMemory = new Map<string, { mission: string; events: OutboxEvent[]; issue
 export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: { server: ServerProfile; project: ServerProject; helper: HelperStatus | null; onHelper: (h: HelperStatus) => void; onDiscuss: (text: string) => void }): React.JSX.Element {
   const memKey = `${server.id}:${project.id}`
   const mem = apMemory.get(memKey)
-  const [mission, setMission] = useState(mem?.mission ?? '')
-  const [missionDraft, setMissionDraft] = useState(mem?.mission ?? '')
-  const [events, setEvents] = useState<OutboxEvent[]>(mem?.events ?? [])
-  const [issues, setIssues] = useState<ServerIssue[]>(mem?.issues ?? [])
+  const initial = autopilot.ensure(server.id, project.id, project.dir)
+  const [mission, setMission] = useState(initial.mission)
+  const [missionDraft, setMissionDraft] = useState(mem?.mission ?? initial.mission)
+  const [events, setEvents] = useState<OutboxEvent[]>(initial.events)
+  const [issues, setIssues] = useState<ServerIssue[]>(initial.issues)
   const [details, setDetails] = useState<{ n: number; md: string } | null>(mem?.details ?? null)
   const [resume, setResume] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -49,30 +51,25 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
   const session = liveSessionName(project.name)
   const dir = project.dir
 
+  // The store keeps this project synced in the background; here we mirror it.
   const load = useCallback(async () => {
-    try {
-      const [m, ev, is] = await Promise.all([api.helper.mission(server.id, project.id), api.helper.outbox(server.id, Date.now() - 3 * 86_400_000, 400), api.helper.issues(server.id, project.id)])
-      setMission(m)
-      setMissionDraft((d) => (d === '' || d === mission ? m : d))
-      setEvents(ev.filter((e) => !dir || e.project === dir || e.project === dir.replace(/\/$/, '')))
-      setIssues(is)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [server.id, project.id, dir])
+    await autopilot.refresh(server.id, project.id)
+  }, [server.id, project.id])
   useEffect(() => {
-    void load()
-    const t = setInterval(() => void load(), 30_000)
-    const off = api.onHelperEvent((e) => {
-      if (e.serverId === server.id && (!dir || e.event.project === dir)) setEvents((prev) => [...prev, e.event].slice(-400))
-    })
-    return () => {
-      clearInterval(t)
-      off()
+    autopilot.ensure(server.id, project.id, project.dir)
+    const apply = (): void => {
+      const d = autopilot.get(server.id, project.id)
+      if (!d) return
+      setMission(d.mission)
+      setMissionDraft((cur) => (cur === '' || cur === mission ? d.mission : cur))
+      setEvents(d.events)
+      setIssues(d.issues)
+      setError(d.error ?? null)
     }
-  }, [load, server.id, dir])
+    apply()
+    return autopilot.subscribe(server.id, project.id, apply)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server.id, project.id, project.dir])
 
   const act = async (label: string, fn: () => Promise<unknown>): Promise<void> => {
     setBusy(label)

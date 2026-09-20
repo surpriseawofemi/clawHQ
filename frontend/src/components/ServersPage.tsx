@@ -5,6 +5,7 @@ import { ContentHead, Shell, SideHead, type ShellProps } from './layout/Shell'
 import type { AgentStatus, HelperStatus, ProjectInfo, ServerHealth, ServerProfile, ServerProject } from '../types'
 import { AutopilotView } from './AutopilotView'
 import { serverNav, liveSessionName } from '../state/serverNav'
+import { autopilot } from '../state/autopilot'
 import { TerminalTabs } from './TerminalView'
 import { terminals } from '../state/terminals'
 import { ActionsView } from './ActionsView'
@@ -63,6 +64,12 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
     try {
       const st = await api.helper.status(id)
       setHelper((prev) => ({ ...prev, [id]: st }))
+      // Wired projects sync their issues and log in the background from now on.
+      const sv = servers.find((x) => x.id === id)
+      for (const w of st.projects) {
+        const pr = sv?.projects?.find((p) => p.id === w.projectId)
+        if (w.wired && pr) autopilot.ensure(id, pr.id, pr.dir)
+      }
     } catch {
       /* unreachable */
     }
