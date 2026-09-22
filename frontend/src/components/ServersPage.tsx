@@ -474,12 +474,6 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
           ) : tab === 'terminal' ? (
             <div className="content-body term-body">
               <TerminalTabs serverId={selected.id} projectId={activeProject(selected)?.id ?? ''} dir={activeProject(selected)?.dir ?? ''} tmux={selected.tmux !== false && (h?.tmux?.installed ?? false)} />
-              <p className="field-hint">
-                {selected.tmux !== false && h?.tmux?.installed
-                  ? 'Each tab is a tmux session on the server: it survives closing ClawHQ and comes back here. × ends it, ⇣ detaches and keeps it running. Drag to select (tmux copies it to your Mac), hold ⌥ to select in the page, right-click to paste.'
-                  : 'Login shells on the server; they stay open while ClawHQ runs. Install tmux on Health to keep them across restarts.'}{' '}
-                Run <code>claude</code> here for the full Claude Code.
-              </p>
             </div>
           ) : (
             <div className="content-body issue-detail">
