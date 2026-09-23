@@ -226,6 +226,12 @@ ever extends the list.
 
 ### Servers
 
+Every SSH connection sends a keepalive every fifteen seconds and closes
+after three unanswered ones, so NAT tables on satellite or mobile links keep
+the connection and a dead link is noticed within a minute. A tmux terminal
+whose link drops reattaches at once; repeated failures back off up to thirty
+seconds.
+
 Servers are machines ClawHQ reaches over SSH, with nothing to do with OpenClaw.
 Add one under Servers (host, port, user, and the SSH agent, a key file or a
 password); the profile stays on this machine in `~/.openclaw/clawhq.json`, and

@@ -105,6 +105,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 75 | Autopilot data syncs in the background for every wired project: every 10 s while its tab shows, every 30 s otherwise; live helper events push in at once | v0.1.85 |
 | 76 | tmux terminals reattach by themselves when the SSH link drops (backoff to 30 s, up to eight tries), keeping the tab; a clean exit still ends it; server tab bodies lose most of their padding | v0.1.86 |
 | 77 | The explanatory line under the terminal is gone; the tab tooltips carry the same information | v0.1.87 |
+| 78 | SSH keepalives every 15 s on every connection (three misses close it so the terminal can reattach), for satellite links and carrier-grade NAT; the first reattach after a drop is immediate and silent, later ones back off | v0.1.88 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now

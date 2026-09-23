@@ -67,7 +67,39 @@ func Dial(ctx context.Context, t Target, knownHosts string) (*ssh.Client, error)
 		_ = conn.Close()
 		return nil, err
 	}
-	return ssh.NewClient(c, chans, reqs), nil
+	client := ssh.NewClient(c, chans, reqs)
+	go keepAlive(client)
+	return client, nil
+}
+
+// keepAlive sends a small request every 15 seconds so NAT tables between us and
+// the server (satellite links, carrier-grade NAT) keep the connection, and a
+// quiet terminal is not mistaken for a dead one. Three misses in a row close
+// the connection so the terminal can reattach instead of hanging.
+func keepAlive(c *ssh.Client) {
+	t := time.NewTicker(15 * time.Second)
+	defer t.Stop()
+	misses := 0
+	for range t.C {
+		done := make(chan error, 1)
+		go func() {
+			_, _, err := c.SendRequest("keepalive@openssh.com", true, nil)
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			if err != nil {
+				return // the connection is gone; readers see it too
+			}
+			misses = 0
+		case <-time.After(10 * time.Second):
+			misses++
+			if misses >= 3 {
+				_ = c.Close()
+				return
+			}
+		}
+	}
 }
 
 func authMethods(t Target) ([]ssh.AuthMethod, []func(), error) {

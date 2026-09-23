@@ -83,10 +83,11 @@ function wire(): void {
     // itself: the session is still on the server. A clean exit means the user
     // left the shell, so the tab just ends.
     if (t.session && e.error) {
+      // First try at once and quietly; only repeated failures get a delay and a line.
       t.status = 'reconnecting'
       t.retries = (t.retries ?? 0) + 1
-      const delay = Math.min(30_000, 2000 * 2 ** Math.min(t.retries - 1, 4))
-      t.term.write(`\r\n\x1b[90m[link dropped: ${e.error}; reconnecting in ${Math.round(delay / 1000)}s]\x1b[0m\r\n`)
+      const delay = t.retries === 1 ? 300 : Math.min(30_000, 1500 * 2 ** Math.min(t.retries - 2, 4))
+      if (t.retries > 1) t.term.write(`\r\n\x1b[90m[link dropped; reconnecting in ${Math.round(delay / 1000)}s]\x1b[0m\r\n`)
       t.retryTimer = window.setTimeout(() => {
         t.retryTimer = undefined
         if (t.status === 'reconnecting') terminals.reattach(t.id)
@@ -212,10 +213,10 @@ export const terminals = {
       })
       .catch((err) => {
         const msg = err instanceof Error ? err.message : String(err)
-        if (t.session && (t.retries ?? 0) < 8) {
+        if (t.session && (t.retries ?? 0) < 12) {
           t.status = 'reconnecting'
           t.retries = (t.retries ?? 0) + 1
-          const delay = Math.min(30_000, 2000 * 2 ** Math.min(t.retries - 1, 4))
+          const delay = Math.min(30_000, 1500 * 2 ** Math.min(t.retries - 1, 4))
           t.term.write(`\r\n\x1b[90m[${msg}; retrying in ${Math.round(delay / 1000)}s]\x1b[0m\r\n`)
           t.retryTimer = window.setTimeout(() => {
             t.retryTimer = undefined
