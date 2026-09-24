@@ -580,8 +580,14 @@ func (s *HelperService) SendToSession(ctx context.Context, id, session, text str
 	}
 	defer client.Close()
 	name := tmuxNameRe.ReplaceAllString(session, "-")
-	cmd := "tmux set-buffer -b clawhq -- " + shq(text) + " && tmux paste-buffer -p -b clawhq -t " + shq(name) + " && sleep 0.3 && tmux send-keys -t " + shq(name) + " Enter"
-	res, err := sshx.Run(ctx, client, cmd, 20*time.Second)
+	var res sshx.Result
+	if p.Platform == "windows" {
+		script := "$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; psmux set-buffer -b clawhq -- " + psq(text) + "; psmux paste-buffer -p -b clawhq -t " + psq(name) + "; Start-Sleep -Milliseconds 300; psmux send-keys -t " + psq(name) + " Enter"
+		res, err = sshx.RunRaw(ctx, client, psCommand(script), 20*time.Second)
+	} else {
+		cmd := "tmux set-buffer -b clawhq -- " + shq(text) + " && tmux paste-buffer -p -b clawhq -t " + shq(name) + " && sleep 0.3 && tmux send-keys -t " + shq(name) + " Enter"
+		res, err = sshx.Run(ctx, client, cmd, 20*time.Second)
+	}
 	if err != nil {
 		return err
 	}
@@ -615,13 +621,23 @@ func (s *HelperService) StartSession(ctx context.Context, id, projectID, resume 
 	if strings.TrimSpace(resume) != "" {
 		claude += " --resume " + shq(strings.TrimSpace(resume))
 	}
-	inner := `export PATH="$HOME/.local/bin:$PATH"; ` + claude
-	cd := ""
-	if dir != "" {
-		cd = "-c " + shq(dir) + " "
+	var res sshx.Result
+	if p.Platform == "windows" {
+		cd := ""
+		if dir != "" {
+			cd = "Set-Location -LiteralPath " + psq(dir) + "; "
+		}
+		script := "$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; " + cd + "psmux has-session -t " + psq(name) + " 2>$null; if ($LASTEXITCODE -ne 0) { psmux new-session -d -s " + psq(name) + " " + psq(claude) + " }; exit 0"
+		res, err = sshx.RunRaw(ctx, client, psCommand(script), 20*time.Second)
+	} else {
+		inner := `export PATH="$HOME/.local/bin:$PATH"; ` + claude
+		cd := ""
+		if dir != "" {
+			cd = "-c " + shq(dir) + " "
+		}
+		cmd := "tmux has-session -t " + shq(name) + " 2>/dev/null || tmux new-session -d -s " + shq(name) + " " + cd + shq("bash -lc "+shq(inner)) + " \\; set -g mouse on \\; set -g history-limit 20000 \\; set -g status off \\; set -s set-clipboard on \\; unbind -n MouseDown3Pane \\; unbind -n M-MouseDown3Pane \\; unbind -n MouseDown3Status \\; unbind -n MouseDown3StatusLeft \\; unbind -n MouseDown3StatusRight"
+		res, err = sshx.Run(ctx, client, cmd, 20*time.Second)
 	}
-	cmd := "tmux has-session -t " + shq(name) + " 2>/dev/null || tmux new-session -d -s " + shq(name) + " " + cd + shq("bash -lc "+shq(inner)) + " \\; set -g mouse on \\; set -g history-limit 20000 \\; set -g status off \\; set -s set-clipboard on \\; unbind -n MouseDown3Pane \\; unbind -n M-MouseDown3Pane \\; unbind -n MouseDown3Status \\; unbind -n MouseDown3StatusLeft \\; unbind -n MouseDown3StatusRight"
-	res, err := sshx.Run(ctx, client, cmd, 20*time.Second)
 	if err != nil {
 		return "", err
 	}

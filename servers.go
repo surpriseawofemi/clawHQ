@@ -296,8 +296,24 @@ $gm = (Get-Command gemini -ErrorAction SilentlyContinue).Source; "gemini_path=$g
 if (Test-Path "$env:USERPROFILE\.gemini\oauth_creds.json") { "gemini_login=1" }; if ($env:GEMINI_API_KEY) { "gemini_login=1" }
 $gk = (Get-Command grok -ErrorAction SilentlyContinue).Source; "grok_path=$gk"; if ($gk) { "grok_version=$(& $gk --version 2>$null | Select-Object -First 1)" }
 if ($env:GROK_API_KEY) { "grok_login=1" }
-"tmux="
+$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path
+$pm = (Get-Command psmux -ErrorAction SilentlyContinue).Source
+if ($pm) { "tmux=$(((& $pm -V 2>$null) | Select-Object -First 1) -replace '^[a-z]+ ','')"; "tmux_path=$pm" } else { "tmux=" }
 `
+
+// psInteractive builds a PowerShell command line for a PTY session (cmd.exe parses
+// it, so only single quotes inside), with the user's PATH so a psmux installed
+// for the user is found.
+func psInteractive(script string) string {
+	pre := "$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; "
+	return "powershell.exe -NoLogo -NoProfile -Command \"" + pre + script + "\""
+}
+
+// psmuxAttach is the psmux command that attaches to (or creates) a session with
+// ClawHQ's settings; tmux's \; separator is passed as a quoted argument.
+func psmuxAttach(name string) string {
+	return "& psmux new-session -A -s " + psq(name) + " '\\;' set -g mouse on '\\;' set -g status off"
+}
 
 // healthScript prints one KEY=value per line; everything is best effort.
 const healthScript = `
@@ -399,7 +415,9 @@ func (s *ServerService) Health(ctx context.Context, id string) ServerHealth {
 	}
 	h.Checks = append(h.Checks, ServerCheck{ID: "git", Label: "Git", OK: h.Git.Installed, Value: orDash(h.Git.Version), Hint: "Claude Code works better in a git checkout."})
 	h.Checks = append(h.Checks, ServerCheck{ID: "node", Label: "Node.js", OK: h.Node.Installed, Value: orDash(h.Node.Version), Hint: "Not required by the native Claude Code installer, but many projects need it."})
-	if platform != "windows" {
+	if platform == "windows" {
+		h.Checks = append(h.Checks, ServerCheck{ID: "tmux", Label: "psmux", OK: h.Tmux.Installed, Value: orDash(h.Tmux.Version), Hint: "A native tmux for Windows: keeps terminals and the live Claude session alive across ClawHQ restarts. Install it from here."})
+	} else {
 		h.Checks = append(h.Checks, ServerCheck{ID: "tmux", Label: "tmux", OK: h.Tmux.Installed, Value: orDash(h.Tmux.Version), Hint: "Keeps terminals alive across ClawHQ restarts. Install it from here."})
 	}
 	s.store.MarkServerOK(id)
@@ -547,10 +565,20 @@ func (s *ServerService) OpenShellIn(ctx context.Context, id, dir string, cols, r
 	s.mu.Unlock()
 	command := ""
 	if p.Platform == "windows" {
-		// Windows OpenSSH lands in cmd.exe; PowerShell in the project folder is nicer.
-		command = "powershell.exe -NoLogo -NoExit"
+		// Windows OpenSSH lands in cmd.exe; PowerShell in the project folder is nicer,
+		// and with psmux on the box the tab survives closing ClawHQ like tmux does.
+		cd := ""
 		if dir != "" {
-			command += " -Command \"Set-Location -LiteralPath " + psq(dir) + "\""
+			cd = "Set-Location -LiteralPath " + psq(dir) + "; "
+		}
+		if session != "" && !p.TmuxOff {
+			name := tmuxNameRe.ReplaceAllString(session, "-")
+			command = psInteractive(cd + "if (Get-Command psmux -ErrorAction SilentlyContinue) { " + psmuxAttach(name) + " } else { powershell.exe -NoLogo -NoExit }")
+		} else {
+			command = "powershell.exe -NoLogo -NoExit"
+			if dir != "" {
+				command += " -Command \"Set-Location -LiteralPath " + psq(dir) + "\""
+			}
 		}
 	} else if session != "" && !p.TmuxOff {
 		name := tmuxNameRe.ReplaceAllString(session, "-")
@@ -612,7 +640,12 @@ func (s *ServerService) TmuxSessions(ctx context.Context, id string) ([]string, 
 		return nil, err
 	}
 	defer client.Close()
-	res, err := sshx.Run(ctx, client, "tmux ls -F '#{session_name}' 2>/dev/null", 15*time.Second)
+	var res sshx.Result
+	if p.Platform == "windows" {
+		res, err = sshx.RunRaw(ctx, client, psCommand("$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; psmux ls -F '#{session_name}' 2>$null"), 15*time.Second)
+	} else {
+		res, err = sshx.Run(ctx, client, "tmux ls -F '#{session_name}' 2>/dev/null", 15*time.Second)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -637,6 +670,10 @@ func (s *ServerService) KillTmux(ctx context.Context, id, session string) error 
 	}
 	defer client.Close()
 	name := tmuxNameRe.ReplaceAllString(session, "-")
+	if p.Platform == "windows" {
+		_, err = sshx.RunRaw(ctx, client, psCommand("$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; psmux kill-session -t "+psq(name)+" 2>$null; exit 0"), 15*time.Second)
+		return err
+	}
 	_, err = sshx.Run(ctx, client, "tmux kill-session -t "+shq(name)+" 2>/dev/null; true", 15*time.Second)
 	return err
 }
@@ -652,8 +689,36 @@ func (s *ServerService) InstallTmux(ctx context.Context, id string) (string, err
 		return "", err
 	}
 	defer client.Close()
-	cmd := `if command -v apt-get >/dev/null 2>&1; then sudo apt-get install -y tmux 2>&1; elif command -v dnf >/dev/null 2>&1; then sudo dnf install -y tmux 2>&1; elif command -v yum >/dev/null 2>&1; then sudo yum install -y tmux 2>&1; elif command -v brew >/dev/null 2>&1; then brew install tmux 2>&1; else echo "no known package manager"; exit 1; fi; tmux -V`
-	res, err := sshx.Run(ctx, client, cmd, 5*time.Minute)
+	var res sshx.Result
+	if p.Platform == "windows" {
+		// winget when the SSH session can use it; otherwise the release zip into the user's profile.
+		script := `$ErrorActionPreference = 'Continue'
+$ok = $false
+if (Get-Command winget -ErrorAction SilentlyContinue) { winget install psmux --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-String; if ($LASTEXITCODE -eq 0) { $ok = $true } }
+if (-not $ok) {
+  $rel = Invoke-RestMethod https://api.github.com/repos/psmux/psmux/releases/latest
+  $asset = $rel.assets | Where-Object { $_.name -match 'windows' -and $_.name -match '(x86_64|x64|amd64)' -and $_.name -match '\.zip$' } | Select-Object -First 1
+  if (-not $asset) { "no Windows zip in the latest psmux release"; exit 1 }
+  $dir = Join-Path $env:LOCALAPPDATA 'psmux'
+  New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  $zip = Join-Path $env:TEMP 'psmux.zip'
+  Invoke-WebRequest $asset.browser_download_url -OutFile $zip
+  Expand-Archive -Force $zip $dir
+  $exe = Get-ChildItem $dir -Recurse -Filter psmux.exe | Select-Object -First 1
+  if (-not $exe) { "psmux.exe not found in the zip"; exit 1 }
+  $bin = $exe.DirectoryName
+  $userPath = [Environment]::GetEnvironmentVariable('Path','User')
+  if ($userPath -notlike "*$bin*") { [Environment]::SetEnvironmentVariable('Path', "$userPath;$bin", 'User') }
+  $env:Path = "$bin;$env:Path"
+  "installed to $bin"
+}
+$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path
+psmux -V`
+		res, err = sshx.RunRaw(ctx, client, psCommand(script), 8*time.Minute)
+	} else {
+		cmd := `if command -v apt-get >/dev/null 2>&1; then sudo apt-get install -y tmux 2>&1; elif command -v dnf >/dev/null 2>&1; then sudo dnf install -y tmux 2>&1; elif command -v yum >/dev/null 2>&1; then sudo yum install -y tmux 2>&1; elif command -v brew >/dev/null 2>&1; then brew install tmux 2>&1; else echo "no known package manager"; exit 1; fi; tmux -V`
+		res, err = sshx.Run(ctx, client, cmd, 5*time.Minute)
+	}
 	out := strings.TrimSpace(res.Stdout + "\n" + res.Stderr)
 	if len(out) > 4000 {
 		out = "…" + out[len(out)-4000:]
