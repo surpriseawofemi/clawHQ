@@ -293,18 +293,34 @@ func (s *ClaudeService) sendProject(ctx context.Context, id, projectID, text, so
 		return nil, "", err
 	}
 	args := agentCommand(agent, pr.Sessions[agent], modeOfProject(pr))
-	var b strings.Builder
-	if pr.Dir != "" {
-		b.WriteString("cd " + shq(pr.Dir) + " && ")
-	}
-	b.WriteString(`export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; `)
-	for i, a := range args {
-		if i > 0 {
-			b.WriteString(" ")
+	var cmd string
+	if p.Platform == "windows" {
+		var b strings.Builder
+		if pr.Dir != "" {
+			b.WriteString("Set-Location -LiteralPath " + psq(pr.Dir) + "; ")
 		}
-		b.WriteString(shq(a))
+		b.WriteString("$input | & ")
+		for i, a := range args {
+			if i > 0 {
+				b.WriteString(" ")
+			}
+			b.WriteString(psq(a))
+		}
+		cmd = psCommand(b.String())
+	} else {
+		var b strings.Builder
+		if pr.Dir != "" {
+			b.WriteString("cd " + shq(pr.Dir) + " && ")
+		}
+		b.WriteString(`export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; `)
+		for i, a := range args {
+			if i > 0 {
+				b.WriteString(" ")
+			}
+			b.WriteString(shq(a))
+		}
+		cmd = "bash -lc " + shq(b.String())
 	}
-	cmd := "bash -lc " + shq(b.String())
 
 	stdin, err := sess.StdinPipe()
 	if err != nil {

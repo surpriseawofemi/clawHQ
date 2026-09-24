@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"os"
@@ -60,6 +61,7 @@ type ServerView struct {
 	ActiveProjectID string                `json:"activeProjectId"`
 	Monitor         bool                  `json:"monitor"`
 	Tmux            bool                  `json:"tmux"`
+	Platform        string                `json:"platform"`
 }
 
 // ServerInput is what the page sends to save a server.
@@ -112,6 +114,7 @@ type AgentStatus struct {
 }
 
 type ServerHealth struct {
+	Platform    string        `json:"platform"`
 	Tmux        ServerTool    `json:"tmux"`
 	Agents      []AgentStatus `json:"agents"`
 	Cores       int           `json:"cores"`
@@ -149,7 +152,7 @@ func viewOf(p store.ServerProfile) ServerView {
 	if projects == nil {
 		projects = []store.ServerProject{}
 	}
-	return ServerView{ID: p.ID, Name: p.Name, Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, HasPassword: p.Password != "", Dir: p.Active().Dir, AddedAtMs: p.AddedAtMs, LastOkAtMs: p.LastOkAtMs, Actions: actions, Projects: projects, ActiveProjectID: p.ActiveProjectID, Monitor: !p.MonitorOff, Tmux: !p.TmuxOff}
+	return ServerView{ID: p.ID, Name: p.Name, Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, HasPassword: p.Password != "", Dir: p.Active().Dir, AddedAtMs: p.AddedAtMs, LastOkAtMs: p.LastOkAtMs, Actions: actions, Projects: projects, ActiveProjectID: p.ActiveProjectID, Monitor: !p.MonitorOff, Tmux: !p.TmuxOff, Platform: p.Platform}
 }
 
 func (s *ServerService) List() []ServerView {
@@ -198,7 +201,7 @@ func (s *ServerService) Save(in ServerInput) ([]ServerView, error) {
 		p.MonitorOff = !*in.Monitor
 	}
 	if cur, err := s.profile(in.ID); err == nil {
-		p.TmuxOff = cur.TmuxOff
+		p.TmuxOff, p.Platform = cur.TmuxOff, cur.Platform
 	}
 	if in.Tmux != nil {
 		p.TmuxOff = !*in.Tmux
@@ -228,6 +231,73 @@ func (s *ServerService) profile(id string) (store.ServerProfile, error) {
 func target(p store.ServerProfile) sshx.Target {
 	return sshx.Target{Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, Password: p.Password}
 }
+
+// detectPlatform asks the shell what it is without assuming bash: cmd.exe knows
+// "ver", every Unix shell knows "uname".
+func detectPlatform(ctx context.Context, client *ssh.Client) string {
+	res, err := sshx.RunRaw(ctx, client, "uname -s 2>/dev/null || ver", 15*time.Second)
+	if err != nil {
+		return "unix"
+	}
+	out := strings.ToLower(res.Stdout + res.Stderr)
+	if strings.Contains(out, "microsoft windows") || strings.Contains(out, "is not recognized") {
+		return "windows"
+	}
+	return "unix"
+}
+
+// psq quotes for a PowerShell single-quoted string.
+func psq(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
+
+// psCommand wraps a PowerShell script for Windows OpenSSH, whose default shell is
+// cmd.exe: base64 avoids every quoting problem in between.
+func psCommand(script string) string {
+	u16 := make([]byte, 0, len(script)*2)
+	for _, r := range script {
+		if r < 0x10000 {
+			u16 = append(u16, byte(r), byte(r>>8))
+		} else {
+			r -= 0x10000
+			hi, lo := 0xD800+(r>>10), 0xDC00+(r&0x3FF)
+			u16 = append(u16, byte(hi), byte(hi>>8), byte(lo), byte(lo>>8))
+		}
+	}
+	return "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + base64.StdEncoding.EncodeToString(u16)
+}
+
+const healthScriptWindows = `
+$ErrorActionPreference = 'SilentlyContinue'
+"hostname=$env:COMPUTERNAME"
+"user=$env:USERNAME"
+"home=$env:USERPROFILE"
+$os = Get-CimInstance Win32_OperatingSystem
+"os=$($os.Caption)"
+"kernel=$($os.Version)"
+$up = (Get-Date) - $os.LastBootUpTime
+"uptime=up $([int]$up.TotalDays) days, $($up.Hours) hours"
+$cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+"load=$cpu% cpu"
+"cores=$((Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors)"
+$d = Get-PSDrive C
+"disk=$([math]::Round($d.Free/1GB))G free of $([math]::Round(($d.Used+$d.Free)/1GB))G ($([math]::Round($d.Used*100/($d.Used+$d.Free)))% used)"
+"memory=$([math]::Round($os.FreePhysicalMemory/1MB,1))Gi available of $([math]::Round($os.TotalVisibleMemorySize/1MB,1))Gi"
+function ver($cmd, $arg) { $p = (Get-Command $cmd -ErrorAction SilentlyContinue).Source; if ($p) { $v = & $p $arg 2>$null | Select-Object -First 1; "$cmd=$v"; "${cmd}_path=$p" } else { "$cmd="; "${cmd}_path=" } }
+ver node --version
+ver git --version
+$cl = (Get-Command claude -ErrorAction SilentlyContinue).Source
+"claude_path=$cl"
+if ($cl) { "claude_version=$(& $cl --version 2>$null | Select-Object -First 1)" }
+if (Test-Path "$env:USERPROFILE\.claude\.credentials.json") { "claude_creds=1" }
+if ($env:ANTHROPIC_API_KEY) { "claude_apikey=1" }
+if (Test-Path "$env:USERPROFILE\.claude.json") { $m = Select-String -Path "$env:USERPROFILE\.claude.json" -Pattern '"emailAddress":"([^"]*)"' | Select-Object -First 1; if ($m) { "claude_account=$($m.Matches[0].Groups[1].Value)" } }
+$cx = (Get-Command codex -ErrorAction SilentlyContinue).Source; "codex_path=$cx"; if ($cx) { "codex_version=$(& $cx --version 2>$null | Select-Object -First 1)" }
+if (Test-Path "$env:USERPROFILE\.codex\auth.json") { "codex_login=1" }; if ($env:OPENAI_API_KEY) { "codex_login=1" }
+$gm = (Get-Command gemini -ErrorAction SilentlyContinue).Source; "gemini_path=$gm"; if ($gm) { "gemini_version=$(& $gm --version 2>$null | Select-Object -First 1)" }
+if (Test-Path "$env:USERPROFILE\.gemini\oauth_creds.json") { "gemini_login=1" }; if ($env:GEMINI_API_KEY) { "gemini_login=1" }
+$gk = (Get-Command grok -ErrorAction SilentlyContinue).Source; "grok_path=$gk"; if ($gk) { "grok_version=$(& $gk --version 2>$null | Select-Object -First 1)" }
+if ($env:GROK_API_KEY) { "grok_login=1" }
+"tmux="
+`
 
 // healthScript prints one KEY=value per line; everything is best effort.
 const healthScript = `
@@ -275,7 +345,15 @@ func (s *ServerService) Health(ctx context.Context, id string) ServerHealth {
 		return h
 	}
 	defer client.Close()
-	res, err := sshx.Run(ctx, client, healthScript, 40*time.Second)
+	platform := detectPlatform(ctx, client)
+	h.Platform = platform
+	s.store.SetServerPlatform(id, platform)
+	var res sshx.Result
+	if platform == "windows" {
+		res, err = sshx.RunRaw(ctx, client, psCommand(healthScriptWindows), 60*time.Second)
+	} else {
+		res, err = sshx.Run(ctx, client, healthScript, 40*time.Second)
+	}
 	if err != nil {
 		h.Error = err.Error()
 		h.Checks = []ServerCheck{{ID: "ssh", Label: "SSH connection", OK: true, Value: "connected"}, {ID: "script", Label: "Health script", OK: false, Value: err.Error()}}
@@ -321,7 +399,9 @@ func (s *ServerService) Health(ctx context.Context, id string) ServerHealth {
 	}
 	h.Checks = append(h.Checks, ServerCheck{ID: "git", Label: "Git", OK: h.Git.Installed, Value: orDash(h.Git.Version), Hint: "Claude Code works better in a git checkout."})
 	h.Checks = append(h.Checks, ServerCheck{ID: "node", Label: "Node.js", OK: h.Node.Installed, Value: orDash(h.Node.Version), Hint: "Not required by the native Claude Code installer, but many projects need it."})
-	h.Checks = append(h.Checks, ServerCheck{ID: "tmux", Label: "tmux", OK: h.Tmux.Installed, Value: orDash(h.Tmux.Version), Hint: "Keeps terminals alive across ClawHQ restarts. Install it from here."})
+	if platform != "windows" {
+		h.Checks = append(h.Checks, ServerCheck{ID: "tmux", Label: "tmux", OK: h.Tmux.Installed, Value: orDash(h.Tmux.Version), Hint: "Keeps terminals alive across ClawHQ restarts. Install it from here."})
+	}
 	s.store.MarkServerOK(id)
 	return h
 }
@@ -345,7 +425,12 @@ func (s *ServerService) InstallClaude(ctx context.Context, id string) (string, e
 		return "", err
 	}
 	defer client.Close()
-	res, err := sshx.Run(ctx, client, "curl -fsSL https://claude.ai/install.sh | bash 2>&1; echo \"exit=$?\"; export PATH=\"$HOME/.local/bin:$PATH\"; claude --version 2>&1", 6*time.Minute)
+	var res sshx.Result
+	if p.Platform == "windows" {
+		res, err = sshx.RunRaw(ctx, client, psCommand("irm https://claude.ai/install.ps1 | iex; claude --version"), 8*time.Minute)
+	} else {
+		res, err = sshx.Run(ctx, client, "curl -fsSL https://claude.ai/install.sh | bash 2>&1; echo \"exit=$?\"; export PATH=\"$HOME/.local/bin:$PATH\"; claude --version 2>&1", 6*time.Minute)
+	}
 	if err != nil {
 		return res.Stdout + res.Stderr, err
 	}
@@ -380,7 +465,12 @@ func (s *ServerService) InstallAgent(ctx context.Context, id, agent string) (str
 		return "", err
 	}
 	defer client.Close()
-	res, err := sshx.Run(ctx, client, "command -v npm >/dev/null 2>&1 || { echo 'npm is not installed on this server; install Node.js first'; exit 1; }; "+cmd, 8*time.Minute)
+	var res sshx.Result
+	if p.Platform == "windows" {
+		res, err = sshx.RunRaw(ctx, client, psCommand(strings.Replace(cmd, "2>&1; echo \"exit=$?\";", ";", 1)), 8*time.Minute)
+	} else {
+		res, err = sshx.Run(ctx, client, "command -v npm >/dev/null 2>&1 || { echo 'npm is not installed on this server; install Node.js first'; exit 1; }; "+cmd, 8*time.Minute)
+	}
 	out := strings.TrimSpace(res.Stdout + "\n" + res.Stderr)
 	if len(out) > 6000 {
 		out = "…" + out[len(out)-6000:]
@@ -456,7 +546,13 @@ func (s *ServerService) OpenShellIn(ctx context.Context, id, dir string, cols, r
 	shellID := fmt.Sprintf("sh-%d-%d", time.Now().UnixMilli(), s.seq)
 	s.mu.Unlock()
 	command := ""
-	if session != "" && !p.TmuxOff {
+	if p.Platform == "windows" {
+		// Windows OpenSSH lands in cmd.exe; PowerShell in the project folder is nicer.
+		command = "powershell.exe -NoLogo -NoExit"
+		if dir != "" {
+			command += " -Command \"Set-Location -LiteralPath " + psq(dir) + "\""
+		}
+	} else if session != "" && !p.TmuxOff {
 		name := tmuxNameRe.ReplaceAllString(session, "-")
 		cd := ""
 		if dir != "" {
@@ -708,7 +804,16 @@ func (s *ServerService) RunCommandIn(ctx context.Context, serverID, command, dir
 	if dir != "" {
 		full = "cd " + shq(dir) + " 2>/dev/null; " + command
 	}
-	cmd, err := sshx.StartCommand(client, full,
+	start := sshx.StartCommand
+	if p.Platform == "windows" {
+		script := command
+		if dir != "" {
+			script = "Set-Location -LiteralPath " + psq(dir) + "; " + command
+		}
+		full = psCommand(script)
+		start = sshx.StartCommandRaw
+	}
+	cmd, err := start(client, full,
 		func(b64 string) {
 			if s.app != nil {
 				s.app.Event.Emit("action:out", map[string]any{"serverId": serverID, "runId": runID, "data": b64})
@@ -842,6 +947,10 @@ func (s *ServerService) ProjectInfo(ctx context.Context, id, dir string) (Projec
 	info := ProjectInfo{Dir: dir, Scripts: []string{}, Suggested: []store.ServerAction{}}
 	if strings.TrimSpace(dir) == "" {
 		return info, nil
+	}
+	if p.Platform == "windows" {
+		info.Exists = true
+		return info, nil // the bash-based read does not apply; actions come from templates
 	}
 	client, err := sshx.Dial(ctx, target(p), knownHostsPath())
 	if err != nil {

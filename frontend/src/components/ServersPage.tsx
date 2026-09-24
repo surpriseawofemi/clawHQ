@@ -473,7 +473,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
             </div>
           ) : tab === 'terminal' ? (
             <div className="content-body term-body">
-              <TerminalTabs serverId={selected.id} projectId={activeProject(selected)?.id ?? ''} dir={activeProject(selected)?.dir ?? ''} tmux={selected.tmux !== false && (h?.tmux?.installed ?? false)} />
+              <TerminalTabs serverId={selected.id} projectId={activeProject(selected)?.id ?? ''} dir={activeProject(selected)?.dir ?? ''} tmux={selected.tmux !== false && (h?.tmux?.installed ?? false) && h?.platform !== 'windows'} />
             </div>
           ) : (
             <div className="content-body issue-detail">
@@ -494,6 +494,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               {h && h.ok && (
                 <>
                   <div className="srv-facts">
+                    {h.platform === 'windows' && <span>🪟 Windows · PowerShell</span>}
                     <span>⏱ {h.uptime || '—'}</span>
                     <span>📈 load {h.load || '—'}</span>
                     <span className="plugin-desc">checked {ago(h.checkedAtMs)}</span>

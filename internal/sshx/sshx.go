@@ -225,6 +225,12 @@ type Result struct {
 // Run executes a command through the user's login shell so PATH is what the
 // user sees at a prompt (nvm, /opt tools, and so on).
 func Run(ctx context.Context, c *ssh.Client, command string, timeout time.Duration) (Result, error) {
+	return RunRaw(ctx, c, "bash -lc "+shellQuote(command), timeout)
+}
+
+// RunRaw executes a command exactly as given, for servers whose shell is not
+// bash (Windows OpenSSH hands it to cmd.exe).
+func RunRaw(ctx context.Context, c *ssh.Client, command string, timeout time.Duration) (Result, error) {
 	sess, err := c.NewSession()
 	if err != nil {
 		return Result{}, err
@@ -234,7 +240,7 @@ func Run(ctx context.Context, c *ssh.Client, command string, timeout time.Durati
 	sess.Stdout = &out
 	sess.Stderr = &errb
 	done := make(chan error, 1)
-	go func() { done <- sess.Run("bash -lc " + shellQuote(command)) }()
+	go func() { done <- sess.Run(command) }()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	select {
@@ -358,6 +364,11 @@ type Command struct {
 // stderr arrive interleaved through onData (base64), onExit carries the exit code
 // (-1 when the session died) once.
 func StartCommand(c *ssh.Client, command string, onData func(string), onExit func(code int, err error)) (*Command, error) {
+	return StartCommandRaw(c, "bash -lc "+shellQuote(command), onData, onExit)
+}
+
+// StartCommandRaw is StartCommand without the bash wrapper.
+func StartCommandRaw(c *ssh.Client, command string, onData func(string), onExit func(code int, err error)) (*Command, error) {
 	sess, err := c.NewSession()
 	if err != nil {
 		return nil, err
@@ -365,7 +376,7 @@ func StartCommand(c *ssh.Client, command string, onData func(string), onExit fun
 	pr, pw := io.Pipe()
 	sess.Stdout = pw
 	sess.Stderr = pw
-	if err := sess.Start("bash -lc " + shellQuote(command)); err != nil {
+	if err := sess.Start(command); err != nil {
 		_ = sess.Close()
 		return nil, err
 	}

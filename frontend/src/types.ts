@@ -410,6 +410,7 @@ export type ServerProfile = {
   monitor?: boolean
   /** Terminals run in tmux on the server and survive a ClawHQ restart. */
   tmux?: boolean
+  platform?: string
 }
 
 /** A folder on a server the coding agents work in. */
@@ -423,6 +424,7 @@ export type ServerAction = { id: string; name: string; command: string; confirm:
 export type ServerCheck = { id: string; label: string; ok: boolean; value: string; hint?: string }
 
 export type ServerHealth = {
+  platform?: 'windows' | 'unix' | string
   tmux: { installed: boolean; version: string }
   agents: AgentStatus[]
   cores: number

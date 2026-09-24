@@ -151,6 +151,8 @@ type ServerProfile struct {
 	// TmuxOff makes terminals plain shells instead of tmux sessions that survive
 	// a ClawHQ restart.
 	TmuxOff bool `json:"tmuxOff,omitempty"`
+	// Platform is "windows" or "unix", learned on the first health check.
+	Platform string `json:"platform,omitempty"`
 }
 
 // ServerProject is one folder on a server the coding agents work in.
@@ -606,6 +608,19 @@ func (s *Store) EnsureInstanceID() string {
 	cfg.InstanceID = fmt.Sprintf("%s-%d", strings.ToLower(strings.SplitN(host, ".", 2)[0]), time.Now().UnixMilli()%1000000)
 	_, _ = s.writeLocked(cfg)
 	return cfg.InstanceID
+}
+
+// SetServerPlatform records what the health check learned.
+func (s *Store) SetServerPlatform(serverID, platform string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.readLocked()
+	for i := range cfg.Servers {
+		if cfg.Servers[i].ID == serverID {
+			cfg.Servers[i].Platform = platform
+		}
+	}
+	_, _ = s.writeLocked(cfg)
 }
 
 // SetServerTmux turns tmux-backed terminals on or off.
