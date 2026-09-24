@@ -54,6 +54,33 @@ func main() {
 	}
 	run("psmux lookup", ps("$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; (Get-Command psmux -ErrorAction SilentlyContinue).Source; psmux -V; psmux ls"))
 	run("where", ps("Get-ChildItem -Path $env:LOCALAPPDATA -Filter psmux.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 3 -ExpandProperty FullName; [Environment]::GetEnvironmentVariable('Path','User')"))
+	if len(os.Args) > 2 {
+		var buf strings.Builder
+		done := make(chan error, 1)
+		sh, err := sshx.StartShellCmd(c, 100, 30, os.Args[2], func(b64 string) {
+			b, _ := base64.StdEncoding.DecodeString(b64)
+			buf.Write(b)
+		}, func(e error) { done <- e })
+		if err != nil {
+			fmt.Println("start:", err)
+			return
+		}
+		select {
+		case e := <-done:
+			fmt.Println("exited early:", e)
+		case <-time.After(8 * time.Second):
+			fmt.Println("still running after 8s (good)")
+			_ = sh.Write(base64.StdEncoding.EncodeToString([]byte("echo probe-ok\r")))
+			time.Sleep(3 * time.Second)
+			sh.Close()
+		}
+		out := buf.String()
+		if len(out) > 1200 {
+			out = out[len(out)-1200:]
+		}
+		fmt.Printf("== pty output:\n%q\n", out)
+		return
+	}
 	// the interactive attach, on a PTY, for a few seconds
 	name := "clawhq-probe"
 	script := "$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; psmux has-session -t '" + name + "' 2>$null; if ($LASTEXITCODE -ne 0) { psmux new-session -d -s '" + name + "' }; psmux set -g mouse on 2>$null; psmux set -g status off 2>$null; psmux attach-session -t '" + name + "'"

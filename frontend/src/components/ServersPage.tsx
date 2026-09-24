@@ -473,7 +473,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
             </div>
           ) : tab === 'terminal' ? (
             <div className="content-body term-body">
-              <TerminalTabs serverId={selected.id} projectId={activeProject(selected)?.id ?? ''} dir={activeProject(selected)?.dir ?? ''} tmux={selected.tmux !== false && (h?.tmux?.installed ?? false) && h?.platform !== 'windows'} />
+              <TerminalTabs serverId={selected.id} projectId={activeProject(selected)?.id ?? ''} dir={activeProject(selected)?.dir ?? ''} tmux={selected.tmux !== false && (h?.tmux?.installed ?? false)} />
             </div>
           ) : (
             <div className="content-body issue-detail">
