@@ -301,18 +301,19 @@ $pm = (Get-Command psmux -ErrorAction SilentlyContinue).Source
 if ($pm) { "tmux=$(((& $pm -V 2>$null) | Select-Object -First 1) -replace '^[a-z]+ ','')"; "tmux_path=$pm" } else { "tmux=" }
 `
 
-// psInteractive builds a PowerShell command line for a PTY session (cmd.exe parses
-// it, so only single quotes inside), with the user's PATH so a psmux installed
-// for the user is found.
+// psInteractive builds a PowerShell command line for a PTY session. The script
+// travels base64-encoded so neither cmd.exe nor PowerShell re-parse it, with the
+// user's PATH so a psmux installed for the user is found.
 func psInteractive(script string) string {
 	pre := "$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; "
-	return "powershell.exe -NoLogo -NoProfile -Command \"" + pre + script + "\""
+	return strings.Replace(psCommand(pre+script), " -NonInteractive", "", 1)
 }
 
-// psmuxAttach is the psmux command that attaches to (or creates) a session with
-// ClawHQ's settings; tmux's \; separator is passed as a quoted argument.
+// psmuxAttach creates the session if needed, applies ClawHQ's settings as separate
+// commands (PowerShell would eat tmux's \; separator), then attaches.
 func psmuxAttach(name string) string {
-	return "& psmux new-session -A -s " + psq(name) + " '\\;' set -g mouse on '\\;' set -g status off"
+	n := psq(name)
+	return "psmux has-session -t " + n + " 2>$null; if ($LASTEXITCODE -ne 0) { psmux new-session -d -s " + n + " }; psmux set -g mouse on 2>$null; psmux set -g status off 2>$null; psmux attach-session -t " + n
 }
 
 // healthScript prints one KEY=value per line; everything is best effort.

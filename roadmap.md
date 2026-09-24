@@ -109,6 +109,7 @@ changes. Shipped items keep their number so discussions stay anchored.
 | 79 | Windows servers: the platform is detected on connect (`uname` or `ver`) and remembered; Windows gets a PowerShell health script (system, disk, memory, node, git, the four agents), PowerShell terminals in the project folder, PowerShell actions and Claude Code chat, and the Windows Claude installer; tmux is skipped there | v0.1.89 |
 | 80 | psmux on Windows (a native tmux): detected on Health with an Install button (winget, else the release zip into the user's profile and PATH), terminals attach through it so tabs survive closing ClawHQ, session list and kill, the live Autopilot session and send-keys all go through psmux | v0.1.90 |
 | 81 | The tmux/psmux row on Health is a single line with a small Install button, like the agent rows | v0.1.91 |
+| 82 | psmux attach fixed and verified against a real Windows server (`internal/sshprobe`): the PowerShell launch is base64-encoded and psmux settings run as separate commands, since PowerShell ate tmux's `\;` separator | v0.1.92 |
 | 35 | Fix for the blank window / React #300: ChatView called two hooks after its no-agent return, so the hook count changed when the agent arrived (introduced with the tool-call toggle in v0.1.24) | v0.1.42 |
 
 ## Now
