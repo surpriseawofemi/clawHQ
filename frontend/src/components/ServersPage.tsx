@@ -503,23 +503,29 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                     </button>
                   </div>
                   <div className="srv-checks">
-                    {h.checks.map((c) => (
-                      <div key={c.id} className={`srv-check${c.ok ? ' is-ok' : ' is-bad'}`}>
-                        <span className="srv-check-icon">{c.ok ? '✅' : '❌'}</span>
-                        <span className="srv-check-label">{c.label}</span>
-                        <span className="srv-check-value">{c.value}</span>
-                        {!c.ok && c.hint && (
-                          <span className="srv-check-hint">
-                            {c.hint}{' '}
-                            {c.id === 'tmux' && (
-                              <button className="btn btn-sm" disabled={busy !== null} onClick={() => { setBusy('tmux'); setInstallLog('Installing tmux…'); void api.servers.installTmux(selected.id).then((out) => setInstallLog(out)).catch((err) => setInstallLog(String(err))).finally(() => { setBusy(null); void check(selected.id) }) }}>
-                                {busy === 'tmux' ? 'Installing…' : 'Install tmux'}
+                    {h.checks.map((c) =>
+                      c.id === 'tmux' ? (
+                        <div key={c.id} className={`srv-check srv-agent${c.ok ? ' is-ok' : ''}`} title={c.hint}>
+                          <span className="srv-check-icon">{c.ok ? '✅' : '⬜'}</span>
+                          <span className="srv-check-label">{c.label}</span>
+                          <span className="srv-check-value">{c.ok ? c.value : 'not installed · keeps terminals and the live session alive across ClawHQ restarts'}</span>
+                          <span className="srv-agent-actions">
+                            {!c.ok && (
+                              <button className="btn btn-sm" disabled={busy !== null} onClick={() => { setBusy('tmux'); setInstallLog(`Installing ${c.label}…`); void api.servers.installTmux(selected.id).then((out) => setInstallLog(out)).catch((err) => setInstallLog(String(err))).finally(() => { setBusy(null); void check(selected.id) }) }}>
+                                {busy === 'tmux' ? 'Installing…' : 'Install'}
                               </button>
                             )}
                           </span>
-                        )}
-                      </div>
-                    ))}
+                        </div>
+                      ) : (
+                        <div key={c.id} className={`srv-check${c.ok ? ' is-ok' : ' is-bad'}`}>
+                          <span className="srv-check-icon">{c.ok ? '✅' : '❌'}</span>
+                          <span className="srv-check-label">{c.label}</span>
+                          <span className="srv-check-value">{c.value}</span>
+                          {!c.ok && c.hint && <span className="srv-check-hint">{c.hint}</span>}
+                        </div>
+                      )
+                    )}
                   </div>
                   {activeProject(selected) && (() => {
                     const p = activeProject(selected) as ServerProject
