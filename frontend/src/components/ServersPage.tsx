@@ -350,24 +350,21 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
             )}
             <label className="check-row">
               <input type="checkbox" checked={editing.monitor !== false} onChange={(e) => setEditing({ ...editing, monitor: e.target.checked })} />
-              <span>Watch health every 10 minutes and warn in the bell (not answering, disk over 90%, high load)</span>
+              <span>Health check every 10 minutes, warnings in the bell</span>
             </label>
             <label className="check-row">
               <input type="checkbox" checked={editing.tmux !== false} onChange={(e) => setEditing({ ...editing, tmux: e.target.checked })} />
-              <span>Run terminals in tmux so they survive closing ClawHQ (needs tmux on the server)</span>
+              <span>Keep terminals alive in tmux across ClawHQ restarts</span>
             </label>
             <label className="check-row">
               <input type="checkbox" checked={editing.isolated === true} onChange={(e) => setEditing({ ...editing, isolated: e.target.checked })} />
-              <span>
-                <strong>Isolation mode.</strong> Only you use this server from ClawHQ: no agent sees it or can hand it a task, it is not a
-                member of Team Chat, and nothing here reaches another server.
-              </span>
+              <span><strong>Isolation mode</strong>: hidden from every agent and from Team Chat</span>
             </label>
             {editing.isolated !== true && (
               <>
                 <label className="check-row">
                   <input type="checkbox" checked={editing.tasks !== false} onChange={(e) => setEditing({ ...editing, tasks: e.target.checked })} />
-                  <span>Accept tasks from agents (they see the server in their list and can hand its coding agent work)</span>
+                  <span>Accept tasks from agents</span>
                 </label>
                 {editing.tasks !== false && (
                   <div className="field">
@@ -395,11 +392,11 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                         </label>
                       ))}
                     </div>
-                    <p className="field-hint">Ticking an agent limits the server to the ticked ones; leave only "Every agent" ticked to open it to all.</p>
+                    <p className="field-hint">Tick agents to limit the server to them.</p>
                   </div>
                 )}
                 <div className="field">
-                  <span>What this server is for (agents read this when choosing a server)</span>
+                  <span>What this server is for (agents read this)</span>
                   <input
                     value={editing.description ?? ''}
                     onChange={(e) => setEditing({ ...editing, description: e.target.value })}
