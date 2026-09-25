@@ -54,6 +54,12 @@ func main() {
 	}
 	run("psmux lookup", ps("$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; (Get-Command psmux -ErrorAction SilentlyContinue).Source; psmux -V; psmux ls"))
 	run("where", ps("Get-ChildItem -Path $env:LOCALAPPDATA -Filter psmux.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 3 -ExpandProperty FullName; [Environment]::GetEnvironmentVariable('Path','User')"))
+	if f := os.Getenv("PROBE_STDIN_FILE"); f != "" && len(os.Args) > 2 {
+		data, _ := os.ReadFile(f)
+		res, err := sshx.RunInput(ctx, c, os.Args[2], string(data), 60*time.Second)
+		fmt.Printf("== stdin run (exit %d, err %v)\n%s\n-- stderr:\n%s\n", res.ExitCode, err, res.Stdout, res.Stderr)
+		return
+	}
 	if len(os.Args) > 2 {
 		var buf strings.Builder
 		done := make(chan error, 1)

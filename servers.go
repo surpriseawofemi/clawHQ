@@ -251,6 +251,17 @@ func psq(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" 
 
 // psCommand wraps a PowerShell script for Windows OpenSSH, whose default shell is
 // cmd.exe: base64 avoids every quoting problem in between.
+// runPS runs a PowerShell script on a Windows server. Short scripts travel on
+// the command line, encoded; long ones are piped into "powershell -Command -",
+// because cmd.exe rejects a command line over 8191 characters and the health
+// script crossed that once (v0.1.96: every Windows health check came back blank).
+func runPS(ctx context.Context, client *ssh.Client, script string, timeout time.Duration) (sshx.Result, error) {
+	if cmd := psCommand(script); len(cmd) <= 7000 {
+		return sshx.RunRaw(ctx, client, cmd, timeout)
+	}
+	return sshx.RunInput(ctx, client, "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command -", script+"\n", timeout)
+}
+
 func psCommand(script string) string {
 	u16 := make([]byte, 0, len(script)*2)
 	for _, r := range script {
@@ -372,7 +383,7 @@ func (s *ServerService) Health(ctx context.Context, id string) ServerHealth {
 	s.store.SetServerPlatform(id, platform)
 	var res sshx.Result
 	if platform == "windows" {
-		res, err = sshx.RunRaw(ctx, client, psCommand(healthScriptWindows), 60*time.Second)
+		res, err = runPS(ctx, client, healthScriptWindows, 60*time.Second)
 	} else {
 		res, err = sshx.Run(ctx, client, healthScript, 40*time.Second)
 	}
@@ -452,7 +463,7 @@ func (s *ServerService) InstallClaude(ctx context.Context, id string) (string, e
 	defer client.Close()
 	var res sshx.Result
 	if p.Platform == "windows" {
-		res, err = sshx.RunRaw(ctx, client, psCommand("irm https://claude.ai/install.ps1 | iex; claude --version"), 8*time.Minute)
+		res, err = runPS(ctx, client, "irm https://claude.ai/install.ps1 | iex; claude --version", 8*time.Minute)
 	} else {
 		res, err = sshx.Run(ctx, client, "curl -fsSL https://claude.ai/install.sh | bash 2>&1; echo \"exit=$?\"; export PATH=\"$HOME/.local/bin:$PATH\"; claude --version 2>&1", 6*time.Minute)
 	}
@@ -483,7 +494,7 @@ func (s *ServerService) InstallAgent(ctx context.Context, id, agent string) (str
 				return "", err
 			}
 			defer client.Close()
-			res, err := sshx.RunRaw(ctx, client, psCommand("irm https://x.ai/cli/install.ps1 | iex; $env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; grok --version"), 8*time.Minute)
+			res, err := runPS(ctx, client, "irm https://x.ai/cli/install.ps1 | iex; $env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; grok --version", 8*time.Minute)
 			return strings.TrimSpace(res.Stdout + "\n" + res.Stderr), err
 		}
 		cmd = "curl -fsSL https://x.ai/cli/install.sh | bash 2>&1; echo \"exit=$?\"; export PATH=\"$HOME/.grok/bin:$PATH\"; grok --version 2>&1"
@@ -508,7 +519,7 @@ func (s *ServerService) InstallAgent(ctx context.Context, id, agent string) (str
 	defer client.Close()
 	var res sshx.Result
 	if p.Platform == "windows" {
-		res, err = sshx.RunRaw(ctx, client, psCommand(strings.Replace(cmd, "2>&1; echo \"exit=$?\";", ";", 1)), 8*time.Minute)
+		res, err = runPS(ctx, client, strings.Replace(cmd, "2>&1; echo \"exit=$?\";", ";", 1), 8*time.Minute)
 	} else {
 		pre := "command -v npm >/dev/null 2>&1 || { echo 'npm is not installed on this server; install Node.js first'; exit 1; }; "
 		if agent == "grok" || agent == "opencode" {
@@ -669,7 +680,7 @@ func (s *ServerService) TmuxSessions(ctx context.Context, id string) ([]string, 
 	defer client.Close()
 	var res sshx.Result
 	if p.Platform == "windows" {
-		res, err = sshx.RunRaw(ctx, client, psCommand("$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; psmux ls -F '#{session_name}' 2>$null"), 15*time.Second)
+		res, err = runPS(ctx, client, "$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; psmux ls -F '#{session_name}' 2>$null", 15*time.Second)
 	} else {
 		res, err = sshx.Run(ctx, client, "tmux ls -F '#{session_name}' 2>/dev/null", 15*time.Second)
 	}
@@ -698,7 +709,7 @@ func (s *ServerService) KillTmux(ctx context.Context, id, session string) error 
 	defer client.Close()
 	name := tmuxNameRe.ReplaceAllString(session, "-")
 	if p.Platform == "windows" {
-		_, err = sshx.RunRaw(ctx, client, psCommand("$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; psmux kill-session -t "+psq(name)+" 2>$null; exit 0"), 15*time.Second)
+		_, err = runPS(ctx, client, "$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; psmux kill-session -t "+psq(name)+" 2>$null; exit 0", 15*time.Second)
 		return err
 	}
 	_, err = sshx.Run(ctx, client, "tmux kill-session -t "+shq(name)+" 2>/dev/null; true", 15*time.Second)
@@ -741,7 +752,7 @@ if (-not $ok) {
 }
 $env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path
 psmux -V`
-		res, err = sshx.RunRaw(ctx, client, psCommand(script), 8*time.Minute)
+		res, err = runPS(ctx, client, script, 8*time.Minute)
 	} else {
 		cmd := `if command -v apt-get >/dev/null 2>&1; then sudo apt-get install -y tmux 2>&1; elif command -v dnf >/dev/null 2>&1; then sudo dnf install -y tmux 2>&1; elif command -v yum >/dev/null 2>&1; then sudo yum install -y tmux 2>&1; elif command -v brew >/dev/null 2>&1; then brew install tmux 2>&1; else echo "no known package manager"; exit 1; fi; tmux -V`
 		res, err = sshx.Run(ctx, client, cmd, 5*time.Minute)

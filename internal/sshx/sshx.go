@@ -231,11 +231,22 @@ func Run(ctx context.Context, c *ssh.Client, command string, timeout time.Durati
 // RunRaw executes a command exactly as given, for servers whose shell is not
 // bash (Windows OpenSSH hands it to cmd.exe).
 func RunRaw(ctx context.Context, c *ssh.Client, command string, timeout time.Duration) (Result, error) {
+	return RunInput(ctx, c, command, "", timeout)
+}
+
+// RunInput is RunRaw with text on the command's stdin. It is how long scripts
+// reach Windows: cmd.exe caps a command line at 8191 characters, and a script
+// base64-encoded as UTF-16 grows almost three times, so anything sizeable is
+// piped into "powershell -Command -" instead.
+func RunInput(ctx context.Context, c *ssh.Client, command, input string, timeout time.Duration) (Result, error) {
 	sess, err := c.NewSession()
 	if err != nil {
 		return Result{}, err
 	}
 	defer sess.Close()
+	if input != "" {
+		sess.Stdin = strings.NewReader(input)
+	}
 	var out, errb bytes.Buffer
 	sess.Stdout = &out
 	sess.Stderr = &errb

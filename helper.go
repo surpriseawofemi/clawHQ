@@ -583,7 +583,7 @@ func (s *HelperService) SendToSession(ctx context.Context, id, session, text str
 	var res sshx.Result
 	if p.Platform == "windows" {
 		script := "$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; psmux set-buffer -b clawhq -- " + psq(text) + "; psmux paste-buffer -p -b clawhq -t " + psq(name) + "; Start-Sleep -Milliseconds 300; psmux send-keys -t " + psq(name) + " Enter"
-		res, err = sshx.RunRaw(ctx, client, psCommand(script), 20*time.Second)
+		res, err = runPS(ctx, client, script, 20*time.Second)
 	} else {
 		cmd := "tmux set-buffer -b clawhq -- " + shq(text) + " && tmux paste-buffer -p -b clawhq -t " + shq(name) + " && sleep 0.3 && tmux send-keys -t " + shq(name) + " Enter"
 		res, err = sshx.Run(ctx, client, cmd, 20*time.Second)
@@ -628,7 +628,7 @@ func (s *HelperService) StartSession(ctx context.Context, id, projectID, resume 
 			cd = "Set-Location -LiteralPath " + psq(dir) + "; "
 		}
 		script := "$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; " + cd + "psmux has-session -t " + psq(name) + " 2>$null; if ($LASTEXITCODE -ne 0) { psmux new-session -d -s " + psq(name) + " " + psq(claude) + " }; exit 0"
-		res, err = sshx.RunRaw(ctx, client, psCommand(script), 20*time.Second)
+		res, err = runPS(ctx, client, script, 20*time.Second)
 	} else {
 		inner := `export PATH="$HOME/.local/bin:$PATH"; ` + claude
 		cd := ""
