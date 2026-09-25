@@ -223,9 +223,19 @@ func agentCommand(agent, sessionID, mode string) []string {
 		}
 		return args
 	case "grok":
-		args := []string{"grok"}
-		if mode == "auto" {
-			args = append(args, "--auto-approve")
+		// xAI's Grok CLI speaks the same streaming format as Claude Code and
+		// resumes by session id; the prompt goes in as an argument (see Send).
+		args := []string{"grok", "-p", "__PROMPT__", "--output-format", "streaming-messages-json", "--include-partial-messages"}
+		if sessionID != "" {
+			args = append(args, "--resume", sessionID)
+		}
+		switch mode {
+		case "auto":
+			args = append(args, "--permission-mode", "bypassPermissions")
+		case "semi":
+			args = append(args, "--permission-mode", "acceptEdits")
+		default:
+			args = append(args, "--permission-mode", "default")
 		}
 		return args
 	default:
@@ -293,6 +303,11 @@ func (s *ClaudeService) sendProject(ctx context.Context, id, projectID, text, so
 		return nil, "", err
 	}
 	args := agentCommand(agent, pr.Sessions[agent], modeOfProject(pr))
+	for i := range args {
+		if args[i] == "__PROMPT__" {
+			args[i] = text
+		}
+	}
 	var cmd string
 	if p.Platform == "windows" {
 		var b strings.Builder
@@ -312,7 +327,7 @@ func (s *ClaudeService) sendProject(ctx context.Context, id, projectID, text, so
 		if pr.Dir != "" {
 			b.WriteString("cd " + shq(pr.Dir) + " && ")
 		}
-		b.WriteString(`export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; `)
+		b.WriteString(`export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.grok/bin:$PATH"; `)
 		for i, a := range args {
 			if i > 0 {
 				b.WriteString(" ")
@@ -351,8 +366,10 @@ func (s *ClaudeService) sendProject(ctx context.Context, id, projectID, text, so
 	s.mu.Unlock()
 
 	go func() {
-		_, _ = io.WriteString(stdin, text)
-		if agent == "gemini" || agent == "grok" {
+		if agent != "grok" {
+			_, _ = io.WriteString(stdin, text)
+		}
+		if agent == "gemini" {
 			_, _ = io.WriteString(stdin, "\n")
 		}
 		_ = stdin.Close()
@@ -407,7 +424,7 @@ func (s *ClaudeService) pump(id string, run *claudeRun, p store.ServerProfile, p
 	gotResult := false
 
 	switch agent {
-	case "claude":
+	case "claude", "grok":
 		sc := bufio.NewScanner(stdout)
 		sc.Buffer(make([]byte, 1<<20), 32<<20)
 		for sc.Scan() {

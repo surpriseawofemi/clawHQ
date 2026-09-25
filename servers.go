@@ -295,7 +295,7 @@ if (Test-Path "$env:USERPROFILE\.codex\auth.json") { "codex_login=1" }; if ($env
 $gm = (Get-Command gemini -ErrorAction SilentlyContinue).Source; "gemini_path=$gm"; if ($gm) { "gemini_version=$(& $gm --version 2>$null | Select-Object -First 1)" }
 if (Test-Path "$env:USERPROFILE\.gemini\oauth_creds.json") { "gemini_login=1" }; if ($env:GEMINI_API_KEY) { "gemini_login=1" }
 $gk = (Get-Command grok -ErrorAction SilentlyContinue).Source; "grok_path=$gk"; if ($gk) { "grok_version=$(& $gk --version 2>$null | Select-Object -First 1)" }
-if ($env:GROK_API_KEY) { "grok_login=1" }
+if (Test-Path "$env:USERPROFILE\\.grok\\auth.json") { "grok_login=1" }; if ($env:GROK_API_KEY) { "grok_login=1" }
 $env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path
 $pm = (Get-Command psmux -ErrorAction SilentlyContinue).Source
 if ($pm) { "tmux=$(((& $pm -V 2>$null) | Select-Object -First 1) -replace '^[a-z]+ ','')"; "tmux_path=$pm" } else { "tmux=" }
@@ -330,13 +330,13 @@ echo "memory=$(free -h 2>/dev/null | awk '/^Mem/{print $7" available of "$2}')"
 echo "cores=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null)"
 echo "tmux=$(command -v tmux >/dev/null 2>&1 && tmux -V 2>/dev/null | sed 's/^tmux //')"
 echo "node=$(command -v node >/dev/null 2>&1 && node -v 2>/dev/null)"
-export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.grok/bin:$PATH"
 CX="$(command -v codex 2>/dev/null)"; echo "codex_path=$CX"; [ -n "$CX" ] && echo "codex_version=$("$CX" --version 2>/dev/null | head -1)"
 [ -s "$HOME/.codex/auth.json" ] && echo "codex_login=1"; [ -n "$OPENAI_API_KEY" ] && echo "codex_login=1"
 GM="$(command -v gemini 2>/dev/null)"; echo "gemini_path=$GM"; [ -n "$GM" ] && echo "gemini_version=$("$GM" --version 2>/dev/null | head -1)"
 [ -s "$HOME/.gemini/oauth_creds.json" ] && echo "gemini_login=1"; [ -n "$GEMINI_API_KEY" ] && echo "gemini_login=1"; [ -n "$GOOGLE_API_KEY" ] && echo "gemini_login=1"
 GK="$(command -v grok 2>/dev/null)"; echo "grok_path=$GK"; [ -n "$GK" ] && echo "grok_version=$("$GK" --version 2>/dev/null | head -1)"
-[ -s "$HOME/.grok/user-settings.json" ] && grep -q apiKey "$HOME/.grok/user-settings.json" 2>/dev/null && echo "grok_login=1"; [ -n "$GROK_API_KEY" ] && echo "grok_login=1"
+[ -s "$HOME/.grok/auth.json" ] && echo "grok_login=1"; [ -s "$HOME/.grok/user-settings.json" ] && grep -q apiKey "$HOME/.grok/user-settings.json" 2>/dev/null && echo "grok_login=1"; [ -n "$GROK_API_KEY" ] && echo "grok_login=1"
 echo "git=$(command -v git >/dev/null 2>&1 && git --version 2>/dev/null | sed 's/git version //')"
 CL="$(command -v claude 2>/dev/null)"
 [ -z "$CL" ] && [ -x "$HOME/.local/bin/claude" ] && CL="$HOME/.local/bin/claude"
@@ -403,7 +403,7 @@ func (s *ServerService) Health(ctx context.Context, id string) ServerHealth {
 		{ID: "claude", Label: "Claude Code", Installed: h.Claude.Installed, Version: h.Claude.Version, Path: h.Claude.Path, LoggedIn: h.Claude.LoggedIn, Account: h.Claude.Account, Install: "curl -fsSL https://claude.ai/install.sh | bash", LoginHint: "run: claude, then /login"},
 		{ID: "codex", Label: "Codex", Installed: kv["codex_path"] != "", Version: kv["codex_version"], Path: kv["codex_path"], LoggedIn: kv["codex_login"] == "1", Install: "npm install -g @openai/codex", LoginHint: "run: codex login"},
 		{ID: "gemini", Label: "Gemini CLI", Installed: kv["gemini_path"] != "", Version: kv["gemini_version"], Path: kv["gemini_path"], LoggedIn: kv["gemini_login"] == "1", Install: "npm install -g @google/gemini-cli", LoginHint: "run: gemini, then sign in"},
-		{ID: "grok", Label: "Grok CLI", Installed: kv["grok_path"] != "", Version: kv["grok_version"], Path: kv["grok_path"], LoggedIn: kv["grok_login"] == "1", Install: "npm install -g @vibe-kit/grok-cli", LoginHint: "set GROK_API_KEY or run: grok and enter the key"},
+		{ID: "grok", Label: "Grok CLI", Installed: kv["grok_path"] != "", Version: kv["grok_version"], Path: kv["grok_path"], LoggedIn: kv["grok_login"] == "1", Install: "curl -fsSL https://x.ai/cli/install.sh | bash", LoginHint: "run: grok login"},
 	}
 
 	h.Checks = append(h.Checks, ServerCheck{ID: "ssh", Label: "SSH connection", OK: true, Value: fmt.Sprintf("%s@%s", h.User, h.Hostname)})
@@ -471,7 +471,16 @@ func (s *ServerService) InstallAgent(ctx context.Context, id, agent string) (str
 	case "gemini":
 		cmd = "npm install -g @google/gemini-cli 2>&1; echo \"exit=$?\"; gemini --version 2>&1"
 	case "grok":
-		cmd = "npm install -g @vibe-kit/grok-cli 2>&1; echo \"exit=$?\"; grok --version 2>&1"
+		if p, err := s.profile(id); err == nil && p.Platform == "windows" {
+			client, err := sshx.Dial(ctx, target(p), knownHostsPath())
+			if err != nil {
+				return "", err
+			}
+			defer client.Close()
+			res, err := sshx.RunRaw(ctx, client, psCommand("irm https://x.ai/cli/install.ps1 | iex; $env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path; grok --version"), 8*time.Minute)
+			return strings.TrimSpace(res.Stdout + "\n" + res.Stderr), err
+		}
+		cmd = "curl -fsSL https://x.ai/cli/install.sh | bash 2>&1; echo \"exit=$?\"; export PATH=\"$HOME/.grok/bin:$PATH\"; grok --version 2>&1"
 	default:
 		return "", fmt.Errorf("unknown agent %q", agent)
 	}
@@ -488,7 +497,11 @@ func (s *ServerService) InstallAgent(ctx context.Context, id, agent string) (str
 	if p.Platform == "windows" {
 		res, err = sshx.RunRaw(ctx, client, psCommand(strings.Replace(cmd, "2>&1; echo \"exit=$?\";", ";", 1)), 8*time.Minute)
 	} else {
-		res, err = sshx.Run(ctx, client, "command -v npm >/dev/null 2>&1 || { echo 'npm is not installed on this server; install Node.js first'; exit 1; }; "+cmd, 8*time.Minute)
+		pre := "command -v npm >/dev/null 2>&1 || { echo 'npm is not installed on this server; install Node.js first'; exit 1; }; "
+		if agent == "grok" {
+			pre = ""
+		}
+		res, err = sshx.Run(ctx, client, pre+cmd, 8*time.Minute)
 	}
 	out := strings.TrimSpace(res.Stdout + "\n" + res.Stderr)
 	if len(out) > 6000 {

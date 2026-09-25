@@ -65,20 +65,30 @@ func main() {
 			fmt.Println("start:", err)
 			return
 		}
+		wait := 8 * time.Second
+		if v := os.Getenv("PROBE_WAIT"); v != "" {
+			if d, err := time.ParseDuration(v); err == nil {
+				wait = d
+			}
+		}
 		select {
 		case e := <-done:
 			fmt.Println("exited early:", e)
-		case <-time.After(8 * time.Second):
-			fmt.Println("still running after 8s (good)")
+		case <-time.After(wait):
+			fmt.Println("still running after", wait, "(good)")
 			_ = sh.Write(base64.StdEncoding.EncodeToString([]byte("echo probe-ok\r")))
-			time.Sleep(3 * time.Second)
+			select {
+			case e := <-done:
+				fmt.Println("exited after write:", e)
+			case <-time.After(3 * time.Second):
+			}
 			sh.Close()
 		}
 		out := buf.String()
-		if len(out) > 1200 {
+		if os.Getenv("PROBE_FULL") == "" && len(out) > 1200 {
 			out = out[len(out)-1200:]
 		}
-		fmt.Printf("== pty output:\n%q\n", out)
+		fmt.Printf("== pty output:\n%s\n", out)
 		return
 	}
 	// the interactive attach, on a PTY, for a few seconds

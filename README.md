@@ -273,8 +273,10 @@ The health page lists Claude Code, Codex, Gemini CLI and Grok CLI with
 version and login state, and installs any of them (Claude through Anthropic's
 installer, the others through npm). A project's agent is chosen when it is
 added or from the chat bar. Codex chat runs `codex exec --json` and keeps the
-thread id for resume; Gemini and Grok chats stream plain text and are marked
-experimental until verified on a real server.
+thread id for resume. Grok is xAI's Grok CLI: login is read from `~/.grok/auth.json`,
+and chat runs `grok -p` with its streaming-messages-json output, the same wire
+format as Claude Code, resumed by session id. Gemini chat streams plain text and
+is marked experimental.
 
 #### Servers in the rest of ClawHQ
 

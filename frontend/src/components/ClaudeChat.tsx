@@ -262,7 +262,7 @@ export function ClaudeChat({ serverId, serverName, live }: { serverId: string; s
           <option value="claude">Claude Code</option>
           <option value="codex">Codex</option>
           <option value="gemini">Gemini CLI (experimental)</option>
-          <option value="grok">Grok CLI (experimental)</option>
+          <option value="grok">Grok CLI</option>
         </select>
         )}
         {isLive && live && <span className="plugin-desc mono">tmux: {live.session}</span>}
