@@ -415,7 +415,7 @@ export type ServerProfile = {
 
 /** A folder on a server the coding agents work in. */
 export type ServerProject = { id: string; name: string; dir: string; agent?: AgentID; sessions?: Record<string, string>; mode?: string }
-export type AgentID = 'claude' | 'codex' | 'gemini' | 'grok'
+export type AgentID = 'claude' | 'codex' | 'gemini' | 'grok' | 'opencode'
 export type AgentStatus = { id: AgentID; label: string; installed: boolean; version: string; path: string; loggedIn: boolean; account?: string; install: string; loginHint: string }
 
 /** A saved command on a server, run from a button. */

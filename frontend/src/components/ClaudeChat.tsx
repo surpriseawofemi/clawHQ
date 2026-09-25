@@ -4,7 +4,7 @@ import { takeChatPrefill } from './ServersPage'
 import { renderMarkdown } from '../markdown'
 import type { AgentID, ClaudeBlock, ClaudeMsg, ClaudeSession, ClaudeState } from '../types'
 
-const AGENT_LABEL: Record<AgentID, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI', grok: 'Grok CLI' }
+const AGENT_LABEL: Record<AgentID, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI', grok: 'Grok CLI', opencode: 'OpenCode' }
 
 type Queued = { id: string; text: string }
 
@@ -263,6 +263,7 @@ export function ClaudeChat({ serverId, serverName, live }: { serverId: string; s
           <option value="codex">Codex</option>
           <option value="gemini">Gemini CLI (experimental)</option>
           <option value="grok">Grok CLI</option>
+          <option value="opencode">OpenCode</option>
         </select>
         )}
         {isLive && live && <span className="plugin-desc mono">tmux: {live.session}</span>}

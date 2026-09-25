@@ -415,6 +415,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                     <option value="codex">Codex</option>
                     <option value="gemini">Gemini CLI</option>
                     <option value="grok">Grok CLI</option>
+                    <option value="opencode">OpenCode</option>
                   </select>
                 </div>
               )}

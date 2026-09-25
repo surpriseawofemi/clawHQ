@@ -275,8 +275,9 @@ installer, the others through npm). A project's agent is chosen when it is
 added or from the chat bar. Codex chat runs `codex exec --json` and keeps the
 thread id for resume. Grok is xAI's Grok CLI: login is read from `~/.grok/auth.json`,
 and chat runs `grok -p` with its streaming-messages-json output, the same wire
-format as Claude Code, resumed by session id. Gemini chat streams plain text and
-is marked experimental.
+format as Claude Code, resumed by session id. OpenCode runs `opencode run --format json`, one event per line, resumed with
+`--session`; auto mode passes `--auto`, manual uses its read-only plan agent.
+Gemini chat streams plain text and is marked experimental.
 
 #### Servers in the rest of ClawHQ
 

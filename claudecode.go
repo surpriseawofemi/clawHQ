@@ -117,7 +117,7 @@ func modeOfProject(pr store.ServerProject) string {
 
 func agentOfProject(pr store.ServerProject) string {
 	switch pr.Agent {
-	case "codex", "gemini", "grok":
+	case "codex", "gemini", "grok", "opencode":
 		return pr.Agent
 	}
 	return "claude"
@@ -166,7 +166,7 @@ func (s *ClaudeService) SetSession(id, sessionID string) (ClaudeState, error) {
 // SetAgent picks which coding agent the active project's chat drives.
 func (s *ClaudeService) SetAgent(id, agent string) (ClaudeState, error) {
 	switch agent {
-	case "claude", "codex", "gemini", "grok":
+	case "claude", "codex", "gemini", "grok", "opencode":
 	default:
 		return ClaudeState{}, fmt.Errorf("unknown agent %q", agent)
 	}
@@ -236,6 +236,21 @@ func agentCommand(agent, sessionID, mode string) []string {
 			args = append(args, "--permission-mode", "acceptEdits")
 		default:
 			args = append(args, "--permission-mode", "default")
+		}
+		return args
+	case "opencode":
+		// opencode run reads the prompt from stdin and prints one JSON event per
+		// line; --auto approves whatever its config does not deny, and the built-in
+		// plan agent is read-only.
+		args := []string{"opencode", "run", "--format", "json"}
+		switch mode {
+		case "auto":
+			args = append(args, "--auto")
+		case "manual":
+			args = append(args, "--agent", "plan")
+		}
+		if sessionID != "" {
+			args = append(args, "--session", sessionID)
 		}
 		return args
 	default:
@@ -327,7 +342,7 @@ func (s *ClaudeService) sendProject(ctx context.Context, id, projectID, text, so
 		if pr.Dir != "" {
 			b.WriteString("cd " + shq(pr.Dir) + " && ")
 		}
-		b.WriteString(`export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.grok/bin:$PATH"; `)
+		b.WriteString(`export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.grok/bin:$HOME/.opencode/bin:$PATH"; `)
 		for i, a := range args {
 			if i > 0 {
 				b.WriteString(" ")
@@ -369,7 +384,7 @@ func (s *ClaudeService) sendProject(ctx context.Context, id, projectID, text, so
 		if agent != "grok" {
 			_, _ = io.WriteString(stdin, text)
 		}
-		if agent == "gemini" {
+		if agent == "gemini" || agent == "opencode" {
 			_, _ = io.WriteString(stdin, "\n")
 		}
 		_ = stdin.Close()
@@ -386,6 +401,8 @@ func agentLabel(agent string) string {
 		return "Gemini CLI"
 	case "grok":
 		return "Grok CLI"
+	case "opencode":
+		return "OpenCode"
 	}
 	return "Claude Code"
 }
@@ -522,7 +539,86 @@ func (s *ClaudeService) pump(id string, run *claudeRun, p store.ServerProfile, p
 				stderr.WriteString(rec.Message)
 			}
 		}
-	default: // gemini, grok: text streams; one chunk at a time
+	case "opencode":
+		// One event per line: text (final text of a part), tool_use (completed or
+		// failed), step_start/step_finish (tokens and cost), error. No deltas.
+		sc := bufio.NewScanner(stdout)
+		sc.Buffer(make([]byte, 1<<20), 32<<20)
+		steps := 0
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line == "" || line[0] != '{' {
+				continue
+			}
+			var rec struct {
+				Type      string          `json:"type"`
+				SessionID string          `json:"sessionID"`
+				Part      json.RawMessage `json:"part"`
+				Error     json.RawMessage `json:"error"`
+			}
+			if json.Unmarshal([]byte(line), &rec) != nil {
+				continue
+			}
+			if sessionID == "" && rec.SessionID != "" {
+				remember(rec.SessionID)
+				s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "init", SessionID: sessionID})
+			}
+			switch rec.Type {
+			case "text":
+				var part struct {
+					Text string `json:"text"`
+				}
+				if json.Unmarshal(rec.Part, &part) != nil || part.Text == "" {
+					continue
+				}
+				if finalText.Len() > 0 {
+					finalText.WriteString("\n\n")
+				}
+				finalText.WriteString(part.Text)
+				s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "delta", Text: part.Text + "\n\n"})
+			case "tool_use":
+				var part struct {
+					Tool  string `json:"tool"`
+					State struct {
+						Status string          `json:"status"`
+						Input  json.RawMessage `json:"input"`
+						Output string          `json:"output"`
+						Error  string          `json:"error"`
+					} `json:"state"`
+				}
+				if json.Unmarshal(rec.Part, &part) != nil {
+					continue
+				}
+				input := part.State.Input
+				if len(input) == 0 {
+					input = json.RawMessage(`{}`)
+				}
+				msg, _ := json.Marshal(map[string]any{"role": "assistant", "content": []map[string]any{{"type": "tool_use", "name": part.Tool, "input": input}}})
+				s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "assistant", Message: msg})
+				out := part.State.Output
+				if part.State.Status == "error" && part.State.Error != "" {
+					out = part.State.Error
+				}
+				res, _ := json.Marshal(map[string]any{"role": "user", "content": []map[string]any{{"type": "tool_result", "content": out, "is_error": part.State.Status == "error"}}})
+				s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "user", Message: res})
+			case "step_finish":
+				var part struct {
+					Cost float64 `json:"cost"`
+				}
+				_ = json.Unmarshal(rec.Part, &part)
+				costUsd += part.Cost
+				steps++
+			case "error":
+				stderr.WriteString(string(rec.Error))
+			}
+		}
+		if steps > 0 || finalText.Len() > 0 {
+			gotResult = true
+			turns = steps
+			result, _ := json.Marshal(map[string]any{"type": "result", "total_cost_usd": costUsd, "num_turns": turns, "duration_ms": time.Since(started).Milliseconds()})
+			s.emit(ClaudeEvent{ServerID: id, RunID: runID, Type: "result", SessionID: sessionID, Text: finalText.String(), Result: json.RawMessage(result)})
+		}
+	default: // gemini: text stream; one chunk at a time
 		buf := make([]byte, 4096)
 		for {
 			n, err := stdout.Read(buf)
