@@ -411,6 +411,14 @@ export type ServerProfile = {
   /** Terminals run in tmux on the server and survive a ClawHQ restart. */
   tmux?: boolean
   platform?: string
+  /** Kept to this ClawHQ: agents never see it, it takes no tasks, and it is not in Team Chat. */
+  isolated?: boolean
+  /** Agents may hand it tasks (default on). */
+  tasks?: boolean
+  /** Agent ids allowed to hand it tasks; empty means every agent. */
+  taskAgents?: string[]
+  /** One line agents see when choosing a server. */
+  description?: string
 }
 
 /** A folder on a server the coding agents work in. */

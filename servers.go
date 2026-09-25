@@ -62,6 +62,10 @@ type ServerView struct {
 	Monitor         bool                  `json:"monitor"`
 	Tmux            bool                  `json:"tmux"`
 	Platform        string                `json:"platform"`
+	Isolated        bool                  `json:"isolated"`
+	Tasks           bool                  `json:"tasks"`
+	TaskAgents      []string              `json:"taskAgents"`
+	Description     string                `json:"description"`
 }
 
 // ServerInput is what the page sends to save a server.
@@ -77,6 +81,11 @@ type ServerInput struct {
 	Dir      string `json:"dir"`
 	Monitor  *bool  `json:"monitor"`
 	Tmux     *bool  `json:"tmux"`
+	Isolated *bool  `json:"isolated"`
+	Tasks    *bool  `json:"tasks"`
+	// TaskAgents nil leaves the list alone; empty means every agent.
+	TaskAgents  []string `json:"taskAgents"`
+	Description *string  `json:"description"`
 }
 
 type ServerCheck struct {
@@ -152,7 +161,7 @@ func viewOf(p store.ServerProfile) ServerView {
 	if projects == nil {
 		projects = []store.ServerProject{}
 	}
-	return ServerView{ID: p.ID, Name: p.Name, Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, HasPassword: p.Password != "", Dir: p.Active().Dir, AddedAtMs: p.AddedAtMs, LastOkAtMs: p.LastOkAtMs, Actions: actions, Projects: projects, ActiveProjectID: p.ActiveProjectID, Monitor: !p.MonitorOff, Tmux: !p.TmuxOff, Platform: p.Platform}
+	return ServerView{ID: p.ID, Name: p.Name, Host: p.Host, Port: p.Port, User: p.User, Auth: p.Auth, KeyPath: p.KeyPath, HasPassword: p.Password != "", Dir: p.Active().Dir, AddedAtMs: p.AddedAtMs, LastOkAtMs: p.LastOkAtMs, Actions: actions, Projects: projects, ActiveProjectID: p.ActiveProjectID, Monitor: !p.MonitorOff, Tmux: !p.TmuxOff, Platform: p.Platform, Isolated: p.Isolated, Tasks: !p.TasksOff, TaskAgents: append([]string{}, p.TaskAgents...), Description: p.Description}
 }
 
 func (s *ServerService) List() []ServerView {
@@ -202,9 +211,27 @@ func (s *ServerService) Save(in ServerInput) ([]ServerView, error) {
 	}
 	if cur, err := s.profile(in.ID); err == nil {
 		p.TmuxOff, p.Platform = cur.TmuxOff, cur.Platform
+		p.Isolated, p.TasksOff, p.TaskAgents, p.Description = cur.Isolated, cur.TasksOff, cur.TaskAgents, cur.Description
 	}
 	if in.Tmux != nil {
 		p.TmuxOff = !*in.Tmux
+	}
+	if in.Isolated != nil {
+		p.Isolated = *in.Isolated
+	}
+	if in.Tasks != nil {
+		p.TasksOff = !*in.Tasks
+	}
+	if in.TaskAgents != nil {
+		p.TaskAgents = nil
+		for _, a := range in.TaskAgents {
+			if a = strings.TrimSpace(a); a != "" {
+				p.TaskAgents = append(p.TaskAgents, a)
+			}
+		}
+	}
+	if in.Description != nil {
+		p.Description = strings.TrimSpace(*in.Description)
 	}
 	if _, err := s.store.UpsertServer(p); err != nil {
 		return nil, err

@@ -279,6 +279,13 @@ format as Claude Code, resumed by session id. OpenCode runs `opencode run --form
 `--session`; auto mode passes `--auto`, manual uses its read-only plan agent.
 Gemini chat streams plain text and is marked experimental.
 
+Each server decides who may use it. Isolation mode keeps a server to this ClawHQ:
+agents never learn it exists, it takes no tasks and is not a member of Team Chat.
+Otherwise a server accepts tasks from every agent or only the ticked ones, and
+carries a one-line description that agents read when choosing where to send work.
+Auto mode on a server whose SSH user is root sets `IS_SANDBOX=1`, which is what
+Claude Code needs to run unattended as root.
+
 #### Servers in the rest of ClawHQ
 
 - **Team Chat** lists servers as members. `@name` (the server's name, lowercased,

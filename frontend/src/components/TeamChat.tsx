@@ -75,7 +75,8 @@ export function TeamChat({ shell, agents, connected, messages, openSession, onOp
   const serverRunsRef = useRef(serverRuns)
   serverRunsRef.current = serverRuns
   useEffect(() => {
-    api.servers.list().then(setServers).catch(() => undefined)
+    // Isolated servers are not members: nobody can @ them and they never reply.
+    api.servers.list().then((list) => setServers(list.filter((sv) => !sv.isolated))).catch(() => undefined)
   }, [])
   const serverBySlug = useCallback((slug: string) => servers.find((sv) => serverSlug(sv.name) === slug.toLowerCase()), [servers])
   const [pluginPresent, setPluginPresent] = useState<boolean | null>(null)

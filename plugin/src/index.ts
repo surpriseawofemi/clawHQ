@@ -38,7 +38,7 @@ const ISSUE_KINDS: IssueKind[] = ["question", "task", "issue", "improvement"];
 const ISSUE_STATUSES: IssueStatus[] = ["open", "in-progress", "resolved"];
 const ISSUE_URGENCIES: IssueUrgency[] = ["low", "normal", "high", "urgent"];
 
-export const PLUGIN_VERSION = "0.2.6";
+export const PLUGIN_VERSION = "0.2.7";
 
 /**
  * Super Boss Chat: one session per agent reserved for the human operator. ClawHQ
@@ -186,11 +186,15 @@ function register(api: OpenClawPluginApi): void {
     return out;
   };
 
+  /** The servers one agent may see and use: those with no allowlist, or with it on the list. */
+  const serversFor = (s: State, agentId: string | undefined) =>
+    allServers(s).filter((sv) => !sv.agents?.length || (agentId !== undefined && sv.agents.some((a) => a.toLowerCase() === agentId.toLowerCase())));
+
   const createServerTask = async (p: { server: string; project?: string; task: string; from: string }): Promise<ServerTask> => {
     const s = await store.load();
     const want = p.server.trim().toLowerCase();
-    const sv = allServers(s).find((x) => x.id === p.server || x.name.toLowerCase() === want);
-    if (!sv) throw new Error(`no server named "${p.server}"; call clawhq_servers_list`);
+    const sv = serversFor(s, p.from).find((x) => x.id === p.server || x.name.toLowerCase() === want);
+    if (!sv) throw new Error(`no server named "${p.server}" is open to you; call clawhq_servers_list`);
     let projectId: string | undefined;
     if (p.project?.trim()) {
       const pw = p.project.trim().toLowerCase();
@@ -520,6 +524,8 @@ function register(api: OpenClawPluginApi): void {
     const servers = (Array.isArray(p.servers) ? (p.servers as ServerEntry[]) : []).map((sv) => ({
       id: String(sv.id ?? ""),
       name: String(sv.name ?? ""),
+      description: sv.description ? String(sv.description).slice(0, 300) : undefined,
+      agents: Array.isArray(sv.agents) ? sv.agents.map((a) => String(a)).filter(Boolean) : undefined,
       projects: (Array.isArray(sv.projects) ? sv.projects : []).map((pr) => ({ id: String(pr.id ?? ""), name: String(pr.name ?? ""), agent: String(pr.agent ?? "claude") })),
     })).filter((sv) => sv.id && sv.name);
     await store.update((s) => {
@@ -766,11 +772,11 @@ function register(api: OpenClawPluginApi): void {
       {
         name: "clawhq_servers_list",
         label: "List servers",
-        description: "Servers registered in ClawHQ where a coding agent (Claude Code, Codex, Gemini or Grok) can work, with their project folders. Use clawhq_server_task to hand one a task.",
+        description: "Servers registered in ClawHQ that are open to you, where a coding agent (Claude Code, Codex, Gemini, Grok or OpenCode) can work, with what each server is for and its project folders. Only hand a server a task that belongs to it. Use clawhq_server_task to do so.",
         parameters: Type.Object({}),
         async execute() {
           const s = await store.load();
-          return jsonResult({ servers: allServers(s).map((x) => ({ id: x.id, name: x.name, projects: x.projects })) });
+          return jsonResult({ servers: serversFor(s, ctx.agentId).map((x) => ({ id: x.id, name: x.name, description: x.description, projects: x.projects })) });
         },
       },
       {

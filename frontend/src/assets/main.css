@@ -3731,3 +3731,8 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .term-tabs-wrap { gap: 4px; }
 .ap-card { padding: 10px 12px; }
 .ap { gap: 8px; }
+
+/* Server form: agent allowlist and the isolation lock */
+.check-grid { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.check-grid .check-row { margin: 0; }
+.srv-isolated { margin-left: 6px; font-size: 11px; opacity: 0.8; }

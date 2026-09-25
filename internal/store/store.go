@@ -151,6 +151,15 @@ type ServerProfile struct {
 	// TmuxOff makes terminals plain shells instead of tmux sessions that survive
 	// a ClawHQ restart.
 	TmuxOff bool `json:"tmuxOff,omitempty"`
+	// Isolated keeps the server to this ClawHQ: agents never see it, it takes no
+	// tasks, and it is not a member of Team Chat.
+	Isolated bool `json:"isolated,omitempty"`
+	// TasksOff stops agents handing tasks to this server; TaskAgents narrows
+	// tasks to the listed agent ids when set.
+	TasksOff   bool     `json:"tasksOff,omitempty"`
+	TaskAgents []string `json:"taskAgents,omitempty"`
+	// Description is one line agents see next to the name when choosing a server.
+	Description string `json:"description,omitempty"`
 	// Platform is "windows" or "unix", learned on the first health check.
 	Platform string `json:"platform,omitempty"`
 }

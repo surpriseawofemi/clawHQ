@@ -54,6 +54,16 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
   const [servers, setServers] = useState<ServerProfile[]>(pageMemory.servers)
   const [selectedId, setSelectedId] = useState<string | null>(pageMemory.selectedId)
   const [editing, setEditing] = useState<ServerProfile | null>(null)
+  // Agent ids for the task allowlist, fetched when the form opens.
+  const [agentIds, setAgentIds] = useState<string[]>([])
+  useEffect(() => {
+    if (!editing) return
+    api.rpc
+      .request<{ agents?: { id: string }[] }>('agents.list')
+      .then((r) => setAgentIds((r?.agents ?? []).map((a) => a.id).filter(Boolean).sort()))
+      .catch(() => setAgentIds([]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing?.id])
   const [tab, setTab] = useState<Tab>(pageMemory.tab)
   const [health, setHealth] = useState<Record<string, ServerHealth>>(pageMemory.health)
   const [busy, setBusy] = useState<string | null>(null)
@@ -233,7 +243,7 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
                 <button className="srv-main" onClick={() => { setSelectedId(s.id); setEditing(null) }}>
                   <i className={`desk-dot ${dot}`} />
                   <span className="srv-row-meta">
-                    <span className="srv-row-name">{s.name}</span>
+                    <span className="srv-row-name">{s.name}{s.isolated && <span className="srv-isolated" title="Isolation mode: agents never see this server">🔒</span>}</span>
                     <span className="srv-row-sub">
                       {s.user}@{s.host}
                       {s.port !== 22 ? `:${s.port}` : ''} · {hh ? (hh.ok ? (hh.claude.installed ? `Claude ${hh.claude.version || ''}` : 'no Claude Code') : hh.error?.startsWith('Disconnected') ? 'disconnected' : 'unreachable') : `checked ${ago(s.lastOkAtMs)}`}
@@ -346,6 +356,59 @@ export function ServersPage({ shell }: Props): React.JSX.Element {
               <input type="checkbox" checked={editing.tmux !== false} onChange={(e) => setEditing({ ...editing, tmux: e.target.checked })} />
               <span>Run terminals in tmux so they survive closing ClawHQ (needs tmux on the server)</span>
             </label>
+            <label className="check-row">
+              <input type="checkbox" checked={editing.isolated === true} onChange={(e) => setEditing({ ...editing, isolated: e.target.checked })} />
+              <span>
+                <strong>Isolation mode.</strong> Only you use this server from ClawHQ: no agent sees it or can hand it a task, it is not a
+                member of Team Chat, and nothing here reaches another server.
+              </span>
+            </label>
+            {editing.isolated !== true && (
+              <>
+                <label className="check-row">
+                  <input type="checkbox" checked={editing.tasks !== false} onChange={(e) => setEditing({ ...editing, tasks: e.target.checked })} />
+                  <span>Accept tasks from agents (they see the server in their list and can hand its coding agent work)</span>
+                </label>
+                {editing.tasks !== false && (
+                  <div className="field">
+                    <span>Agents allowed to hand it tasks</span>
+                    <div className="check-grid">
+                      <label className="check-row">
+                        <input
+                          type="checkbox"
+                          checked={!editing.taskAgents?.length}
+                          onChange={(e) => { if (e.target.checked) setEditing({ ...editing, taskAgents: [] }) }}
+                        />
+                        <span>Every agent</span>
+                      </label>
+                      {agentIds.map((id) => (
+                        <label key={id} className="check-row">
+                          <input
+                            type="checkbox"
+                            checked={editing.taskAgents?.includes(id) ?? false}
+                            onChange={(e) => {
+                              const cur = editing.taskAgents ?? []
+                              setEditing({ ...editing, taskAgents: e.target.checked ? [...cur, id] : cur.filter((x) => x !== id) })
+                            }}
+                          />
+                          <span>{id}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="field-hint">Ticking an agent limits the server to the ticked ones; leave only "Every agent" ticked to open it to all.</p>
+                  </div>
+                )}
+                <div className="field">
+                  <span>What this server is for (agents read this when choosing a server)</span>
+                  <input
+                    value={editing.description ?? ''}
+                    onChange={(e) => setEditing({ ...editing, description: e.target.value })}
+                    placeholder="Production host for Email Manager Pro; only emp-ceo's tasks belong here"
+                    maxLength={300}
+                  />
+                </div>
+              </>
+            )}
             <div className="field">
               <span>{editing.id ? 'Active project folder' : 'Project folder (optional)'}</span>
               <input value={editing.dir ?? ''} onChange={(e) => setEditing({ ...editing, dir: e.target.value })} placeholder="/var/www/emailmanager" spellCheck={false} />

@@ -691,13 +691,19 @@ func (b *pluginBridge) registerServers() {
 		Agent string `json:"agent"`
 	}
 	type srv struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Projects []proj `json:"projects"`
+		ID          string   `json:"id"`
+		Name        string   `json:"name"`
+		Description string   `json:"description,omitempty"`
+		Agents      []string `json:"agents,omitempty"`
+		Projects    []proj   `json:"projects"`
 	}
 	list := []srv{}
 	for _, sv := range cfg.Servers {
-		e := srv{ID: sv.ID, Name: sv.Name, Projects: []proj{}}
+		// Isolated servers and servers that take no tasks stay unknown to agents.
+		if sv.Isolated || sv.TasksOff {
+			continue
+		}
+		e := srv{ID: sv.ID, Name: sv.Name, Description: sv.Description, Agents: sv.TaskAgents, Projects: []proj{}}
 		for _, pr := range sv.Projects {
 			e.Projects = append(e.Projects, proj{ID: pr.ID, Name: pr.Name, Agent: pr.Agent})
 		}
@@ -732,10 +738,30 @@ func (b *pluginBridge) keepRegistering() {
 	}()
 }
 
+// ownsServer says whether this ClawHQ may run tasks on the server: it is saved
+// here, not isolated, and open to agent tasks.
 func (b *pluginBridge) ownsServer(id string) bool {
 	for _, sv := range b.store.Read().Servers {
 		if sv.ID == id {
+			return !sv.Isolated && !sv.TasksOff
+		}
+	}
+	return false
+}
+
+// allowsAgent says whether the server takes tasks from this agent.
+func (b *pluginBridge) allowsAgent(serverID, agent string) bool {
+	for _, sv := range b.store.Read().Servers {
+		if sv.ID != serverID {
+			continue
+		}
+		if len(sv.TaskAgents) == 0 {
 			return true
+		}
+		for _, a := range sv.TaskAgents {
+			if strings.EqualFold(a, agent) {
+				return true
+			}
 		}
 	}
 	return false
@@ -801,6 +827,12 @@ func (b *pluginBridge) workServerTask(taskID, serverID string) {
 		} `json:"task"`
 	}
 	if json.Unmarshal(raw, &claim) != nil || !claim.OK {
+		return
+	}
+	if !b.allowsAgent(serverID, claim.Task.From) {
+		rctx, rcancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer rcancel()
+		_, _ = b.request(rctx, "clawhq.server.task.result", map[string]any{"id": taskID, "ok": false, "text": "this server does not accept tasks from " + claim.Task.From})
 		return
 	}
 	prompt := "Task handed over by the OpenClaw agent \"" + claim.Task.From + "\" through ClawHQ. Do it fully in this project, then reply with a short report of what changed and anything that still needs a decision.\n\n" + claim.Task.Task

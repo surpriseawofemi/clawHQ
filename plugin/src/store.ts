@@ -115,7 +115,15 @@ export type Issue = {
 };
 
 /** A ClawHQ's servers, as it registers them (names only, never credentials). */
-export type ServerEntry = { id: string; name: string; projects: { id: string; name: string; agent: string }[] };
+export type ServerEntry = {
+  id: string;
+  name: string;
+  /** One line from the operator about what the server is for. */
+  description?: string;
+  /** Agent ids that may hand it tasks; empty or missing means every agent. */
+  agents?: string[];
+  projects: { id: string; name: string; agent: string }[];
+};
 export type ServerRegistration = { clawhqId: string; atMs: number; servers: ServerEntry[] };
 
 /** A task an agent handed to a server's coding agent; a ClawHQ runs it. */
