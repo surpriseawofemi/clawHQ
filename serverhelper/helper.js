@@ -105,16 +105,21 @@ function hook(event) {
 
 function projectPaths(dir) {
   const root = path.join(dir, '.clawhq')
-  return { root, issues: path.join(root, 'issues.json'), details: path.join(root, 'issues'), mission: path.join(root, 'MISSION.md'), log: path.join(root, 'log.jsonl') }
+  return { root, issues: path.join(root, 'issues.json'), details: path.join(root, 'issues'), recs: path.join(root, 'recommendations'), mission: path.join(root, 'MISSION.md'), log: path.join(root, 'log.jsonl') }
 }
 
 function loadIssues(dir) {
   const p = projectPaths(dir)
+  let db
   try {
-    return JSON.parse(fs.readFileSync(p.issues, 'utf8'))
+    db = JSON.parse(fs.readFileSync(p.issues, 'utf8'))
   } catch {
-    return { next: 1, issues: [] }
+    db = { next: 1, issues: [] }
   }
+  // Recommendations share the file: optional ideas the boss may take or leave.
+  if (!db.nextRec) db.nextRec = 1
+  if (!Array.isArray(db.recommendations)) db.recommendations = []
+  return db
 }
 
 function saveIssues(dir, db) {
@@ -161,6 +166,24 @@ const TOOLS = [
     name: 'clawhq_issues',
     description: 'List issues (open by default) with their numbers, and read one issue\'s details file by number.',
     inputSchema: { type: 'object', properties: { n: { type: 'number', description: 'Read this issue\'s details' }, status: { type: 'string', description: 'open, done, dismissed or all' } } },
+  },
+  {
+    name: 'clawhq_recommend',
+    description: 'Suggest something optional to the boss: an improvement worth considering that is not broken, risky or blocking. Not for problems; those are issues. Returns R-number and a details file. Before suggesting, call clawhq_recommendations with status "all" and never repeat one that was dismissed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'One line' },
+        why: { type: 'string', description: 'One paragraph: what it would improve and roughly how. Markdown.' },
+        effort: { type: 'string', description: 'small, medium or large' },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'clawhq_recommendations',
+    description: 'List recommendations (open by default) with their R-numbers, or read one by number. Status: open, later, accepted, dismissed or all.',
+    inputSchema: { type: 'object', properties: { r: { type: 'number', description: 'Read this recommendation' }, status: { type: 'string' } } },
   },
   {
     name: 'clawhq_mission',
@@ -218,6 +241,36 @@ function callTool(dir, name, a) {
       }
       const status = a.status || 'open'
       return { issues: db.issues.filter((x) => status === 'all' || x.status === status).map((x) => ({ n: x.n, title: x.title, status: x.status, needsBoss: x.needsBoss, urgency: x.urgency })) }
+    }
+    case 'clawhq_recommend': {
+      const db = loadIssues(dir)
+      const r = db.nextRec
+      const title = String(a.title || '').trim().slice(0, 200)
+      if (!title) return { error: 'title is required' }
+      const effort = ['small', 'medium', 'large'].includes(a.effort) ? a.effort : 'medium'
+      const rec = { r, title, effort, status: 'open', createdAt: Date.now(), updatedAt: Date.now() }
+      db.nextRec = r + 1
+      db.recommendations.push(rec)
+      saveIssues(dir, db)
+      fs.mkdirSync(p.recs, { recursive: true })
+      const file = path.join(p.recs, `${r}.md`)
+      fs.writeFileSync(file, `# R${r} ${title}\n\n${a.why || ''}\n`)
+      appendLog(dir, { type: 'recommendation', r, title, effort })
+      return { ok: true, r, details_file: file }
+    }
+    case 'clawhq_recommendations': {
+      const db = loadIssues(dir)
+      if (a.r) {
+        const rec = db.recommendations.find((x) => x.r === Number(a.r))
+        if (!rec) return { error: `no recommendation R${a.r}` }
+        let details = ''
+        try {
+          details = fs.readFileSync(path.join(p.recs, `${rec.r}.md`), 'utf8')
+        } catch {}
+        return { recommendation: rec, details }
+      }
+      const status = a.status || 'open'
+      return { recommendations: db.recommendations.filter((x) => status === 'all' || x.status === status).map((x) => ({ r: x.r, title: x.title, status: x.status, effort: x.effort, issue: x.issueN })) }
     }
     case 'clawhq_mission': {
       try {

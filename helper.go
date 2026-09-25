@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"path"
 	"regexp"
 	"sort"
@@ -77,6 +78,8 @@ type OutboxEvent struct {
 	NeedsBoss bool            `json:"needsBoss,omitempty"`
 	Urgency   string          `json:"urgency,omitempty"`
 	Status    string          `json:"status,omitempty"`
+	R         int             `json:"r,omitempty"`
+	Effort    string          `json:"effort,omitempty"`
 	Note      string          `json:"note,omitempty"`
 }
 
@@ -92,6 +95,18 @@ type ServerIssue struct {
 		Ts   int64  `json:"ts"`
 		Text string `json:"text"`
 	} `json:"notes"`
+}
+
+// ServerRecommendation is an optional idea from the session: the boss may take
+// it (it becomes an issue), park it or dismiss it. It never rings the bell.
+type ServerRecommendation struct {
+	R         int    `json:"r"`
+	Title     string `json:"title"`
+	Effort    string `json:"effort"`
+	Status    string `json:"status"` // open | later | accepted | dismissed
+	IssueN    int    `json:"issueN,omitempty"`
+	CreatedAt int64  `json:"createdAt"`
+	UpdatedAt int64  `json:"updatedAt"`
 }
 
 const helperRemote = ".clawhq/helper.js"
@@ -150,6 +165,22 @@ func (s *HelperService) Install(ctx context.Context, id string) (HelperStatus, e
 		return HelperStatus{}, err
 	}
 	log.Printf("helper: installed %s on %s", s.version, id)
+	// Wired projects get the current CLAUDE.md section too, so the session learns
+	// about tools added since it was wired.
+	if p, err := s.profile(id); err == nil {
+		for _, pr := range p.Projects {
+			dir := pr.Dir
+			if dir == "" {
+				dir = home
+			}
+			md, err := readRemote(c.sftp, path.Join(dir, "CLAUDE.md"))
+			if err != nil || !strings.Contains(md, "\n## ClawHQ") || strings.Contains(md, "clawhq_recommend") {
+				continue
+			}
+			i := strings.Index(md, "\n## ClawHQ")
+			_ = writeRemote(c.sftp, path.Join(dir, "CLAUDE.md"), strings.TrimRight(md[:i], "\n")+"\n"+claudeMdSection, 0o644)
+		}
+	}
 	s.mu.Lock()
 	if s.present == nil {
 		s.present = map[string]bool{}
@@ -225,14 +256,16 @@ const claudeMdSection = `
 
 ## ClawHQ
 
-ClawHQ is the app the boss reads. It gives you five tools over MCP:
+ClawHQ is the app the boss reads. It gives you seven tools over MCP:
 - clawhq_log: one short line per thing checked, changed or found. The boss reads these in the app; keep them to a sentence.
 - clawhq_issue: anything needing the boss's decision or approval, or too risky to just do. It returns a number and a details file; write everything worth remembering into that file, so when the boss says "#12" you read it with clawhq_issues and answer from it.
 - clawhq_issue_update: note progress, mark done or dismissed.
 - clawhq_issues: list open issues or read one by number.
+- clawhq_recommend: an optional improvement the boss may consider, not a problem. Issues are for what is broken, risky or blocking; recommendations are for what could be better. They get R-numbers (R3) and never interrupt the boss. Check clawhq_recommendations with status "all" first and never repeat a dismissed one; an accepted one is already an issue.
+- clawhq_recommendations: list recommendations or read one by number.
 - clawhq_mission: the standing mission for this project (focus rotation, what you may change without asking, how to report). Read it at the start of every scheduled run.
 
-Rules: refer to issues only by number (#12). Short lines in the log, long text in the details file. Never change the schema, dependencies, secrets or server config without an issue the boss has approved.
+Rules: refer to issues only by number (#12) and recommendations by R-number (R3). Short lines in the log, long text in the details file. Never change the schema, dependencies, secrets or server config without an issue the boss has approved.
 `
 
 const missionTemplate = `# Mission
@@ -341,8 +374,12 @@ func (s *HelperService) Wire(ctx context.Context, id, projectID string) (HelperS
 		return HelperStatus{}, err
 	}
 
-	// CLAUDE.md: append the section once.
+	// CLAUDE.md: append the section once; an older section (without the
+	// recommendation tools) is replaced.
 	md, _ := readRemote(c.sftp, path.Join(dir, "CLAUDE.md"))
+	if i := strings.Index(md, "\n## ClawHQ"); i >= 0 && !strings.Contains(md, "clawhq_recommend") {
+		md = strings.TrimRight(md[:i], "\n") + "\n"
+	}
 	if !strings.Contains(md, "## ClawHQ") {
 		if err := writeRemote(c.sftp, path.Join(dir, "CLAUDE.md"), strings.TrimRight(md, "\n")+claudeMdSection, 0o644); err != nil {
 			return HelperStatus{}, err
@@ -512,6 +549,124 @@ func (s *HelperService) Issues(ctx context.Context, id, projectID string) ([]Ser
 		db.Issues = []ServerIssue{}
 	}
 	return db.Issues, nil
+}
+
+// Recommendations lists a project's optional ideas, open first, newest first.
+func (s *HelperService) Recommendations(ctx context.Context, id, projectID string) ([]ServerRecommendation, error) {
+	dir, c, err := s.projectDir(ctx, id, projectID)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := readRemote(c.sftp, path.Join(dir, ".clawhq", "issues.json"))
+	if err != nil {
+		return []ServerRecommendation{}, nil
+	}
+	var db struct {
+		Recommendations []ServerRecommendation `json:"recommendations"`
+	}
+	if err := json.Unmarshal([]byte(raw), &db); err != nil {
+		return nil, err
+	}
+	rank := map[string]int{"open": 0, "later": 1, "accepted": 2, "dismissed": 3}
+	sort.SliceStable(db.Recommendations, func(i, j int) bool {
+		a, b := db.Recommendations[i], db.Recommendations[j]
+		if rank[a.Status] != rank[b.Status] {
+			return rank[a.Status] < rank[b.Status]
+		}
+		return a.UpdatedAt > b.UpdatedAt
+	})
+	if db.Recommendations == nil {
+		db.Recommendations = []ServerRecommendation{}
+	}
+	return db.Recommendations, nil
+}
+
+func (s *HelperService) RecommendationDetails(ctx context.Context, id, projectID string, r int) (string, error) {
+	dir, c, err := s.projectDir(ctx, id, projectID)
+	if err != nil {
+		return "", err
+	}
+	return readRemote(c.sftp, path.Join(dir, ".clawhq", "recommendations", fmt.Sprintf("%d.md", r)))
+}
+
+// SetRecommendation parks, dismisses, reopens or accepts a recommendation.
+// Accepting turns it into a numbered issue the session works on like any other,
+// with the recommendation's text as the issue's details.
+func (s *HelperService) SetRecommendation(ctx context.Context, id, projectID string, r int, status string) ([]ServerRecommendation, error) {
+	switch status {
+	case "open", "later", "dismissed", "accepted":
+	default:
+		return nil, fmt.Errorf("unknown status %q", status)
+	}
+	dir, c, err := s.projectDir(ctx, id, projectID)
+	if err != nil {
+		return nil, err
+	}
+	file := path.Join(dir, ".clawhq", "issues.json")
+	raw, err := readRemote(c.sftp, file)
+	if err != nil {
+		return nil, fmt.Errorf("no recommendations yet")
+	}
+	var db map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &db); err != nil {
+		return nil, err
+	}
+	var recs []ServerRecommendation
+	_ = json.Unmarshal(db["recommendations"], &recs)
+	var issues []json.RawMessage
+	_ = json.Unmarshal(db["issues"], &issues)
+	next := 1
+	_ = json.Unmarshal(db["next"], &next)
+	idx := -1
+	for i := range recs {
+		if recs[i].R == r {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		return nil, fmt.Errorf("no recommendation R%d", r)
+	}
+	now := time.Now().UnixMilli()
+	rec := &recs[idx]
+	if status == "accepted" && rec.IssueN == 0 {
+		n := next
+		next++
+		issue := map[string]any{"n": n, "title": rec.Title, "status": "open", "needsBoss": false, "urgency": "normal", "createdAt": now, "updatedAt": now, "notes": []any{map[string]any{"ts": now, "text": fmt.Sprintf("From recommendation R%d, accepted by the boss in ClawHQ.", r)}}}
+		b, _ := json.Marshal(issue)
+		issues = append(issues, b)
+		why, _ := readRemote(c.sftp, path.Join(dir, ".clawhq", "recommendations", fmt.Sprintf("%d.md", r)))
+		body := fmt.Sprintf("# #%d %s\n\nAccepted from recommendation R%d.\n\n%s\n", n, rec.Title, r, strings.TrimSpace(why))
+		if err := writeRemote(c.sftp, path.Join(dir, ".clawhq", "issues", fmt.Sprintf("%d.md", n)), body, 0o644); err != nil {
+			return nil, err
+		}
+		rec.IssueN = n
+		s.appendOutbox(c.sftp, map[string]any{"ts": now, "project": dir, "type": "issue", "n": n, "title": rec.Title, "needsBoss": false, "urgency": "normal"})
+	}
+	rec.Status = status
+	rec.UpdatedAt = now
+	rb, _ := json.Marshal(recs)
+	ib, _ := json.Marshal(issues)
+	nb, _ := json.Marshal(next)
+	db["recommendations"], db["issues"], db["next"] = rb, ib, nb
+	out, _ := json.MarshalIndent(db, "", "  ")
+	if err := writeRemote(c.sftp, file, string(out)+"\n", 0o644); err != nil {
+		return nil, err
+	}
+	s.appendOutbox(c.sftp, map[string]any{"ts": now, "project": dir, "type": "rec-update", "r": r, "status": status, "title": rec.Title, "n": rec.IssueN})
+	return s.Recommendations(ctx, id, projectID)
+}
+
+// appendOutbox adds one line to the helper's outbox, so the log shows what the
+// boss did and the other ClawHQs see it too.
+func (s *HelperService) appendOutbox(c *sftp.Client, ev map[string]any) {
+	home, _ := c.Getwd()
+	f, err := c.OpenFile(path.Join(home, ".clawhq", "outbox.jsonl"), os.O_WRONLY|os.O_APPEND|os.O_CREATE)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	b, _ := json.Marshal(ev)
+	_, _ = f.Write(append(b, '\n'))
 }
 
 func (s *HelperService) IssueDetails(ctx context.Context, id, projectID string, n int) (string, error) {

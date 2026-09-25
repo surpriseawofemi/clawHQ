@@ -22,9 +22,10 @@ export type Prefs = {
   /** Autopilot issues: order and whether done ones show. */
   apSort: 'needs' | 'newest' | 'oldest' | 'urgency' | 'number'
   apShowDone: boolean
+  apView: 'issues' | 'recs'
 }
 
-const DEFAULTS: Prefs = { showToolCalls: false, hideActivityNoise: true, sidebarSort: 'recent', sidebarGroup: true, issuesSort: 'needs', issuesShowResolved: false, apSort: 'needs', apShowDone: false }
+const DEFAULTS: Prefs = { showToolCalls: false, hideActivityNoise: true, sidebarSort: 'recent', sidebarGroup: true, issuesSort: 'needs', issuesShowResolved: false, apSort: 'needs', apShowDone: false, apView: 'issues' }
 
 export function getPrefs(): Prefs {
   try {

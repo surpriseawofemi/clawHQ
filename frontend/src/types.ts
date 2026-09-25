@@ -504,7 +504,9 @@ export type HelperStatus = { installed: boolean; version: string; current: boole
 /** One line of the helper's outbox: a reply the session gave, a log line, an issue. */
 export type OutboxEvent = {
   ts: number
-  type: 'reply' | 'session-end' | 'log' | 'issue' | 'issue-update'
+  type: 'reply' | 'session-end' | 'log' | 'issue' | 'issue-update' | 'recommendation' | 'rec-update'
+  r?: number
+  effort?: string
   event?: string
   project: string
   sessionId?: string
@@ -521,4 +523,5 @@ export type OutboxEvent = {
   status?: string
   note?: string
 }
+export type ServerRecommendation = { r: number; title: string; effort: string; status: 'open' | 'later' | 'accepted' | 'dismissed'; issueN?: number; createdAt: number; updatedAt: number }
 export type ServerIssue = { n: number; title: string; status: 'open' | 'done' | 'dismissed'; needsBoss: boolean; urgency: string; createdAt: number; updatedAt: number; notes: { ts: number; text: string }[] }

@@ -3736,3 +3736,7 @@ button.files-row { border: none; background: none; padding: 6px 8px; color: var(
 .check-grid { display: flex; flex-wrap: wrap; gap: 4px 18px; }
 .check-grid .check-row { margin: 0; }
 .srv-isolated { margin-left: 6px; font-size: 11px; opacity: 0.8; }
+
+/* Autopilot: Issues / Recommendations switch */
+.ap-seg button { padding: 4px 10px; font-size: 12px; }
+.ap-rec { border-color: color-mix(in srgb, var(--accent) 25%, var(--border)); }

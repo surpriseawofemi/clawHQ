@@ -7,7 +7,7 @@ import { autopilot } from '../state/autopilot'
 import { getPrefs, setPref } from '../prefs'
 import { Toggle } from './Toggle'
 import { RefreshIcon } from './icons'
-import type { HelperStatus, OutboxEvent, ServerIssue, ServerProfile, ServerProject } from '../types'
+import type { HelperStatus, OutboxEvent, ServerIssue, ServerProfile, ServerProject, ServerRecommendation } from '../types'
 
 const when = (ms: number): string => {
   const d = new Date(ms)
@@ -26,7 +26,7 @@ const RESUME_INSTRUCTION = 'From the boss via ClawHQ: resume the hourly schedule
  * that carries it out (in tmux, so it survives ClawHQ closing), the hourly log
  * the helper collects, and the numbered issues waiting for the boss.
  */
-const apMemory = new Map<string, { mission: string; events: OutboxEvent[]; issues: ServerIssue[]; details: { n: number; md: string } | null; showDone: boolean }>()
+const apMemory = new Map<string, { mission: string; events: OutboxEvent[]; issues: ServerIssue[]; details: { n: number; md: string; kind?: 'issue' | 'rec' } | null; showDone: boolean }>()
 
 export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: { server: ServerProfile; project: ServerProject; helper: HelperStatus | null; onHelper: (h: HelperStatus) => void; onDiscuss: (text: string) => void }): React.JSX.Element {
   const memKey = `${server.id}:${project.id}`
@@ -36,7 +36,11 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
   const [missionDraft, setMissionDraft] = useState(mem?.mission ?? initial.mission)
   const [events, setEvents] = useState<OutboxEvent[]>(initial.events)
   const [issues, setIssues] = useState<ServerIssue[]>(initial.issues)
-  const [details, setDetails] = useState<{ n: number; md: string } | null>(mem?.details ?? null)
+  const [recs, setRecs] = useState<ServerRecommendation[]>(initial.recs)
+  const [details, setDetails] = useState<{ n: number; md: string; kind?: 'issue' | 'rec' } | null>(mem?.details ?? null)
+  const [view, setViewState] = useState(getPrefs().apView)
+  const setView = (v: typeof view): void => { setViewState(v); setPref('apView', v) }
+  const [showParked, setShowParked] = useState(false)
   const [resume, setResume] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -64,6 +68,7 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
       setMissionDraft((cur) => (cur === '' || cur === mission ? d.mission : cur))
       setEvents(d.events)
       setIssues(d.issues)
+      setRecs(d.recs)
       setError(d.error ?? null)
     }
     apply()
@@ -97,6 +102,12 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
     if (a.needsBoss !== b.needsBoss) return a.needsBoss ? -1 : 1
     return (rank[a.urgency] ?? 2) - (rank[b.urgency] ?? 2) || b.updatedAt - a.updatedAt
   })
+  const openRecs = recs.filter((r) => r.status === 'open')
+  const parkedRecs = recs.filter((r) => r.status === 'later')
+  const shownRecs = showParked ? recs.filter((r) => r.status === 'open' || r.status === 'later') : openRecs
+  const setRec = (r: number, status: string): void => {
+    void act(`rec-${r}`, () => api.helper.setRecommendation(server.id, project.id, r, status).then(setRecs))
+  }
   const recent = useMemo(() => [...events].reverse().slice(0, 120), [events])
   const lastReply = [...events].reverse().find((e) => e.type === 'reply')
   const billing = lastReply?.billing
@@ -116,24 +127,56 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
 
       <section className="ap-card">
         <div className="ap-head">
-          <h3>Issues for you</h3>
-          <span className="plugin-desc">{open.length} open · numbered by the session</span>
+          <span className="seg ap-seg" role="tablist">
+            <button className={view === 'issues' ? 'is-active' : ''} onClick={() => setView('issues')}>Issues{open.length > 0 ? ` · ${open.length}` : ''}</button>
+            <button className={view === 'recs' ? 'is-active' : ''} onClick={() => setView('recs')} title="Optional ideas from the session: take them, park them or dismiss them">Recommendations{openRecs.length > 0 ? ` · ${openRecs.length}` : ''}</button>
+          </span>
+          <span className="plugin-desc">{view === 'issues' ? 'numbered by the session' : 'optional · nothing here needs doing'}</span>
           <span className="row-tools">
-            <button className="icon-btn" title="Refresh issues and log" disabled={busy === 'refresh'} onClick={() => { setBusy('refresh'); void load().finally(() => setBusy(null)) }}>
+            <button className="icon-btn" title="Refresh" disabled={busy === 'refresh'} onClick={() => { setBusy('refresh'); void load().finally(() => setBusy(null)) }}>
               <RefreshIcon />
             </button>
-            <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort issues" className="issue-sort">
-              <option value="needs">Needs you first</option>
-              <option value="urgency">Urgency</option>
-              <option value="newest">Newest</option>
-              <option value="oldest">Oldest</option>
-              <option value="number">Number</option>
-            </select>
-            <Toggle on={showDone} onChange={setShowDone} label="Show done" />
+            {view === 'issues' ? (
+              <>
+                <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort issues" className="issue-sort">
+                  <option value="needs">Needs you first</option>
+                  <option value="urgency">Urgency</option>
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
+                  <option value="number">Number</option>
+                </select>
+                <Toggle on={showDone} onChange={setShowDone} label="Show done" />
+              </>
+            ) : (
+              <Toggle on={showParked} onChange={setShowParked} label={`Show parked${parkedRecs.length ? ` (${parkedRecs.length})` : ''}`} />
+            )}
           </span>
         </div>
-        {shown.length === 0 && <p className="field-hint">Nothing waiting.</p>}
-        <div className="ap-issues">
+        {view === 'recs' && shownRecs.length === 0 && <p className="field-hint">No recommendations{parkedRecs.length && !showParked ? ` (${parkedRecs.length} parked)` : ''}.</p>}
+        {view === 'recs' && (
+          <div className="ap-issues">
+            {shownRecs.map((r) => (
+              <div key={r.r} className={`ap-issue ap-rec${r.status === 'later' ? ' is-done' : ''}`}>
+                <button className="ap-issue-main" onClick={() => void api.helper.recommendationDetails(server.id, project.id, r.r).then((md) => setDetails({ n: r.r, md, kind: 'rec' })).catch((err) => setError(String(err)))}>
+                  <span className="ap-n">R{r.r}</span>
+                  <span className="ap-title">{r.title}</span>
+                  <span className="ap-meta">{r.status === 'later' ? 'parked · ' : ''}{r.effort} · {when(r.updatedAt)}</span>
+                </button>
+                <span className="ap-issue-tools">
+                  <button className="btn btn-sm btn-primary" disabled={busy !== null} title="Turn it into a numbered issue the session works on" onClick={() => setRec(r.r, 'accepted')}>Do it</button>
+                  {r.status === 'later' ? (
+                    <button className="btn btn-sm" disabled={busy !== null} onClick={() => setRec(r.r, 'open')}>Unpark</button>
+                  ) : (
+                    <button className="btn btn-sm" disabled={busy !== null} title="Keep it, out of the way" onClick={() => setRec(r.r, 'later')}>Later</button>
+                  )}
+                  <button className="btn btn-sm btn-ghost" disabled={busy !== null} title="Drop it; the session will not suggest it again" onClick={() => setRec(r.r, 'dismissed')}>Dismiss</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {view === 'issues' && shown.length === 0 && <p className="field-hint">Nothing waiting.</p>}
+        {view === 'issues' && <div className="ap-issues">
           {shown.map((i) => (
             <div key={i.n} className={`ap-issue${i.status !== 'open' ? ' is-done' : ''}${i.needsBoss ? ' needs-boss' : ''}`}>
               <button className="ap-issue-main" onClick={() => void api.helper.issueDetails(server.id, project.id, i.n).then((md) => setDetails({ n: i.n, md })).catch((err) => setError(String(err)))}>
@@ -149,11 +192,11 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
               </span>
             </div>
           ))}
-        </div>
+        </div>}
         {details && (
           <div className="ap-details">
             <div className="ap-head">
-              <h4>#{details.n} details</h4>
+              <h4>{details.kind === 'rec' ? `R${details.n}` : `#${details.n}`} details</h4>
               <button className="btn btn-sm btn-ghost" onClick={() => setDetails(null)}>Close</button>
             </div>
             <div className="team-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(details.md || '_No details file._') }} />
@@ -175,6 +218,8 @@ export function AutopilotView({ server, project, helper, onHelper, onDiscuss }: 
                 {e.type === 'log' && <>{e.kind === 'change' ? '🔧 ' : e.kind === 'warn' ? '⚠️ ' : '· '}{e.text}</>}
                 {e.type === 'issue' && <>🔴 opened #{e.n}: {e.title}{e.needsBoss ? ' (needs you)' : ''}</>}
                 {e.type === 'issue-update' && <>{e.status === 'done' ? '✅' : e.status === 'dismissed' ? '⬜' : '✎'} #{e.n} {e.status}{e.note ? `: ${e.note}` : ''}</>}
+                {e.type === 'recommendation' && <>💡 R{e.r} suggested: {e.title}{e.effort ? ` (${e.effort})` : ''}</>}
+                {e.type === 'rec-update' && <>💡 R{e.r} {e.status === 'accepted' ? `accepted → #${e.n}` : e.status === 'later' ? 'parked' : e.status === 'open' ? 'unparked' : e.status}</>}
                 {e.type === 'reply' && <span className="ap-reply" title={e.text}>💬 {(e.text || '').split('\n')[0].slice(0, 160)}{e.files?.length ? ` · ${e.files.length} file${e.files.length === 1 ? '' : 's'} edited` : ''}</span>}
                 {e.type === 'session-end' && <>⏹ session ended</>}
               </span>

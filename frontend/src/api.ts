@@ -52,7 +52,7 @@ import type {
   SessionUsage,
   HelperStatus,
   OutboxEvent,
-  ServerIssue
+  ServerIssue, ServerRecommendation
 } from './types'
 
 /**
@@ -235,6 +235,9 @@ export const api = {
     outbox: (id: string, sinceTs: number, limit = 300): Promise<OutboxEvent[]> => HelperService.Outbox(id, sinceTs, limit).then((r) => (r ?? []) as OutboxEvent[]),
     issues: (id: string, projectId: string): Promise<ServerIssue[]> => HelperService.Issues(id, projectId).then((r) => (r ?? []) as ServerIssue[]),
     issueDetails: (id: string, projectId: string, n: number): Promise<string> => HelperService.IssueDetails(id, projectId, n),
+    recommendations: (id: string, projectId: string): Promise<ServerRecommendation[]> => HelperService.Recommendations(id, projectId).then((r) => (r ?? []) as ServerRecommendation[]),
+    recommendationDetails: (id: string, projectId: string, r: number): Promise<string> => HelperService.RecommendationDetails(id, projectId, r),
+    setRecommendation: (id: string, projectId: string, r: number, status: string): Promise<ServerRecommendation[]> => HelperService.SetRecommendation(id, projectId, r, status).then((x) => (x ?? []) as ServerRecommendation[]),
     mission: (id: string, projectId: string): Promise<string> => HelperService.Mission(id, projectId),
     setMission: (id: string, projectId: string, text: string): Promise<void> => HelperService.SetMission(id, projectId, text),
     sendToSession: (id: string, session: string, text: string): Promise<void> => HelperService.SendToSession(id, session, text),

@@ -286,6 +286,12 @@ carries a one-line description that agents read when choosing where to send work
 Auto mode on a server whose SSH user is root sets `IS_SANDBOX=1`, which is what
 Claude Code needs to run unattended as root.
 
+The Autopilot tab separates issues from recommendations. An issue is something
+broken, risky or blocking that needs the boss; a recommendation is an optional
+idea the session files with `clawhq_recommend`, numbered R1, R2 and so on, that
+never rings the bell. Each can be taken (it becomes a numbered issue), parked, or
+dismissed, and a dismissed one is never suggested again.
+
 #### Servers in the rest of ClawHQ
 
 - **Team Chat** lists servers as members. `@name` (the server's name, lowercased,
